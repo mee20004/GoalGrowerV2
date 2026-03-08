@@ -8,6 +8,7 @@ import { auth, db } from "../firebaseConfig";
 import { theme } from "../theme";
 import { Ionicons } from "@expo/vector-icons";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
+const FAR_BG = require('../assets/far_background.png');
 const GARDEN_BG = require('../assets/garden_BG.png');
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -246,19 +247,38 @@ export default function GardenScreen() {
 
   if (loading) return <View style={styles.loader}><ActivityIndicator size="large" color="#2D5A27" /></View>;
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Garden</Text>
-        <TouchableOpacity style={isEditing ? styles.doneBtn : styles.editBtn} onPress={() => setIsEditing(!isEditing)}>
-          <Text style={styles.btnText}>{isEditing ? "Done" : "Edit"}</Text>
-        </TouchableOpacity>
-      </View>
+return (
+  <View style={styles.container}>
+    <View style={styles.header}>
+      <Text style={styles.headerTitle}>My Garden</Text>
+      <TouchableOpacity 
+        style={isEditing ? styles.doneBtn : styles.editBtn} 
+        onPress={() => setIsEditing(!isEditing)}
+      >
+        <Text style={styles.btnText}>{isEditing ? "Done" : "Edit"}</Text>
+      </TouchableOpacity>
+    </View>
 
-      <ImageBackground source={GARDEN_BG} style={styles.gardenBackground} imageStyle={styles.backgroundImageTexture} resizeMode="cover">
-        <View style={styles.gardenMain}>
-          {["topShelf", "middleShelf", "bottomShelf"].map(renderShelf)}
-        </View>
+      {/* --- OUTER (FAR) BACKGROUND --- */}
+      <ImageBackground 
+        source={FAR_BG} 
+        style={styles.farBackground} 
+        imageStyle={styles.farImageStyle} // <--- Manual adjustment here
+        resizeMode="contain"
+      >
+        
+        {/* --- INNER (GARDEN) BACKGROUND --- */}
+        <ImageBackground 
+          source={GARDEN_BG} 
+          style={styles.gardenBackground} 
+          imageStyle={styles.gardenImageStyle} // <--- Manual adjustment here
+          resizeMode="cover"
+        >
+          <View style={styles.gardenMain}>
+            {["topShelf", "middleShelf", "bottomShelf"].map(renderShelf)}
+          </View>
+        </ImageBackground>
+        
       </ImageBackground>
 
       <View style={styles.drawer} ref={drawerRef} collapsable={false}>
@@ -318,5 +338,40 @@ const styles = StyleSheet.create({
   
   draggingShadow: { opacity: 0.7, transform: [{ scale: 1.1 }] },
   deleteBadge: { position: 'absolute', top: -10, left: -10, backgroundColor: '#E74C3C', width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center', zIndex: 10, borderWidth: 2, borderColor: '#fff' },
-  ghost: { position: 'absolute', pointerEvents: 'none', zIndex: 9999 }
+  ghost: { position: 'absolute', pointerEvents: 'none', zIndex: 9999 },
+
+
+
+
+
+  // The container stays fullscreen
+  farBackground: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: '#1a1a1a', // Fallback color
+  },
+
+  // MANUALLY ADJUST THE FAR IMAGE HERE
+  farImageStyle: {
+    top: 0,            // Move up/down (e.g., -50 to pull it up)
+    left: 15,           // Move left/right
+    opacity: 1,      // Good for making it feel "distant"
+    height: '120%', 
+    transform: [
+    { scale: 1.3 }   // Zooms in/out on the garden texture specifically
+    ],   // Make it slightly taller than the screen if you need to offset 'top'
+  },
+
+  gardenBackground: {
+    flex: 1,
+    width: '100%',
+  },
+
+  // MANUALLY ADJUST THE GARDEN/FLOOR IMAGE HERE
+  gardenImageStyle: {
+    top: -180,          // Shifts the garden texture relative to the shelves
+    transform: [
+      { scale: 1.1 }   // Zooms in/out on the garden texture specifically
+    ],
+  },
 });
