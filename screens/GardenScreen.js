@@ -723,6 +723,19 @@ const GardenAmbientParticles = () => {
 
 // --- 1. PLANT VISUAL COMPONENT ---
 const PlantVisual = ({ plant, isDraggingHighlight }) => {
+    // Debug log to check why platinum fern _p asset is not showing
+    if (species === 'fern') {
+      console.log('[Fern Debug]', {
+        species,
+        stage,
+        rating,
+        trophyVariantKey,
+        trophyPlantAsset,
+        hasStage4P: !!PLANT_ASSETS.fern?.p?.stage4,
+        asset,
+        plant
+      });
+    }
   const total = Number(plant.totalCompletions) || 0;
   const rating = getStoragePlantRating(plant);
 
@@ -753,9 +766,14 @@ const PlantVisual = ({ plant, isDraggingHighlight }) => {
   const species = plant.plantSpecies || (plant.type !== "completion" && plant.type !== "quantity" ? plant.type : "fern");
   const asset = PLANT_ASSETS[species]?.[stage]?.[status] || PLANT_ASSETS[species]?.[stage]?.['alive'] || PLANT_ASSETS['fern']['stage1']['alive'];
   const trophyVariantKey = rating === 'platinum' ? 'p' : rating === 'gold' ? 'g' : rating === 'silver' ? 's' : rating === 'bronze' ? 'b' : null;
-  const trophyPlantAsset = rating && species === 'fern'
-    ? PLANT_ASSETS.fern?.[trophyVariantKey]?.[stage]
-    : null;
+  let trophyPlantAsset = null;
+  if (rating && species === 'fern') {
+    trophyPlantAsset = PLANT_ASSETS.fern?.[trophyVariantKey]?.[stage];
+    // Fallback: if platinum, stage4, and asset missing, force stage4_p
+    if (!trophyPlantAsset && rating === 'platinum' && stage === 'stage4') {
+      trophyPlantAsset = PLANT_ASSETS.fern?.p?.stage4;
+    }
+  }
   const showTrophyParticles = Boolean(rating);
   const plantSource = trophyPlantAsset || asset;
   const potSource = rating ? (TROPHY_POT_IMAGES[rating] || POT_IMAGE) : POT_IMAGE;

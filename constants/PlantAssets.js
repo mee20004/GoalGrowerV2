@@ -39,6 +39,12 @@ export const PLANT_ASSETS = {
       stage3: require('../assets/plants/fern_stage3_g.png'),
       stage4: require('../assets/plants/fern_stage4_g.png'),
     },
+    p: {
+      stage1: require('../assets/plants/fern_stage1_p.png'),
+      stage2: require('../assets/plants/fern_stage2_p.png'),
+      stage3: require('../assets/plants/fern_stage3_p.png'),
+      stage4: require('../assets/plants/fern_stage4_p.png'),
+    },
   },
   // Add other plants here (cactus, lily, etc.) following the same pattern
 };
