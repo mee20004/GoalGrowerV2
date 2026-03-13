@@ -34,7 +34,7 @@ import GardenScreen from './screens/GardenScreen'; // <-- 1. IMPORT GARDEN SCREE
 function Placeholder({ title }) {
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: theme.bg }}>
-      <Text style={{ fontWeight: "900", color: theme.muted }}>{title}</Text>
+      <Text style={{ fontWeight: "900", color: theme.muted2 }}>{title}</Text>
     </View>
   );
 }
@@ -119,9 +119,9 @@ function MainTabs() {
         tabBarShowLabel: true,
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          height: 64,
+          height: 64 + insets.bottom,
           paddingTop: 8,
-          paddingBottom: 10,
+          paddingBottom: Math.max(10, insets.bottom),
           backgroundColor: theme.surface,
           borderTopWidth: 0,
           elevation: 10,

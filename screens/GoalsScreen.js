@@ -142,8 +142,12 @@ function getPlantPreviewAsset(goal) {
   );
 }
 
-function Droplet({ filled }) {
-  return <View style={[styles.droplet, filled ? styles.dropletFilled : styles.dropletOutline]} />;
+function Chip({ label, active, onPress }) {
+  return (
+    <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
+      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    </Pressable>
+  );
 }
 
 function isGoalDoneForDate(goal, dateKey) {
@@ -220,8 +224,10 @@ export default function GoalsScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const uid = auth.currentUser?.uid;
 
-  const today = new Date();
-  const todayKey = toKey(today);
+  const streak = useMemo(() => {
+    if (!goal || typeof getStreak !== "function") return 0;
+    return getStreak(goal, dateKey);
+  }, [goal, dateKey, getStreak]);
 
   useEffect(() => {
     if (!uid) {
