@@ -1,6 +1,5 @@
-// App.js
-import React, { useEffect } from "react";
-import { Text, View } from "react-native";
+import React, { useState, useEffect } from "react";
+import { Text, View } from "react-native"; // Added missing Text/View imports
 import { StatusBar } from "expo-status-bar";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -8,7 +7,12 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
-import { ensureNotificationPermissions, scheduleDailyReminder } from "./utils/notifications";
+// Firebase & Auth
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "./firebaseConfig"; 
+import Login from "./login"; 
+
+// Stores & Theme
 import { GoalsProvider } from "./components/GoalsStore";
 import { theme } from "./theme";
 
@@ -20,13 +24,13 @@ import CalendarScreen from "./screens/CalendarScreen";
 
 import RankScreen from "./screens/RankScreen";
 import GardenScreen from "./screens/GardenScreen";
-import ChallengeScreen from "./screens/ChallengeScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 
+// --- Helpers ---
 function Placeholder({ title }) {
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: theme.bg }}>
-      <Text style={{ fontWeight: "900", color: theme.muted }}>{title}</Text>
+      <Text style={{ fontWeight: "900", color: theme.muted2 }}>{title}</Text>
     </View>
   );
 }
@@ -65,10 +69,53 @@ function GardenStack() {
     </Stack.Navigator>
   );
 }
+// --- Main App Component ---
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [initializing, setInitializing] = useState(true);
+  
+  useEffect(() => {
+    // Listen for Firebase login/logout
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser);
+      if (initializing) setInitializing(false);
+    });
+    return unsubscribe;
+  }, []);
+  useEffect(() => {
+    (async () => {
+      try {
+        const ok = await ensureNotificationPermissions();
+        if (ok) {
+          await scheduleDailyReminder(9, 0);
+        }
+      } catch (e) {
+        console.log("Notifications setup failed:", e);
+      }
+    })();
+  }, []);
 
-/**
- * ✅ Clean TabsNavigator component (easy to add more later)
- */
+  
+  // Show nothing while we check if the user is logged in
+  if (initializing) return null;
+
+  return (
+    <SafeAreaProvider>
+      <GoalsProvider>
+        <NavigationContainer>
+          <StatusBar style="dark" />
+
+          <RootStack.Navigator screenOptions={{ headerShown: false }}>
+            <RootStack.Screen name="Welcome" component={WelcomeScreen} />
+            <RootStack.Screen name="Tabs" component={TabsNavigator} />
+          </RootStack.Navigator>
+        </NavigationContainer>
+      </GoalsProvider>
+    </SafeAreaProvider>
+  );
+}
+
+
 function TabsNavigator() {
   const insets = useSafeAreaInsets();
 
@@ -114,41 +161,22 @@ function TabsNavigator() {
       })}
     >
       <Tab.Screen name="Rank" component={RankScreen} />
-      <Tab.Screen name="Goals" component={GoalsStack} options={{ tabBarLabel: "Habits" }} />
-      <Tab.Screen name="Add" component={AddStack} options={{ tabBarLabel: "Add" }} />
-      <Tab.Screen name="Calendar" children={() => <Placeholder title="Calendar (Coming Soon)" />} />
-      <Tab.Screen name="Garden" component={GardenStack} />
+
+      {/* This route is named "Goals" but your Figma label says "Habits" */}
+      <Tab.Screen
+        name="Goals"
+        component={GoalsStack}
+        options={{ tabBarLabel: "Habits" }}
+      />
+
+      <Tab.Screen
+        name="Add"
+        component={AddStack}
+        options={{ tabBarLabel: "Add" }}
+      />
+
+      <Tab.Screen name="Calendar" component={CalendarScreen}/>
+      <Tab.Screen name="Garden" children={() => <Placeholder title="Garden (Coming Soon)" />} />
     </Tab.Navigator>
-  );
-}
-
-export default function App() {
-  // ✅ Hooks must be inside a component
-  useEffect(() => {
-    (async () => {
-      try {
-        const ok = await ensureNotificationPermissions();
-        if (ok) {
-          await scheduleDailyReminder(9, 0);
-        }
-      } catch (e) {
-        console.log("Notifications setup failed:", e);
-      }
-    })();
-  }, []);
-
-  return (
-    <SafeAreaProvider>
-      <GoalsProvider>
-        <NavigationContainer>
-          <StatusBar style="dark" />
-
-          <RootStack.Navigator screenOptions={{ headerShown: false }}>
-            <RootStack.Screen name="Welcome" component={WelcomeScreen} />
-            <RootStack.Screen name="Tabs" component={TabsNavigator} />
-          </RootStack.Navigator>
-        </NavigationContainer>
-      </GoalsProvider>
-    </SafeAreaProvider>
   );
 }

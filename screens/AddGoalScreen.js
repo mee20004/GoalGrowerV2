@@ -151,10 +151,44 @@ export default function AddGoalScreen({ navigation }) {
   // IMPORTANT: these are expected to exist in your GoalsStore (you already have them wired)
   const { addGoal, draft, draftLoaded, saveDraft, clearDraft } = store;
 
-  // Steps (no scrolling)
-  // TYPE -> BASICS -> CONFIG -> SCHEDULE/DEADLINE -> PLAN -> REVIEW
-  const steps = useMemo(() => ["TYPE", "BASICS", "CONFIG", "SCHEDULE", "PLAN", "REVIEW"], []);
-  const totalSteps = steps.length;
+  // Steps: 0 seed, 1 track, 2 schedule, 3 plan(opt), 4 why(opt), 5 review
+  const STEPS = useMemo(
+    () => [
+      {
+        key: "seed",
+        title: "Plant A Goal",
+        subtitle: "Give your goal a clear name so it’s easy to recognize.",
+      },
+      {
+        key: "track",
+        title: "How will you measure growth?",
+        subtitle: "Simple checkmark or a quantity you count.",
+      },
+      {
+        key: "schedule",
+        title: "When will you water it?",
+        subtitle: "Pick the days this goal shows up.",
+      },
+      {
+        key: "plan",
+        title: "Make it easy",
+        subtitle: "Attach it to a routine (optional, but powerful).",
+        optional: true,
+      },
+      {
+        key: "why",
+        title: "Why does it matter?",
+        subtitle: "A quick reason helps on low-motivation days (optional).",
+        optional: true,
+      },
+      {
+        key: "review",
+        title: "Plant it",
+        subtitle: "Review and save. You can refine later as it grows.",
+      },
+    ],
+    []
+  );
 
   const [step, setStep] = useState(0);
 
@@ -1047,21 +1081,26 @@ export default function AddGoalScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
-  headerBtn: {
-    height: 42,
-    paddingHorizontal: 14,
+  // Header hierarchy
+  headerRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 },
+  hTitle: { fontSize: 25, fontWeight: "800", color: theme.text },
+  hSub: { marginTop: 8, fontSize: 15, fontWeight: "600", color: theme.muted2, lineHeight: 16 },
+
+  helpBtn: {
+    height: 36,
+    paddingHorizontal: 12,
     borderRadius: theme.radius,
     backgroundColor: theme.surface,
     alignItems: "center",
     justifyContent: "center",
   },
-  headerBtnText: { fontWeight: "900", color: theme.text, fontSize: 14 },
-  headerTitle: { fontSize: 20, fontWeight: "900", color: theme.text },
-  headerSub: { marginTop: 4, fontSize: 13, fontWeight: "800", color: theme.muted },
+  helpBtnText: { fontSize: 12, fontWeight: "700", color: theme.muted },
 
-  dotsRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
-  dot: { width: 10, height: 10, borderRadius: 5, borderWidth: 2, borderColor: theme.outline, backgroundColor: "transparent" },
+  // Progress dots
+  dotsRow: { flexDirection: "row", alignItems: "center", marginBottom: 12, marginTop: 15 },
+  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: theme.outline, marginRight: 8 },
+  dotDone: { backgroundColor: theme.text2 },
+  dotActive: { backgroundColor: theme.accent },
 
   content: { flex: 1, minHeight: 0 },
 
@@ -1069,11 +1108,9 @@ const styles = StyleSheet.create({
   card: { backgroundColor: theme.surface, borderRadius: theme.radius, padding: 16 },
   stepBlock: { gap: 0 },
 
-  title: { fontSize: 18, fontWeight: "900", color: theme.text },
-  helper: { marginTop: 8, fontSize: 14, fontWeight: "700", color: theme.muted, lineHeight: 20 },
-  helperTiny: { marginTop: 6, fontSize: 13, fontWeight: "700", color: theme.muted2, lineHeight: 18 },
-
-  label: { marginTop: 14, fontSize: 14, fontWeight: "900", color: theme.text },
+  // Type scale
+  sectionLabel: { fontSize: 22, fontWeight: "800", color: theme.muted, marginBottom: 6 },
+  sectionHelper: { fontSize: 13, fontWeight: "600", color: theme.card, lineHeight: 16},
 
   input: {
     marginTop: 8,
@@ -1084,6 +1121,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
     color: theme.text,
+    marginTop: 12
   },
 
   warnText: { marginTop: 6, fontSize: 11, fontWeight: "900", color: theme.dangerText },
@@ -1107,8 +1145,18 @@ const styles = StyleSheet.create({
 
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
 
-  smallBtn: { height: 30, paddingHorizontal: 10, borderRadius: theme.radiusSm, backgroundColor: theme.surface2, alignItems: "center", justifyContent: "center" },
-  smallBtnText: { fontSize: 12, fontWeight: "900", color: theme.muted },
+  previewRow: {
+    marginTop: 14,
+    backgroundColor: theme.surface2,
+    borderRadius: theme.radius,
+    paddingHorizontal: 14,
+    height: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  previewLabel: { fontSize: 12, fontWeight: "700", color: theme.text },
+  previewValue: { fontSize: 12, fontWeight: "700", color: theme.accent },
 
   smallToggle: { height: 30, paddingHorizontal: 10, borderRadius: theme.radiusSm, backgroundColor: theme.surface2, alignItems: "center", justifyContent: "center" },
   smallToggleActive: { backgroundColor: theme.accent },
@@ -1137,15 +1185,22 @@ const styles = StyleSheet.create({
   btnSecondary: { backgroundColor: theme.surface },
   btnTextBase: { fontSize: 14 },
   btnTextPrimary: { color: theme.bg, fontWeight: "800" },
-  btnTextSecondary: { color: theme.text, fontWeight: "800" },
+  btnTextSecondary: { color: theme.muted, fontWeight: "800" },
 
-  ghostBtn: { height: 50, paddingHorizontal: 16, borderRadius: theme.radius, backgroundColor: theme.surface, alignItems: "center", justifyContent: "center" },
-  ghostBtnText: { color: theme.text, fontWeight: "900", fontSize: 15 },
+  cancelBtn: {
+    marginTop: 10,
+    height: 46,
+    borderRadius: theme.radius,
+    backgroundColor: theme.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelText: { color: theme.muted, fontWeight: "800", fontSize: 14 },
 
-  reviewLine: { marginTop: 8, fontSize: 14, fontWeight: "800", color: theme.text },
-  reviewLabel: { fontWeight: "900", color: theme.text },
-  reviewBullet: { marginTop: 6, fontSize: 14, fontWeight: "800", color: theme.text },
-  reviewSmall: { marginTop: 6, fontSize: 13, fontWeight: "800", color: theme.muted, lineHeight: 18 },
+  // Review
+  reviewRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.surface2 },
+  reviewLabel: { fontSize: 16, fontWeight: "700", color: theme.muted },
+  reviewValue: { fontSize: 15, fontWeight: "800", color: theme.card, maxWidth: "66%", textAlign: "right" },
 
   coachOverlay: { flex: 1, justifyContent: "flex-end" },
   coachBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.35)" },

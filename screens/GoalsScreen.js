@@ -414,7 +414,7 @@ const styles = StyleSheet.create({
   textWrap: { flex: 1, paddingRight: 8 },
   title: { fontSize: 14, fontWeight: "900", color: theme.text, lineHeight: 18 },
   sub: { marginTop: 2, fontSize: 12, fontWeight: "800", color: theme.text2 },
-  micro: { marginTop: 3, fontSize: 11, fontWeight: "800", color: theme.muted },
+  micro: { marginTop: 3, fontSize: 11, fontWeight: "800", color: theme.accent },
 
   rightWrap: { width: 44, alignItems: "flex-end", justifyContent: "center" },
 

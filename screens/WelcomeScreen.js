@@ -81,9 +81,38 @@ export default function WelcomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  full: { flex: 1 },
-  gradWrap: {
-    backgroundColor: BG1_MID,
+  safe: {
+    flex: 1,
+    backgroundColor: theme.bg,
+  },
+  container: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: theme.text,
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  subtitle: {
+    fontSize: 16,
+    color: theme.accent,
+    textAlign: "center",
+    marginBottom: 32,
+  },
+  button: {
+    backgroundColor: theme.surface,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    borderRadius: 10,
+  },
+  buttonText: {
+    fontWeight: "800",
+    color: theme.muted,
   },
   fullCenter: { flex: 1, alignItems: "center", justifyContent: "center", gap: 18, paddingHorizontal: 24 },
   plantCircle: { alignItems: "center", justifyContent: "center", shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 10 }, elevation: 8 },
