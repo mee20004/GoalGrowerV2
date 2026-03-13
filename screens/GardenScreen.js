@@ -1790,6 +1790,7 @@ export default function GardenScreen({ route, navigation }) {
     globalPan.setValue({ x: 0, y: 0 });
     setDraggedGhost({ plant, x: touchX - 40, y: touchY - -50 });
 
+    // Shared garden drag lock with auto-refresh/retry
     if (isSharedGarden) {
       const uid = auth.currentUser?.uid;
       if (!uid) {
@@ -1808,53 +1809,64 @@ export default function GardenScreen({ route, navigation }) {
       const lockAcquiredAt = Date.now();
       const lockExpiresAt = lockAcquiredAt + 20000;
 
-      try {
-        await runTransaction(db, async (transaction) => {
-          const livePlantSnap = await transaction.get(plantDoc);
-          if (!livePlantSnap.exists()) {
-            const err = new Error("Plant no longer exists.");
-            err.code = "layout-conflict";
-            throw err;
+      let retried = false;
+      const tryLock = async () => {
+        try {
+          await runTransaction(db, async (transaction) => {
+            const livePlantSnap = await transaction.get(plantDoc);
+            if (!livePlantSnap.exists()) {
+              const err = new Error("Plant no longer exists.");
+              err.code = "layout-conflict";
+              throw err;
+            }
+
+            const livePlantData = livePlantSnap.data() || {};
+            const livePlantPos = normalizeShelfPosition(livePlantData?.shelfPosition || null);
+            if (!shelfPositionsMatch(livePlantPos, expectedStartPos)) {
+              const err = new Error("Plant moved by another user.");
+              err.code = "layout-conflict";
+              throw err;
+            }
+
+            const activeLock = livePlantData?.moveLock || null;
+            const activeLockUid = activeLock?.uid;
+            const activeLockExpiry = Number(activeLock?.expiresAt) || 0;
+            const now = Date.now();
+            if (activeLockUid && activeLockUid !== uid && activeLockExpiry > now) {
+              const err = new Error("Plant is currently being moved by another member.");
+              err.code = "plant-locked";
+              throw err;
+            }
+
+            transaction.set(
+              plantDoc,
+              { moveLock: { uid, acquiredAt: lockAcquiredAt, expiresAt: lockExpiresAt } },
+              { merge: true }
+            );
+          });
+        } catch (error) {
+          if (error?.code === "plant-locked") {
+            Alert.alert("Plant in use", "Another member is currently moving this plant.");
+          } else if (error?.code === "layout-conflict") {
+            if (!retried) {
+              retried = true;
+              // Auto-refresh layout and retry once
+              await refreshSharedGardenLayout();
+              return await tryLock();
+            }
+            Alert.alert("Garden updated", "This plant moved before your drag started. Your garden will refresh to the latest layout.");
+          } else {
+            console.error("Failed to lock plant for dragging", error);
           }
 
-          const livePlantData = livePlantSnap.data() || {};
-          const livePlantPos = normalizeShelfPosition(livePlantData?.shelfPosition || null);
-          if (!shelfPositionsMatch(livePlantPos, expectedStartPos)) {
-            const err = new Error("Plant moved by another user.");
-            err.code = "layout-conflict";
-            throw err;
-          }
-
-          const activeLock = livePlantData?.moveLock || null;
-          const activeLockUid = activeLock?.uid;
-          const activeLockExpiry = Number(activeLock?.expiresAt) || 0;
-          const now = Date.now();
-          if (activeLockUid && activeLockUid !== uid && activeLockExpiry > now) {
-            const err = new Error("Plant is currently being moved by another member.");
-            err.code = "plant-locked";
-            throw err;
-          }
-
-          transaction.set(
-            plantDoc,
-            { moveLock: { uid, acquiredAt: lockAcquiredAt, expiresAt: lockExpiresAt } },
-            { merge: true }
-          );
-        });
-      } catch (error) {
-        if (error?.code === "plant-locked") {
-          Alert.alert("Plant in use", "Another member is currently moving this plant.");
-        } else if (error?.code === "layout-conflict") {
-          Alert.alert("Garden updated", "This plant moved before your drag started. Your garden will refresh to the latest layout.");
-        } else {
-          console.error("Failed to lock plant for dragging", error);
+          globalDragRef.current = false;
+          setGlobalDragging(false);
+          setDraggedGhost(null);
+          return false;
         }
-
-        globalDragRef.current = false;
-        setGlobalDragging(false);
-        setDraggedGhost(null);
-        return false;
-      }
+        return true;
+      };
+      return await tryLock();
     }
 
     return true;
