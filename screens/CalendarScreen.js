@@ -186,28 +186,45 @@ export default function CalendarScreen() {
         {/* GRID */}
         {mode !== "today" && (
           <View style={styles.grid}>
-            {days.map((d, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.dayBox,
-                  (i+1)%7===0 && { marginRight:0 },
-                  d.faded && styles.dayFaded,
-                  !d.faded && isCurrentMonth && d.day === todayDay && styles.todayBox
-                ]}
-              >
-                <Text
+            {days.map((d, i) => {
+              const dayDate = new Date(
+                d.year ?? date.getFullYear(),
+                d.month ?? date.getMonth(),
+                d.day
+              );
+
+              const isSelected = toKey(dayDate) === selectedDateKey;
+
+              const isToday =
+                dayDate.getFullYear() === today.getFullYear() &&
+                dayDate.getMonth() === today.getMonth() &&
+                dayDate.getDate() === today.getDate();
+
+              return (
+                <Pressable
+                  key={i}
+                  onPress={() => setSelectedDateKey(toKey(dayDate))}
                   style={[
-                    styles.dayText,
-                    d.faded && { opacity: 0.4 },
-                    !d.faded && isCurrentMonth && d.day === todayDay && styles.todayText
+                  styles.dayBox,
+                    (i + 1) % 7 === 0 && { marginRight: 0 },
+                    d.faded && styles.dayFaded,
+                    isSelected && styles.todayBox
                   ]}
                 >
-                  {d.day}
-                </Text>
-              </View>
-            ))}
-          </View>
+                  <Text
+                    style={[
+                      styles.dayText,
+                      d.faded && { opacity: 0.4 },
+                      isSelected && styles.todayText,
+                      !d.faded && isToday && !isSelected && styles.todayBox
+                    ]}
+                  >
+                    {d.day}
+                  </Text>
+                </Pressable>
+              );
+            })}
+         </View>
         )}
 
         {/* GOALS FOR SELECTED DAY */}
