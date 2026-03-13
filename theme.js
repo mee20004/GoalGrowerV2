@@ -97,6 +97,7 @@ export const theme = {
   surface: "#215240",
   surface2: "#F9F6EE",
   card: "#DDE8BF",
+  cardSoftBlue: "#E8F1FF",
 
   // Text (accessible contrast)
   title: "#17392D",
