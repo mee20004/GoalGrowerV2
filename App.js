@@ -27,7 +27,7 @@ import CalendarScreen from "./screens/CalendarScreen";
 function Placeholder({ title }) {
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: theme.bg }}>
-      <Text style={{ fontWeight: "900", color: theme.muted }}>{title}</Text>
+      <Text style={{ fontWeight: "900", color: theme.muted2 }}>{title}</Text>
     </View>
   );
 }
@@ -140,7 +140,7 @@ export default function App() {
         options={{ tabBarLabel: "Add" }}
       />
 
-      <Tab.Screen name="Calendar" children={() => <Placeholder title="Calendar (Coming Soon)" />} />
+      <Tab.Screen name="Calendar" component={CalendarScreen}/>
       <Tab.Screen name="Garden" children={() => <Placeholder title="Garden (Coming Soon)" />} />
     </Tab.Navigator>
   )}

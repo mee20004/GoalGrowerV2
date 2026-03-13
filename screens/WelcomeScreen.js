@@ -43,7 +43,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 16,
-    color: theme.muted,
+    color: theme.accent,
     textAlign: "center",
     marginBottom: 32,
   },
@@ -55,6 +55,6 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     fontWeight: "800",
-    color: theme.text,
+    color: theme.muted,
   },
 });

@@ -144,7 +144,7 @@ export default function AddGoalScreen({ navigation }) {
     () => [
       {
         key: "seed",
-        title: "Plant a goal",
+        title: "Plant A Goal",
         subtitle: "Give your goal a clear name so it’s easy to recognize.",
       },
       {
@@ -807,8 +807,8 @@ export default function AddGoalScreen({ navigation }) {
 const styles = StyleSheet.create({
   // Header hierarchy
   headerRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 },
-  hTitle: { fontSize: 20, fontWeight: "800", color: theme.text },
-  hSub: { marginTop: 4, fontSize: 12, fontWeight: "600", color: theme.muted, lineHeight: 16 },
+  hTitle: { fontSize: 25, fontWeight: "800", color: theme.text },
+  hSub: { marginTop: 8, fontSize: 15, fontWeight: "600", color: theme.muted2, lineHeight: 16 },
 
   helpBtn: {
     height: 36,
@@ -819,10 +819,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginLeft: 12,
   },
-  helpBtnText: { fontSize: 12, fontWeight: "700", color: theme.text },
+  helpBtnText: { fontSize: 12, fontWeight: "700", color: theme.muted },
 
   // Progress dots
-  dotsRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  dotsRow: { flexDirection: "row", alignItems: "center", marginBottom: 12, marginTop: 15 },
   dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: theme.outline, marginRight: 8 },
   dotDone: { backgroundColor: theme.text2 },
   dotActive: { backgroundColor: theme.accent },
@@ -833,8 +833,8 @@ const styles = StyleSheet.create({
   footer: { flexDirection: "row", paddingTop: 10, paddingBottom: 6 },
 
   // Type scale
-  sectionLabel: { fontSize: 13, fontWeight: "800", color: theme.text, marginBottom: 6 },
-  sectionHelper: { fontSize: 12, fontWeight: "600", color: theme.muted, lineHeight: 16 },
+  sectionLabel: { fontSize: 22, fontWeight: "800", color: theme.muted, marginBottom: 6 },
+  sectionHelper: { fontSize: 13, fontWeight: "600", color: theme.card, lineHeight: 16},
 
   // Inputs
   input: {
@@ -845,6 +845,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: theme.text,
+    marginTop: 12
   },
   textArea: { height: 96, paddingTop: 12, textAlignVertical: "top" },
 
@@ -902,7 +903,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   previewLabel: { fontSize: 12, fontWeight: "700", color: theme.text },
-  previewValue: { fontSize: 12, fontWeight: "700", color: theme.muted },
+  previewValue: { fontSize: 12, fontWeight: "700", color: theme.accent },
 
   // Skip toggles
   skipRow: { flexDirection: "row", marginTop: 12, gap: 10 },
@@ -940,7 +941,7 @@ const styles = StyleSheet.create({
   btnSecondary: { backgroundColor: theme.surface },
   btnTextBase: { fontSize: 12 },
   btnTextPrimary: { color: theme.bg, fontWeight: "800" },
-  btnTextSecondary: { color: theme.text, fontWeight: "800" },
+  btnTextSecondary: { color: theme.muted, fontWeight: "800" },
 
   cancelBtn: {
     marginTop: 10,
@@ -950,12 +951,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  cancelText: { color: theme.text, fontWeight: "800", fontSize: 14 },
+  cancelText: { color: theme.muted, fontWeight: "800", fontSize: 14 },
 
   // Review
   reviewRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.surface2 },
-  reviewLabel: { fontSize: 12, fontWeight: "700", color: theme.muted },
-  reviewValue: { fontSize: 12, fontWeight: "800", color: theme.text, maxWidth: "66%", textAlign: "right" },
+  reviewLabel: { fontSize: 16, fontWeight: "700", color: theme.muted },
+  reviewValue: { fontSize: 15, fontWeight: "800", color: theme.card, maxWidth: "66%", textAlign: "right" },
 
   // Modal
   modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.35)" },
