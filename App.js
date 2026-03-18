@@ -4,7 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 // Firebase
@@ -22,6 +22,7 @@ import GoalsScreen from "./screens/GoalsScreen";
 import AddGoalScreen from "./screens/AddGoalScreen";
 import GoalScreen from "./screens/GoalScreen";
 import ProfileScreen from "./screens/ProfileScreen";
+import CalendarScreen from "./screens/CalendarScreen";
 import AddFriendsScreen from "./screens/AddFriendsScreen";
 import UserProfileScreen from './screens/UserProfileScreen';
 import UserGardenScreen from './screens/UserGardenScreen';
@@ -112,12 +113,14 @@ function GardenStack() {
 // --- MAIN BOTTOM TABS ---
 
 function MainTabs() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarShowLabel: true,
-        tabBarHideOnKeyboard: true,
+        tabBarHideOnKeyboard: false,
         tabBarStyle: {
           height: 64 + insets.bottom,
           paddingTop: 8,
@@ -145,9 +148,9 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Rank" component={RankStack} options={{ tabBarLabel: "Rank" }} />
-      <Tab.Screen name="Goals" component={GoalsStack} options={{ tabBarLabel: "Habits" }} />
+      <Tab.Screen name="Goals" component={CalendarScreen} options={{ tabBarLabel: "Goals" }} />
       <Tab.Screen name="Add" component={AddStack} options={{ tabBarLabel: "Add" }} />
-      <Tab.Screen name="Calendar" children={() => <Placeholder title="Calendar (Coming Soon)" />} />
+      <Tab.Screen name="Calendar" component={CalendarScreen} options={{ tabBarLabel: "Calendar" }} />
       
       {/* <-- 3. WIRE UP THE GARDEN TAB */}
       <Tab.Screen

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { auth, db } from './firebaseConfig';
+import { theme } from './theme';
 import { onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 // NEW: Imported query, where, and getDocs
 import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
@@ -10,6 +11,15 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
+
+  const handleLogin = () => {
+    if (!email || !password) {
+      return Alert.alert('Error', 'Please enter both email and password.');
+    }
+    signInWithEmailAndPassword(auth, email, password).catch((error) => {
+      Alert.alert('Login failed', error.message || 'Unable to login.');
+    });
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -95,12 +105,15 @@ export default function Login() {
   if (view === 'loggedOut') {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Garden Your Goals</Text>
+        <Text style={styles.title}>Goal Grower</Text>
         <TextInput style={styles.input} placeholder="Email" onChangeText={setEmail} value={email} autoCapitalize="none" />
-        <TextInput style={styles.input} placeholder="Password" onChangeText={setPassword} value={password} secureTextEntry />
-        <Button title="Login" onPress={() => signInWithEmailAndPassword(auth, email, password)} color="#2D5A27" />
-        <View style={{marginVertical: 5}} />
-        <Button title="Register" onPress={() => createUserWithEmailAndPassword(auth, email, password)} color="#4285F4" />
+        <TextInput style={styles.input} placeholder="Password" onChangeText={setPassword} value={password} secureTextEntry returnKeyType="go" onSubmitEditing={handleLogin} />
+        <Pressable style={styles.button} onPress={handleLogin}>
+          <Text style={styles.buttonText}>Login</Text>
+        </Pressable>
+        <Pressable style={[styles.button, styles.buttonSecondary]} onPress={() => createUserWithEmailAndPassword(auth, email, password)}>
+          <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Register</Text>
+        </Pressable>
       </View>
     );
   }
@@ -108,8 +121,8 @@ export default function Login() {
   if (view === 'needsUsername') {
     return (
       <View style={styles.container} key="setup-view">
-        <Text style={styles.title}>Pick a Username</Text>
-        <Text style={styles.subtitle}>You need a name before you can enter.</Text>
+        <Text style={styles.title}>Goal Grower</Text>
+        <Text style={styles.subtitle}>Pick a username to continue.</Text>
         <TextInput 
           style={styles.input} 
           placeholder="New Username" 
@@ -117,9 +130,12 @@ export default function Login() {
           onChangeText={setUsername} 
           autoCapitalize="none"
         />
-        <Button title="Finish Setup" onPress={handleSaveUsername} color="#2D5A27" />
-        <View style={{marginVertical: 10}} />
-        <Button title="Logout" onPress={() => signOut(auth)} color="red" />
+        <Pressable style={styles.button} onPress={handleSaveUsername}>
+          <Text style={styles.buttonText}>Finish Setup</Text>
+        </Pressable>
+        <Pressable style={[styles.button, styles.buttonDanger]} onPress={() => signOut(auth)}>
+          <Text style={[styles.buttonText, styles.buttonTextDanger]}>Logout</Text>
+        </Pressable>
       </View>
     );
   }
@@ -127,9 +143,11 @@ export default function Login() {
   if (view === 'home') {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Welcome Home!</Text>
-        <Text>Your profile is all set up.</Text>
-        <Button title="Logout" onPress={() => signOut(auth)} color="red" />
+        <Text style={styles.title}>Welcome to Goal Grower!</Text>
+        <Text style={styles.subtitle}>Your profile is all set up.</Text>
+        <Pressable style={[styles.button, styles.buttonDanger]} onPress={() => signOut(auth)}>
+          <Text style={[styles.buttonText, styles.buttonTextDanger]}>Logout</Text>
+        </Pressable>
       </View>
     );
   }
@@ -143,8 +161,14 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F5F5F5', padding: 20 },
-  title: { fontSize: 32, fontWeight: 'bold', color: '#2D5A27', marginBottom: 10 },
-  subtitle: { fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 20 },
-  input: { width: '100%', height: 50, borderColor: '#ccc', borderWidth: 1, borderRadius: 8, marginBottom: 15, paddingHorizontal: 15, backgroundColor: '#fff' },
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.bg, padding: 20 },
+  title: { fontSize: 32, fontWeight: 'bold', color: theme.title, marginBottom: 10 },
+  subtitle: { fontSize: 16, color: theme.muted, textAlign: 'center', marginBottom: 20 },
+  input: { width: '100%', height: 50, borderColor: theme.outline, borderWidth: 1, borderRadius: 10, marginBottom: 15, paddingHorizontal: 15, backgroundColor: theme.surface },
+  button: { width: '100%', height: 50, borderRadius: 10, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', marginBottom: 10, borderWidth: 1, borderColor: theme.outline },
+  buttonText: { color: theme.bg, fontWeight: '800', fontSize: 16 },
+  buttonSecondary: { backgroundColor: theme.surface, borderColor: theme.outline },
+  buttonTextSecondary: { color: theme.text },
+  buttonDanger: { backgroundColor: '#FEE2E2', borderColor: theme.dangerText },
+  buttonTextDanger: { color: theme.dangerText },
 });
