@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import { View, Text, StyleSheet, Pressable, FlatList, ActivityIndicator, Alert, Image } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import Page from "../components/Page";
+import { useGoals } from "../components/GoalsStore";
 import { theme } from "../theme";
 import { toKey, isScheduledOn, isWithinActiveRange } from "../components/GoalsStore";
 import { ACHIEVEMENTS } from "../AchievementsStore";
@@ -142,6 +143,10 @@ function getPlantPreviewAsset(goal) {
   );
 }
 
+function Droplet({ filled }) {
+  return <View style={[styles.droplet, filled && styles.dropletFilled, !filled && styles.dropletOutline]} />;
+}
+
 function Chip({ label, active, onPress }) {
   return (
     <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
@@ -216,6 +221,7 @@ async function findFirstOpenStorageSlot(uid, goalId) {
 }
 
 export default function GoalsScreen({ navigation }) {
+  const { selectedDateKey } = useGoals();
   const [dbGoals, setDbGoals] = useState([]);
   const [sharedGoals, setSharedGoals] = useState([]);
   const [layoutByGoalId, setLayoutByGoalId] = useState({});
@@ -224,10 +230,20 @@ export default function GoalsScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const uid = auth.currentUser?.uid;
 
-  const streak = useMemo(() => {
-    if (!goal || typeof getStreak !== "function") return 0;
-    return getStreak(goal, dateKey);
-  }, [goal, dateKey, getStreak]);
+  const today = useMemo(() => {
+    if (selectedDateKey) {
+      const date = new Date(selectedDateKey);
+      if (!Number.isNaN(date.getTime())) {
+        date.setHours(0, 0, 0, 0);
+        return date;
+      }
+    }
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return now;
+  }, [selectedDateKey]);
+
+  const todayKey = useMemo(() => toKey(today), [today]);
 
   useEffect(() => {
     if (!uid) {
@@ -398,6 +414,7 @@ export default function GoalsScreen({ navigation }) {
         return layoutByGoalId[g.id]?.pageId !== STORAGE_PAGE_ID;
       })
       .filter((g) => isWithinActiveRange(g, today))
+      .filter((g) => isGoalScheduledOnDate(g, today))
       .filter((g) => !isGoalFullyCompleted(g, today));
   }, [allGoals, layoutByGoalId, todayKey]);
 

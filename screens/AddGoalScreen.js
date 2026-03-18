@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState, memo } from "react";
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   Pressable,
   LayoutAnimation,
@@ -132,6 +133,28 @@ const CUE_SUGGEST = ["After brushing teeth", "After scripture study", "After bre
 const REWARD_SUGGEST = ["Tea", "5-minute break", "Music", "Stretching"];
 
 const DAY_LABELS = ["S", "M", "T", "W", "Th", "F", "Sa"];
+const CATEGORIES = ["Body", "Mind", "Spirit", "Work", "Custom"];
+
+function Chip({ label, active, onPress }) {
+  return (
+    <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
+      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function Segmented({ left, right, value, onChange }) {
+  return (
+    <View style={styles.segmentWrap}>
+      <Pressable onPress={() => onChange(left.value)} style={[styles.segment, value === left.value && styles.segmentActive]}>
+        <Text style={[styles.segmentText, value === left.value && styles.segmentTextActive]}>{left.label}</Text>
+      </Pressable>
+      <Pressable onPress={() => onChange(right.value)} style={[styles.segment, value === right.value && styles.segmentActive]}>
+        <Text style={[styles.segmentText, value === right.value && styles.segmentTextActive]}>{right.label}</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 function stableStringify(obj) {
   try {
@@ -241,34 +264,47 @@ function Pill({ label, active, onPress }) {
   );
 }
 
-function PrimaryButton({ label, onPress, disabled }) {
+function PrimaryButton({ label, onPress, disabled, style }) {
   return (
-    <Pressable onPress={onPress} disabled={disabled} style={[styles.primaryBtn, disabled && { opacity: 0.55 }]}>
+    <Pressable onPress={onPress} disabled={disabled} style={[styles.primaryBtn, style, disabled && { opacity: 0.55 }]}>
       <Text style={styles.primaryBtnText}>{label}</Text>
     </Pressable>
   );
 }
 
-function GhostButton({ label, onPress, disabled }) {
+function GhostButton({ label, onPress, disabled, style }) {
   return (
-    <View style={styles.segmentWrap}>
-      <Pressable
-        onPress={() => onChange(left.value)}
-        style={[styles.segment, value === left.value && styles.segmentActive]}
-      >
-        <Text style={[styles.segmentText, value === left.value && styles.segmentTextActive]}>{left.label}</Text>
-      </Pressable>
-      <Pressable
-        onPress={() => onChange(right.value)}
-        style={[styles.segment, value === right.value && styles.segmentActive]}
-      >
-        <Text style={[styles.segmentText, value === right.value && styles.segmentTextActive]}>{right.label}</Text>
-      </Pressable>
-    </View>
+    <Pressable onPress={onPress} disabled={disabled} style={[styles.btnBase, styles.btnSecondary, style, disabled && { opacity: 0.55 }]}>
+      <Text style={[styles.btnTextBase, styles.btnTextSecondary]}>{label}</Text>
+    </Pressable>
   );
 }
 
-function Dot({ state }) {
+function Button({ variant = "primary", label, onPress, disabled, style }) {
+  if (variant === "secondary") {
+    return <GhostButton label={label} onPress={onPress} disabled={disabled} style={style} />;
+  }
+  return <PrimaryButton label={label} onPress={onPress} disabled={disabled} style={style} />;
+}
+
+function CoachMark({ visible, title, body, onClose }) {
+  if (!visible) return null;
+  return (
+    <Modal transparent visible={visible} animationType="fade">
+      <Pressable style={styles.coachOverlay} onPress={onClose}>
+        <View style={styles.coachBox}>
+          <Text style={styles.coachTitle}>{title}</Text>
+          <Text style={styles.coachBody}>{body}</Text>
+          <Pressable style={styles.coachCloseBtn} onPress={onClose}>
+            <Text style={styles.coachCloseText}>Close</Text>
+          </Pressable>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function Dot({ total = 0, index = 0, done = [] }) {
   return (
     <View style={styles.dotsRow} accessibilityRole="progressbar">
       {Array.from({ length: total }).map((_, i) => (
@@ -295,6 +331,8 @@ export default function AddGoalScreen({ navigation }) {
   const selectedDate = fromKey(selectedDateKey);
   const selectedDay = selectedDate.getDay();
   const uid = auth.currentUser?.uid;
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpCopy] = useState({ title: "Help", body: "Use this screen to define your goal details." });
 
   // Form State
   const [name, setName] = useState("");
@@ -342,26 +380,29 @@ export default function AddGoalScreen({ navigation }) {
     return days.length ? days : [selectedDay];
   }, [mode, days, selectedDay]);
 
+  const [step, setStep] = useState(0);
+  const stepLabels = ["Details", "Icon", "Tracking", "Schedule", "Completion", "Review"];
+
+  const measurableForType = useMemo(() => {
+    if (type === "quantity") {
+      return { target: Number(target) > 0 ? Number(target) : 1, unit: unit.trim() || "times" };
+    }
+    return { target: 1, unit: "times" };
+  }, [type, target, unit]);
+
   const frequencyLabel = useMemo(() => {
-    if (kind === "flex") return "By deadline";
-    if (scheduleMode === "everyday") return "Everyday";
-    if (scheduleMode === "weekdays") return "Weekdays";
+    if (type === "flex") return "By deadline";
+    if (mode === "everyday") return "Everyday";
+    if (mode === "weekdays") return "Weekdays";
     const map = { 0: "S", 1: "M", 2: "T", 3: "W", 4: "Th", 5: "F", 6: "Sa" };
     return [...days].sort((a, b) => a - b).map((d) => map[d]).join("");
-  }, [kind, scheduleMode, days]);
+  }, [type, mode, days]);
 
   const typeTitle = useMemo(() => {
-    const found = TYPE_CARDS.find((t) => t.key === kind);
-    return found ? found.title : "Goal";
-  }, [kind]);
-
-  const toggleCategory = (c) => {
-    setCategories((prev) => {
-      const has = prev.includes(c);
-      const next = has ? prev.filter((x) => x !== c) : [...prev, c];
-      return next.length ? next : ["Custom"];
-    });
-  };
+    if (type === "quantity") return "Quantity Goal";
+    if (type === "completion") return "Goal";
+    return "Goal";
+  }, [type]);
 
   const completionCondition = useMemo(() => {
     if (completionMode === "date" && isValidISODate(completionEndDate.trim())) {
@@ -536,6 +577,168 @@ export default function AddGoalScreen({ navigation }) {
 
   const canSave = !formError;
 
+  const renderStepContent = () => {
+    if (step === 0) {
+      return (
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Goal name</Text>
+          <TextInput value={name} onChangeText={setName} placeholder="Example: Read" placeholderTextColor={theme.muted2} style={styles.input} />
+          <View style={styles.gap16} />
+          <Text style={styles.sectionLabel}>Category</Text>
+          <View style={styles.chipWrap}>
+            {CATEGORIES.map((c) => (
+              <Chip key={c} label={c} active={category === c} onPress={() => setCategory(c)} />
+            ))}
+          </View>
+          <View style={styles.switchRow}>
+            <Text style={styles.switchLabel}>Private goal</Text>
+            <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ false: theme.outline, true: theme.accent }} />
+          </View>
+          <View style={styles.gap16} />
+          <Text style={styles.sectionLabel}>Garden</Text>
+          <View style={styles.chipWrap}>
+            <Chip label="Personal" active={selectedGardenId === "personal"} onPress={() => setSelectedGardenId("personal")} />
+            {sharedGardens.map((garden) => (
+              <Chip
+                key={garden.id}
+                label={garden.name || "Shared Garden"}
+                active={selectedGardenId === garden.id}
+                onPress={() => setSelectedGardenId(garden.id)}
+              />
+            ))}
+          </View>
+          {selectedGardenId !== "personal" && (
+            <View style={styles.switchRow}>
+              <Text style={styles.switchLabel}>Multi-user watering</Text>
+              <Switch value={multiUserWateringEnabled} onValueChange={setMultiUserWateringEnabled} trackColor={{ false: theme.outline, true: theme.accent }} />
+            </View>
+          )}
+          {selectedGardenId !== "personal" && multiUserWateringEnabled && (
+            <View style={styles.contributorRow}>
+              <Text style={styles.switchLabel}>Required contributors</Text>
+              <TextInput
+                value={requiredContributors}
+                onChangeText={setRequiredContributors}
+                keyboardType="number-pad"
+                style={[styles.input, styles.contributorInput]}
+                placeholder="2"
+                placeholderTextColor={theme.muted2}
+              />
+            </View>
+          )}
+        </View>
+      );
+    }
+    if (step === 1) {
+      return (
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Icon</Text>
+          <Pressable style={styles.iconPickerButton} onPress={() => setShowIconPicker(true)}>
+            <View style={styles.iconPickerButtonLeft}>
+              <View style={styles.iconPickerPreview}>
+                <GoalIcon name={selectedIcon} size={24} color={theme.accent} />
+              </View>
+              <View style={styles.iconPickerTextWrap}>
+                <Text style={styles.iconPickerTitle}>Choose icon</Text>
+                <Text style={styles.iconPickerSubtitle} numberOfLines={1}>{selectedIcon}</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={theme.muted} />
+          </Pressable>
+        </View>
+      );
+    }
+    if (step === 2) {
+      return (
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Tracking</Text>
+          <Segmented left={{ label: "Checkmark", value: "completion" }} right={{ label: "Quantity", value: "quantity" }} value={type} onChange={setType} />
+          {type === "quantity" && (
+            <View style={styles.row}>
+              <TextInput value={target} onChangeText={setTarget} keyboardType="numeric" style={[styles.input, { flex: 1, marginRight: 10 }]} />
+              <TextInput value={unit} onChangeText={setUnit} placeholder="minutes" style={[styles.input, { flex: 1 }]} />
+            </View>
+          )}
+        </View>
+      );
+    }
+    if (step === 3) {
+      return (
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Schedule</Text>
+          <View style={styles.row}>
+            <Chip label="Every day" active={mode === "everyday"} onPress={() => setMode("everyday")} />
+            <Chip label="Weekdays" active={mode === "weekdays"} onPress={() => setMode("weekdays")} />
+            <Chip label="Custom" active={mode === "days"} onPress={() => setMode("days")} />
+          </View>
+          {mode === "days" && (
+            <View style={styles.daysGrid}>
+              {DAYS.map((d) => (
+                <Pressable key={d.label} onPress={() => toggleDay(d.day)} style={[styles.dayPill, days.includes(d.day) && styles.dayPillActive]}>
+                  <Text style={[styles.dayText, days.includes(d.day) && styles.dayTextActive]}>{d.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </View>
+      );
+    }
+    if (step === 4) {
+      return (
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Goal completion</Text>
+          <View style={styles.completionModeRow}>
+            <Chip label="No end" active={completionMode === "none"} onPress={() => changeCompletionMode("none")} />
+            <Chip label="End date" active={completionMode === "date"} onPress={() => changeCompletionMode("date")} />
+            <Chip label="End amount" active={completionMode === "amount"} onPress={() => changeCompletionMode("amount")} />
+            <Chip label="Both" active={completionMode === "both"} onPress={() => changeCompletionMode("both")} />
+          </View>
+          {(completionMode === "date" || completionMode === "both") && (
+            <>
+              <TextInput
+                value={completionEndDate}
+                onChangeText={(text) => setCompletionEndDate(formatDateInput(text))}
+                placeholder="YYYY-MM-DD"
+                keyboardType="number-pad"
+                maxLength={10}
+                style={[styles.input, styles.completionInput]}
+              />
+              {!!completionDateMeta && <Text style={styles.helperText}>Ends {completionDateMeta.readable}</Text>}
+            </>
+          )}
+          {(completionMode === "amount" || completionMode === "both") && (
+            <View style={styles.row}>
+              <TextInput
+                value={completionEndAmount}
+                onChangeText={setCompletionEndAmount}
+                keyboardType="numeric"
+                placeholder="Total amount"
+                style={[styles.input, styles.completionInput, { flex: 1, marginRight: 10 }]}
+              />
+              <TextInput
+                value={completionEndUnit}
+                onChangeText={setCompletionEndUnit}
+                placeholder="times"
+                style={[styles.input, styles.completionInput, { flex: 1 }]}
+              />
+            </View>
+          )}
+        </View>
+      );
+    }
+    return (
+      <View style={styles.card}>
+        <Text style={styles.sectionLabel}>Review</Text>
+        <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Name</Text><Text style={styles.reviewValue}>{name || "—"}</Text></View>
+        <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Schedule</Text><Text style={styles.reviewValue}>{frequencyLabel}</Text></View>
+        <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Garden</Text><Text style={styles.reviewValue}>{selectedGardenName}</Text></View>
+      </View>
+    );
+  };
+
+  const goNextStep = () => setStep((prev) => Math.min(prev + 1, stepLabels.length - 1));
+  const goBackStep = () => setStep((prev) => Math.max(prev - 1, 0));
+
   const save = async () => {
     if (!auth.currentUser || isSaving || !canSave) return;
     setIsSaving(true);
@@ -596,7 +799,11 @@ export default function AddGoalScreen({ navigation }) {
 
   return (
     <Page>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 70}
+      >
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.hTitle}>Plant a goal</Text>
@@ -605,256 +812,13 @@ export default function AddGoalScreen({ navigation }) {
         </View>
 
         <ScrollView style={styles.contentArea} contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled" onScroll={() => Keyboard.dismiss()}>
-          <View style={styles.card}>
-            <Text style={styles.sectionLabel}>Goal name</Text>
-            <TextInput value={name} onChangeText={setName} placeholder="Example: Read" placeholderTextColor={theme.muted2} style={styles.input} />
-            <View style={styles.gap16} />
-            <Text style={styles.sectionLabel}>Category</Text>
-            <View style={styles.chipWrap}>
-              {CATEGORIES.map((c) => (
-                <Chip key={c} label={c} active={category === c} onPress={() => setCategory(c)} />
-              ))}
-            </View>
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Private goal</Text>
-              <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ false: theme.outline, true: theme.accent }} />
-            </View>
-
-            <View style={styles.gap16} />
-            <Text style={styles.sectionLabel}>Garden</Text>
-            <View style={styles.chipWrap}>
-              <Chip
-                label="Personal"
-                active={selectedGardenId === "personal"}
-                onPress={() => setSelectedGardenId("personal")}
-              />
-              {sharedGardens.map((garden) => (
-                <Chip
-                  key={garden.id}
-                  label={garden.name || "Shared Garden"}
-                  active={selectedGardenId === garden.id}
-                  onPress={() => setSelectedGardenId(garden.id)}
-                />
-              ))}
-            </View>
-            <Text style={[styles.helperText, { marginTop: 10, marginBottom: 0 }]}>Defaults to your personal garden.</Text>
-
-            {selectedGardenId !== "personal" && (
-              <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>Multi-user watering</Text>
-                <Switch
-                  value={multiUserWateringEnabled}
-                  onValueChange={setMultiUserWateringEnabled}
-                  trackColor={{ false: theme.outline, true: theme.accent }}
-                />
-              </View>
-            )}
-
-            {selectedGardenId !== "personal" && multiUserWateringEnabled && (
-              <View style={styles.contributorRow}>
-                <Text style={styles.switchLabel}>Required contributors</Text>
-                <TextInput
-                  value={requiredContributors}
-                  onChangeText={setRequiredContributors}
-                  keyboardType="number-pad"
-                  style={[styles.input, styles.contributorInput]}
-                  placeholder="2"
-                  placeholderTextColor={theme.muted2}
-                />
-              </View>
-            )}
+          <View style={styles.stepHeaderRow}>
+            <Text style={styles.stepTitle}>{stepLabels[step]}</Text>
+            <Text style={styles.stepCount}>{step + 1}/{stepLabels.length}</Text>
           </View>
+          <Dot total={stepLabels.length} index={step} done={stepLabels.map((_, i) => i < step)} />
 
-          <View style={styles.card}>
-            <Text style={styles.sectionLabel}>Icon</Text>
-            <Pressable style={styles.iconPickerButton} onPress={() => setShowIconPicker(true)}>
-              <View style={styles.iconPickerButtonLeft}>
-                <View style={styles.iconPickerPreview}>
-                  <GoalIcon name={selectedIcon} size={24} color={theme.accent} />
-                </View>
-                <View style={styles.iconPickerTextWrap}>
-                  <Text style={styles.iconPickerTitle}>Choose icon</Text>
-                  <Text style={styles.iconPickerSubtitle} numberOfLines={1}>{selectedIcon}</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={theme.muted} />
-            </Pressable>
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.sectionLabel}>Tracking</Text>
-            <Segmented left={{ label: "Checkmark", value: "completion" }} right={{ label: "Quantity", value: "quantity" }} value={type} onChange={setType} />
-            {type === "quantity" && (
-              <View style={styles.row}>
-                <TextInput value={target} onChangeText={setTarget} keyboardType="numeric" style={[styles.input, { flex: 1, marginRight: 10 }]} />
-                <TextInput value={unit} onChangeText={setUnit} placeholder="minutes" style={[styles.input, { flex: 1 }]} />
-              </View>
-            )}
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.sectionLabel}>Schedule</Text>
-            <View style={styles.row}>
-              <Chip label="Every day" active={mode === "everyday"} onPress={() => setMode("everyday")} />
-              <Chip label="Weekdays" active={mode === "weekdays"} onPress={() => setMode("weekdays")} />
-              <Chip label="Custom" active={mode === "days"} onPress={() => setMode("days")} />
-            </View>
-            {mode === "days" && (
-              <View style={styles.daysGrid}>
-                {DAYS.map((d) => (
-                  <Pressable key={d.label} onPress={() => toggleDay(d.day)} style={[styles.dayPill, days.includes(d.day) && styles.dayPillActive]}>
-                    <Text style={[styles.dayText, days.includes(d.day) && styles.dayTextActive]}>{d.label}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.sectionLabel}>Plan (optional)</Text>
-            <TextInput value={whenStr} onChangeText={setWhenStr} placeholder="After breakfast..." style={styles.input} />
-            <View style={styles.gap16} />
-            <TextInput value={whereStr} onChangeText={setWhereStr} placeholder="At home..." style={styles.input} />
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.sectionLabel}>Why (optional)</Text>
-            <TextInput value={whyStr} onChangeText={setWhyStr} placeholder="One sentence..." style={[styles.input, styles.textArea]} multiline />
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.sectionLabel}>Goal completion</Text>
-            <View style={styles.completionModeRow}>
-              <Chip label="No end" active={completionMode === "none"} onPress={() => changeCompletionMode("none")} />
-              <Chip label="End date" active={completionMode === "date"} onPress={() => changeCompletionMode("date")} />
-              <Chip label="End amount" active={completionMode === "amount"} onPress={() => changeCompletionMode("amount")} />
-              <Chip label="Both" active={completionMode === "both"} onPress={() => changeCompletionMode("both")} />
-            </View>
-
-            {(completionMode === "date" || completionMode === "both") && (
-              <>
-                <Text style={styles.helperText}>Swipe the calendar left/right to move by month.</Text>
-                <View style={styles.calendarCard}>
-                  <ScrollView
-                    ref={calendarPagerRef}
-                    horizontal
-                    pagingEnabled
-                    showsHorizontalScrollIndicator={false}
-                    bounces={false}
-                    onLayout={(e) => setCalendarWidth(e.nativeEvent.layout.width)}
-                    onMomentumScrollEnd={handleCalendarScrollEnd}
-                    scrollEventThrottle={16}
-                  >
-                    {[{ month: prevMonth, cells: prevMonthCells }, { month: calendarMonth, cells: calendarCells }, { month: nextMonth, cells: nextMonthCells }].map((entry, pageIdx) => (
-                      <View key={`${entry.month.getFullYear()}-${entry.month.getMonth()}-${pageIdx}`} style={[styles.calendarPage, { width: calendarWidth || undefined }]}> 
-                        <View style={styles.calendarHeader}>
-                          <Text style={styles.calendarHeaderText}>{monthLabel(entry.month)}</Text>
-                        </View>
-
-                        <View style={styles.calendarWeekHeader}>
-                          {WEEKDAY_LABELS.map((label, idx) => (
-                            <Text key={`${label}-${idx}`} style={styles.calendarWeekHeaderText}>{label}</Text>
-                          ))}
-                        </View>
-
-                        <View style={styles.calendarGrid}>
-                          {entry.cells.map((day, idx) => {
-                            const dayDate = day
-                              ? new Date(entry.month.getFullYear(), entry.month.getMonth(), day)
-                              : null;
-                            const todayStart = toStartOfDay(new Date());
-                            const isToday = !!dayDate && toStartOfDay(dayDate).getTime() === todayStart.getTime();
-                            const isPast = !!dayDate && toStartOfDay(dayDate).getTime() < todayStart.getTime();
-                            const isSelected =
-                              !!day &&
-                              completionEndDate ===
-                                toISODate(new Date(entry.month.getFullYear(), entry.month.getMonth(), day));
-
-                            return (
-                              <Pressable
-                                key={`${pageIdx}-${idx}-${day || "blank"}`}
-                                onPress={() => day && setCompletionEndDate(toISODate(new Date(entry.month.getFullYear(), entry.month.getMonth(), day)))}
-                                disabled={!day}
-                                style={[
-                                  styles.calendarCell,
-                                  isPast && styles.calendarCellPast,
-                                  isToday && styles.calendarCellToday,
-                                  isSelected && styles.calendarCellSelected,
-                                  !day && styles.calendarCellEmpty,
-                                ]}
-                              >
-                                <Text
-                                  style={[
-                                    styles.calendarCellText,
-                                    isPast && styles.calendarCellTextPast,
-                                    isSelected && styles.calendarCellTextSelected,
-                                  ]}
-                                >
-                                  {day || ""}
-                                </Text>
-                              </Pressable>
-                            );
-                          })}
-                        </View>
-                      </View>
-                    ))}
-                  </ScrollView>
-                </View>
-
-                <TextInput
-                  value={completionEndDate}
-                  onChangeText={(text) => setCompletionEndDate(formatDateInput(text))}
-                  placeholder="YYYY-MM-DD"
-                  keyboardType="number-pad"
-                  maxLength={10}
-                  style={[styles.input, styles.completionInput]}
-                />
-                {!!completionDateMeta && (
-                  <View style={styles.datePreviewBox}>
-                    <Text style={styles.datePreviewText}>
-                      Ends {completionDateMeta.readable}
-                      {completionDateMeta.daysLeft === 0
-                        ? " (today)"
-                        : completionDateMeta.daysLeft > 0
-                        ? ` (${completionDateMeta.daysLeft} days left)`
-                        : ` (${Math.abs(completionDateMeta.daysLeft)} days ago)`}
-                    </Text>
-                  </View>
-                )}
-              </>
-            )}
-
-            {(completionMode === "amount" || completionMode === "both") && (
-              <View style={styles.row}>
-                <TextInput
-                  value={completionEndAmount}
-                  onChangeText={setCompletionEndAmount}
-                  keyboardType="numeric"
-                  placeholder="Total amount"
-                  style={[styles.input, styles.completionInput, { flex: 1, marginRight: 10 }]}
-                />
-                <TextInput
-                  value={completionEndUnit}
-                  onChangeText={setCompletionEndUnit}
-                  placeholder="times"
-                  style={[styles.input, styles.completionInput, { flex: 1 }]}
-                />
-              </View>
-            )}
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Icon</Text><GoalIcon name={selectedIcon} size={22} color={theme.accent} /></View>
-            <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Name</Text><Text style={styles.reviewValue}>{name || "—"}</Text></View>
-            <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Schedule</Text><Text style={styles.reviewValue}>{frequencyLabel}</Text></View>
-            <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Garden</Text><Text style={styles.reviewValue}>{selectedGardenName}</Text></View>
-            {selectedGardenId !== "personal" && (
-              <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Multi-user</Text><Text style={styles.reviewValue}>{multiUserWateringEnabled ? "Enabled" : "Disabled"}</Text></View>
-            )}
-            {selectedGardenId !== "personal" && multiUserWateringEnabled && (
-              <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Required users</Text><Text style={styles.reviewValue}>{Math.max(2, Math.floor(Number(requiredContributors) || 2))}</Text></View>
-            )}
-          </View>
+          {renderStepContent()}
 
           {!!formError && (
             <View style={styles.errorInline}>
@@ -863,15 +827,21 @@ export default function AddGoalScreen({ navigation }) {
           )}
         </ScrollView>
 
-        <View style={styles.footer}>
-          <Button variant="secondary" label="Cancel" onPress={() => navigation.goBack()} disabled={isSaving} />
-          <View style={{ width: 10 }} />
-          <Button
-            variant="primary"
-            label={isSaving ? "Saving..." : "Save Goal"}
-            onPress={save}
-            disabled={isSaving || !canSave}
-          />
+        <View style={styles.stepFooterRow}>
+          <View style={styles.stepButtonGroup}>
+            <Button
+              variant="secondary"
+              label="Back"
+              onPress={goBackStep}
+              disabled={step === 0 || isSaving}
+              style={styles.stepButton}
+            />
+            {step < stepLabels.length - 1 ? (
+              <Button variant="primary" label="Next" onPress={goNextStep} disabled={isSaving} style={styles.stepButton} />
+            ) : (
+              <Button variant="primary" label={isSaving ? "Saving..." : "Save Goal"} onPress={save} disabled={isSaving || !canSave} style={styles.stepButton} />
+            )}
+          </View>
         </View>
 
         <Modal visible={showIconPicker} animationType="slide" presentationStyle="fullScreen">
@@ -938,7 +908,7 @@ export default function AddGoalScreen({ navigation }) {
               </View>
             </ScrollView>
           </View>
-        </View>
+        </Modal>
 
         {/* Help overlay */}
         <CoachMark visible={helpOpen} title={helpCopy.title} body={helpCopy.body} onClose={() => setHelpOpen(false)} />
@@ -980,6 +950,9 @@ const styles = StyleSheet.create({
   formScrollContent: { paddingBottom: 12 },
   card: { backgroundColor: theme.surface, borderRadius: theme.radius, padding: 16, marginBottom: 10 },
   footer: { flexDirection: "row", paddingTop: 10, paddingBottom: 8 },
+  stepFooterRow: { paddingVertical: 10, paddingHorizontal: 12, borderTopWidth: 1, borderTopColor: theme.outline, backgroundColor: theme.surface },
+  stepButtonGroup: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  stepButton: { flex: 1, minHeight: 44, marginHorizontal: 4, borderRadius: theme.radius },
   sectionLabel: { fontSize: 13, fontWeight: "800", color: theme.text, marginBottom: 6 },
   switchRow: { marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   contributorRow: { marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
@@ -1155,4 +1128,14 @@ const styles = StyleSheet.create({
   inlineLinkText: { fontSize: 12, fontWeight: "700", color: theme.muted, textDecorationLine: "underline" },
   errorInline: { marginTop: 10, backgroundColor: theme.dangerBg, borderRadius: theme.radius, padding: 12 },
   errorInlineText: { color: theme.dangerText, fontSize: 12, fontWeight: "700" },
+  coachOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "center", alignItems: "center", padding: 20 },
+  coachBox: { width: "100%", maxWidth: 400, backgroundColor: theme.surface, borderRadius: theme.radius, padding: 18, shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 6 },
+  coachTitle: { fontSize: 16, fontWeight: "800", marginBottom: 8, color: theme.text },
+  coachBody: { fontSize: 13, color: theme.text, marginBottom: 14 },
+  coachCloseBtn: { marginTop: 4, alignSelf: "flex-end", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, backgroundColor: theme.accent },
+  coachCloseText: { color: theme.bg, fontWeight: "700", fontSize: 13 },
+  stepHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  stepTitle: { fontSize: 16, fontWeight: "900", color: theme.text },
+  stepCount: { fontSize: 12, fontWeight: "800", color: theme.muted },
+
 });

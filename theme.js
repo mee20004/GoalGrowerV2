@@ -93,32 +93,31 @@
 
 export const theme = {
   // Backgrounds
-  bg: "#F9F6EE",
-  surface: "#215240",
-  surface2: "#F9F6EE",
-  card: "#DDE8BF",
+  bg: "#F2FAF5",
+  surface: "#FFFFFF",
+  surface2: "#EBF9EE",
+  card: "#F6FBF7",
   cardSoftBlue: "#E8F1FF",
 
   // Text (accessible contrast)
-  title: "#17392D",
-  title2: "#F9F6EE",
-  // text: "#F9F6EE",
-    text: "#17392D",
-  text2: "#6B5A4A",
-  muted: "#F0EAD6",
-  muted2: "#6B5A4A",
+  title: "#0F3F24",
+  title2: "#0D3320",
+  text: "#0F3F24",
+  text2: "#2F5B3D",
+  muted: "#5F7B63",
+  muted2: "#5F7B63",
 
   // Accent
-  accent: "#a7987d", 
-  outline: "#CBBFB1",
+  accent: "#1B7A43",
+  outline: "#A9C8AA",
 
   // Feedback
-  dangerBg: "#dc9292",
-  dangerText: "#5A1F1F",
+  dangerBg: "#FEE2E2",
+  dangerText: "#B91C1C",
 
   // Layout
   pad: 16,
-  radius: 16,
-  radiusSm: 12,
-  topGap: 10, // your “little space at the top”
+  radius: 12,
+  radiusSm: 10,
+  topGap: 10,
 };

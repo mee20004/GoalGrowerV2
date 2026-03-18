@@ -66,10 +66,11 @@ export function isScheduledOn(goal, dateOrKey) {
   const sched = goal?.schedule;
 
   if (!sched) return true;
-  if (sched.mode === "floating") return true; // handled separately
-  if (sched.mode === "everyday") return true;
-  if (sched.mode === "weekdays") return [1,2,3,4,5].includes(day);
-  if (sched.mode === "custom") return Array.isArray(sched.days) ? sched.days.includes(day) : true;
+  const mode = sched.mode || sched.type;
+  if (mode === "floating") return true;
+  if (mode === "everyday") return true;
+  if (mode === "weekdays") return [1,2,3,4,5].includes(day);
+  if (mode === "days" || mode === "custom") return Array.isArray(sched.days) ? sched.days.includes(day) : true;
   return true;
 }
 
