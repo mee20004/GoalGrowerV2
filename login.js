@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import { View, Text, TextInput, Pressable, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { auth, db } from './firebaseConfig';
 import { theme } from './theme';
@@ -11,6 +12,8 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
+  const [guest, setGuest] = useState(false);
+  const navigation = useNavigation();
 
   const handleLogin = () => {
     if (!email || !password) {
@@ -22,6 +25,10 @@ export default function Login() {
   };
 
   useEffect(() => {
+    if (guest) {
+      setView('home');
+      return;
+    }
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         console.log("LOG: Auth detected user:", user.uid);
@@ -32,7 +39,7 @@ export default function Login() {
       }
     });
     return unsubscribe;
-  }, []);
+  }, [guest]);
 
   const checkProfile = async (uid) => {
     setView('loading');
@@ -114,6 +121,9 @@ export default function Login() {
         <Pressable style={[styles.button, styles.buttonSecondary]} onPress={() => createUserWithEmailAndPassword(auth, email, password)}>
           <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Register</Text>
         </Pressable>
+        <Pressable style={[styles.button, styles.buttonSecondary]} onPress={() => setGuest(true)}>
+          <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Continue as Guest</Text>
+        </Pressable>
       </View>
     );
   }
@@ -144,14 +154,35 @@ export default function Login() {
     return (
       <View style={styles.container}>
         <Text style={styles.title}>Welcome to Goal Grower!</Text>
-        <Text style={styles.subtitle}>Your profile is all set up.</Text>
-        <Pressable style={[styles.button, styles.buttonDanger]} onPress={() => signOut(auth)}>
-          <Text style={[styles.buttonText, styles.buttonTextDanger]}>Logout</Text>
-        </Pressable>
+        <Text style={styles.subtitle}>{guest ? "You are using Guest Mode. Your data is stored locally." : "Your profile is all set up."}</Text>
+        {guest ? (
+          <>
+            <Pressable style={styles.button} onPress={() => navigation.replace('Tabs', { guest: true })}>
+              <Text style={styles.buttonText}>Continue to App</Text>
+            </Pressable>
+            <Pressable style={[styles.button, styles.buttonSecondary]} onPress={() => setGuest(false)}>
+              <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Go Back</Text>
+            </Pressable>
+          </>
+        ) : (
+          <Pressable style={[styles.button, styles.buttonDanger]} onPress={() => signOut(auth)}>
+            <Text style={[styles.buttonText, styles.buttonTextDanger]}>Logout</Text>
+          </Pressable>
+        )}
       </View>
     );
   }
 
+  if (view === 'app') {
+    // You may want to trigger navigation to your main app here
+    // For now, just show a placeholder
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>App Loaded (Guest Mode)</Text>
+        <Text style={styles.subtitle}>You are now in the app as a guest.</Text>
+      </View>
+    );
+  }
   return (
     <View style={styles.container}>
       <Text>Something went wrong. View State: {view}</Text>

@@ -148,17 +148,15 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Rank" component={RankStack} options={{ tabBarLabel: "Rank" }} />
-      <Tab.Screen name="Goals" component={CalendarScreen} options={{ tabBarLabel: "Goals" }} />
+      <Tab.Screen name="Goals" component={GoalsStack} options={{ tabBarLabel: "Goals" }} />
       <Tab.Screen name="Add" component={AddStack} options={{ tabBarLabel: "Add" }} />
       <Tab.Screen name="Calendar" component={CalendarScreen} options={{ tabBarLabel: "Calendar" }} />
-      
       {/* <-- 3. WIRE UP THE GARDEN TAB */}
       <Tab.Screen
         name="Garden"
         component={GardenStack}
         options={{ tabBarLabel: "Garden", unmountOnBlur: false }}
       />
-      
       <Tab.Screen name="ProfileTab" component={ProfileStack} options={{ tabBarLabel: "Profile" }} />
     </Tab.Navigator>
   );
