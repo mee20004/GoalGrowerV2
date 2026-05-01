@@ -2,6 +2,7 @@
 import React from "react";
 import { View, ScrollView, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { theme } from "../theme";
 
 export default function Page({
@@ -16,42 +17,50 @@ export default function Page({
   const padX = padded ? theme.pad : 0;
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={["top", "left", "right"]}>
-      <View style={[styles.root, { backgroundColor: theme.bg, paddingHorizontal: padX }]}>
-        <View style={{ height: theme.topGap }} />
+    <LinearGradient
+      colors={theme.bgGradient || [theme.bg, theme.bg]}
+      start={{ x: 0.5, y: 1 }}
+      end={{ x: 0.5, y: 0 }}
+      style={styles.safe}
+    >
+      <SafeAreaView style={styles.safeInner} edges={["top", "left", "right"]}>
+        <View style={[styles.root, { paddingHorizontal: padX }]}> 
+          <View style={{ height: theme.topGap }} />
 
-        {scroll ? (
-          <>
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={[
-                styles.scrollContent,
-                { paddingBottom: Math.max(12, footerHeight) },
-                contentContainerStyle,
-              ]}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              {...(scrollProps || {})}
-            >
-              {children}
-            </ScrollView>
+          {scroll ? (
+            <>
+              <ScrollView
+                style={styles.scroll}
+                contentContainerStyle={[
+                  styles.scrollContent,
+                  { paddingBottom: Math.max(12, footerHeight) },
+                  contentContainerStyle,
+                ]}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                {...(scrollProps || {})}
+              >
+                {children}
+              </ScrollView>
 
-            {footer ? <View style={styles.footerWrap}>{footer}</View> : null}
-          </>
-        ) : (
-          <>
-            <View style={styles.content}>{children}</View>
-            {footer ? <View style={styles.footerWrap}>{footer}</View> : null}
-          </>
-        )}
-      </View>
-    </SafeAreaView>
+              {footer ? <View style={styles.footerWrap}>{footer}</View> : null}
+            </>
+          ) : (
+            <>
+              <View style={styles.content}>{children}</View>
+              {footer ? <View style={styles.footerWrap}>{footer}</View> : null}
+            </>
+          )}
+        </View>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
+  safeInner: { flex: 1, backgroundColor: 'transparent' },
   root: { flex: 1 },
 
   // Android scroll reliability:

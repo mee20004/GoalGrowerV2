@@ -13,18 +13,43 @@ import {
   Platform,
   Switch,
   Keyboard,
+  Image,
+  Animated,
+  Easing,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import * as LucideIcons from "lucide-react-native/icons";
 import Page from "../components/Page";
+import EditButtonRestriction from "./EditButtonRestriction";
 import { theme } from "../theme";
+import { PLANT_ASSETS } from "../constants/PlantAssets";
+import { POT_ASSETS } from "../constants/PotAssets";
+import { WALLPAPER_OPTIONS } from "../constants/WallpaperAssets";
 import { useGoals, fromKey, toKey } from "../components/GoalsStore";
+import { subscribePersonalCustomizations, subscribeSharedCustomizations } from "../utils/customizationFirestore";
 import { ACHIEVEMENTS } from "../AchievementsStore";
 import { collection, doc, onSnapshot, deleteDoc, updateDoc, getDoc, getDocs, setDoc, arrayUnion, increment, deleteField, query, where, runTransaction } from "firebase/firestore";
+import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
 import { auth, db } from "../firebaseConfig";
 import { updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
+import {
+  calculateGoalStreak,
+  countCompletedDates,
+  getGrowthStage,
+  getPlantHealthState,
+  isGoalDoneForDate,
+  isGoalScheduledOnDate,
+  migrateLogsForTrackingType,
+  updateTrophyFreezeState,
+  dateFromFirestoreValue,
+} from "../utils/goalState";
+import { getBadgeImageForTrophyKey } from "./badgeImages";
+
+// Consistent frozen day blue color for streak and health bar
+const FROZEN_DAY_BLUE = '#a6e6ff';
 
 const RESERVED_LUCIDE_EXPORTS = new Set(["default", "Icon", "createLucideIcon"]);
 
@@ -98,6 +123,282 @@ function GoalIcon({ name, size, color }) {
   return <IconComponent size={size} color={color} strokeWidth={2.2} />;
 }
 
+const FIRE_STREAK_ICON = require("../assets/Icons/icons8-fire-64.png");
+const DEFAULT_PLANT_PREVIEW_COLOR = "#EEF6FF";
+
+const TROPHY_ROADMAP = [
+  { key: "bronze", label: "Bronze", streak: 0, health: 1, color: "#c98b4b", tint: "#f7e7da" },
+  { key: "silver", label: "Silver", streak: 7, health: 3, color: "#7d98c7", tint: "#eaf1ff" },
+  { key: "gold", label: "Gold", streak: 18, health: 4, color: "#dca32e", tint: "#fff5da" },
+  { key: "platinum", label: "Platinum", streak: 24, health: 5, color: "#54bceb", tint: "#e7f7ff" },
+];
+
+const TROPHY_PROGRESS_STYLE = {
+  bronze: { track: "#f2ddca", gradient: ["#e09e5f", "#c98b4b"] },
+  silver: { track: "#deebff", gradient: ["#9bb8ef", "#7d98c7"] },
+  gold: { track: "#ffefc9", gradient: ["#f5be4f", "#dca32e"] },
+  platinum: { track: "#def4ff", gradient: ["#78d4ff", "#54bceb"] },
+};
+
+const getPreviewTrophyRating = (longestStreak = 0, healthLevel = 1) => {
+  const streak = Number(longestStreak) || 0;
+  const health = Number(healthLevel) || 1;
+
+  if (streak >= 24 && health >= 5) return "platinum";
+  if (streak >= 18 && health >= 4) return "gold";
+  if (streak >= 7 && health >= 3) return "silver";
+  return "bronze";
+};
+
+function GoalPlantPreview({ goal, getPlantHealthState, backdropColor = DEFAULT_PLANT_PREVIEW_COLOR, variant = "card" }) {
+  const stage = getGrowthStage(goal?.totalCompletions);
+
+  const { status } = getPlantHealthState(goal);
+  const species = goal?.plantSpecies || ((goal?.type !== "completion" && goal?.type !== "quantity") ? goal?.type : "fern");
+  const speciesAssets = PLANT_ASSETS[species] || PLANT_ASSETS.fern;
+  const plantSource =
+    speciesAssets?.[stage]?.[status]
+    || speciesAssets?.[stage]?.alive
+    || PLANT_ASSETS.fern?.stage1?.alive;
+  const selectedPotKey = goal?.potType || goal?.potStyle || "default";
+  const potSource = POT_ASSETS[selectedPotKey] || POT_ASSETS.default;
+
+  const [displayedPlantSource, setDisplayedPlantSource] = useState(plantSource);
+  const swapScaleAnim = useRef(new Animated.Value(1)).current;
+  const swayAnim = useRef(new Animated.Value(0)).current;
+  const previousSourceRef = useRef(plantSource);
+  const isHero = variant === "hero";
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(swayAnim, { toValue: 1, duration: 600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(swayAnim, { toValue: -1, duration: 900, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(swayAnim, { toValue: 0, duration: 1200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    const timer = setTimeout(() => loop.start(), Math.random() * 1500);
+    return () => {
+      clearTimeout(timer);
+      loop.stop();
+      swayAnim.setValue(0);
+    };
+  }, [swayAnim]);
+
+  useEffect(() => {
+    if (previousSourceRef.current === plantSource) return;
+
+    let cancelled = false;
+    previousSourceRef.current = plantSource;
+    swapScaleAnim.stopAnimation();
+
+    Animated.timing(swapScaleAnim, {
+      toValue: 0.2,
+      duration: 170,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (!finished || cancelled) return;
+
+      setDisplayedPlantSource(plantSource);
+
+      Animated.sequence([
+        Animated.timing(swapScaleAnim, {
+          toValue: 1.3,
+          duration: 55,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(swapScaleAnim, {
+          toValue: 1,
+          duration: 75,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [plantSource, swapScaleAnim]);
+
+  return (
+    <View
+      style={[
+        styles.goalPlantPreviewWrap,
+        isHero && styles.goalPlantPreviewWrapHero,
+        { backgroundColor: backdropColor },
+      ]}
+    >
+      <Animated.Image
+        source={displayedPlantSource}
+        style={[
+          styles.goalPlantImage,
+          isHero && styles.goalPlantImageHero,
+          {
+            transform: [
+              { translateY: isHero ? 22 : 18 },
+              { rotate: swayAnim.interpolate({ inputRange: [-1, 1], outputRange: ["-4deg", "6deg"] }) },
+              { scale: swapScaleAnim },
+              { translateY: isHero ? -22 : -18 },
+            ],
+          },
+        ]}
+        resizeMode="contain"
+      />
+      <Image source={potSource} style={[styles.goalPlantPot, isHero && styles.goalPlantPotHero]} resizeMode="contain" />
+    </View>
+  );
+}
+
+function AnimatedTodayHealthBar({ healthLevel, color }) {
+  const clampedLevel = Math.max(1, Math.min(5, Number(healthLevel) || 1));
+  const targetRatio = clampedLevel / 5;
+  const progress = useRef(new Animated.Value(targetRatio)).current;
+  const [trackWidth, setTrackWidth] = useState(0);
+
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: targetRatio,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [progress, targetRatio]);
+
+  const animatedWidth = trackWidth > 0
+    ? progress.interpolate({ inputRange: [0, 1], outputRange: [0, trackWidth] })
+    : 0;
+
+  return (
+    <View style={styles.todayHealthTrack} onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}>
+      <Animated.View
+        style={[
+          styles.todayHealthFill,
+          {
+            width: animatedWidth,
+            backgroundColor: color,
+          },
+        ]}
+      />
+    </View>
+  );
+}
+
+function AnimatedWeeklyHealthBar({ healthLevel, color }) {
+  const clampedLevel = Math.max(1, Math.min(5, Number(healthLevel) || 1));
+  const targetRatio = clampedLevel / 5;
+  const progress = useRef(new Animated.Value(targetRatio)).current;
+
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: targetRatio,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [progress, targetRatio]);
+
+  const animatedHeight = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 56] });
+
+  return (
+    <View style={styles.growthMiniTrack}>
+      <Animated.View
+        style={[
+          styles.growthMiniFill,
+          {
+            height: animatedHeight,
+            backgroundColor: color,
+          },
+        ]}
+      />
+    </View>
+  );
+}
+
+function AnimatedGrowthStageBar({ progressPercent, color = "#59d700", showGoldStripes = false }) {
+  const clampedPercent = Math.max(0, Math.min(100, Number(progressPercent) || 0));
+  const targetRatio = clampedPercent / 100;
+  const progress = useRef(new Animated.Value(targetRatio)).current;
+  const [trackWidth, setTrackWidth] = useState(0);
+
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: targetRatio,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [progress, targetRatio]);
+
+  const animatedWidth = trackWidth > 0
+    ? progress.interpolate({ inputRange: [0, 1], outputRange: [0, trackWidth] })
+    : 0;
+
+  return (
+    <View style={styles.growthStageTrack} onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}>
+      <Animated.View
+        style={[
+          styles.growthStageFill,
+          {
+            width: animatedWidth,
+            backgroundColor: color,
+          },
+        ]}
+      >
+        {showGoldStripes && (
+          <View pointerEvents="none" style={styles.growthStageStripeLayer}>
+            {Array.from({ length: 12 }).map((_, index) => (
+              <View key={`growth-stripe-${index}`} style={[styles.growthStageStripe, { left: index * 14 - 20 }]} />
+            ))}
+          </View>
+        )}
+      </Animated.View>
+    </View>
+  );
+}
+
+function AnimatedRewardProgressBar({ progressPercent, trackColor, gradientColors }) {
+  const clampedPercent = Math.max(0, Math.min(100, Number(progressPercent) || 0));
+  const targetRatio = Math.max(0.1, clampedPercent / 100);
+  const progress = useRef(new Animated.Value(targetRatio)).current;
+  const [trackWidth, setTrackWidth] = useState(0);
+
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: targetRatio,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [progress, targetRatio]);
+
+  const animatedWidth = trackWidth > 0
+    ? progress.interpolate({ inputRange: [0, 1], outputRange: [0, trackWidth] })
+    : 0;
+
+  return (
+    <View style={[styles.nextLevelTrack, { backgroundColor: trackColor }]} onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}>
+      <Animated.View
+        style={[
+          styles.nextLevelFillWrap,
+          {
+            width: animatedWidth,
+          },
+        ]}
+      >
+        <LinearGradient
+          colors={gradientColors}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={styles.nextLevelFill}
+        />
+      </Animated.View>
+    </View>
+  );
+}
+
 const DAYS = [
   { label: "Sun", day: 0 },
   { label: "Mon", day: 1 },
@@ -166,6 +467,14 @@ const clampNum = (n, min, max) => {
   return Math.max(min, Math.min(max, v));
 };
 
+const MAX_QUANTITY_TARGET = 6;
+
+const normalizeQuantityTargetInput = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  return String(clampNum(Number(digits), 1, MAX_QUANTITY_TARGET));
+};
+
 const toISODate = (date) => {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
@@ -220,98 +529,11 @@ function formatCompletionLabel(condition) {
 }
 
 function healthLabel(level) {
-  if ((Number(level) || 0) >= 3) return "Healthy";
-  if ((Number(level) || 0) === 2) return "Dry";
+  if ((Number(level) || 0) >= 5) return "Healthy";
+  if ((Number(level) || 0) === 4) return "Day";
+  if ((Number(level) || 0) === 3) return "Dry";
+  if ((Number(level) || 0) === 2) return "Dying";
   return "Dead";
-}
-
-function isGoalDoneForDate(goal, dateKey) {
-  if (goal?.type === "completion") {
-    const isSharedMultiUser = !!goal?.multiUserWateringEnabled && goal?.gardenType === "shared";
-    if (isSharedMultiUser) {
-      const usersMap = goal?.logs?.completion?.[dateKey]?.users || {};
-      const uniqueCount = Object.keys(usersMap).filter((userId) => !!usersMap[userId]).length;
-      const requiredContributors = Number(goal?.requiredContributors);
-      const threshold = Number.isFinite(requiredContributors) && requiredContributors >= 2
-        ? Math.floor(requiredContributors)
-        : 2;
-      return uniqueCount >= threshold;
-    }
-    return !!goal?.logs?.completion?.[dateKey]?.done;
-  }
-  return (goal?.logs?.quantity?.[dateKey]?.value ?? 0) >= (goal?.measurable?.target ?? 0);
-}
-
-function dateFromFirestoreValue(value) {
-  if (!value) return null;
-  if (typeof value?.toDate === "function") {
-    const converted = value.toDate();
-    return Number.isNaN(converted?.getTime?.()) ? null : converted;
-  }
-  if (typeof value?.seconds === "number") {
-    const converted = new Date(value.seconds * 1000);
-    return Number.isNaN(converted.getTime()) ? null : converted;
-  }
-  const converted = new Date(value);
-  return Number.isNaN(converted.getTime()) ? null : converted;
-}
-
-function isGoalScheduledOnDate(goal, date) {
-  const scheduleType = goal?.schedule?.type;
-  const dayOfWeek = new Date(date).getDay();
-
-  if (scheduleType === "everyday") return true;
-  if (scheduleType === "weekdays") return dayOfWeek >= 1 && dayOfWeek <= 5;
-  if (scheduleType === "days") return !!goal?.schedule?.days?.includes(dayOfWeek);
-
-  if (Array.isArray(goal?.schedule?.days) && goal.schedule.days.length > 0) {
-    return goal.schedule.days.includes(dayOfWeek);
-  }
-
-  return true;
-}
-
-function getPlantHealthState(goal, now = new Date()) {
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-
-  const storedHealthLevel = Number(goal?.healthLevel);
-  if (goal?.shelfPosition?.pageId === STORAGE_PAGE_ID && storedHealthLevel >= 1 && storedHealthLevel <= 3) {
-    if (storedHealthLevel === 2) return { healthLevel: 2, status: "dry" };
-    if (storedHealthLevel === 1) return { healthLevel: 1, status: "dead" };
-    return { healthLevel: 3, status: "alive" };
-  }
-
-  const createdAtDate = dateFromFirestoreValue(goal?.createdAt);
-  const earliestDate = createdAtDate ? new Date(createdAtDate) : null;
-  if (earliestDate) earliestDate.setHours(0, 0, 0, 0);
-
-  const recentScheduledKeys = [];
-  const cursor = new Date(today);
-  for (let i = 0; i < 370 && recentScheduledKeys.length < 2; i += 1) {
-    if (earliestDate && cursor.getTime() < earliestDate.getTime()) break;
-    if (isGoalScheduledOnDate(goal, cursor)) {
-      recentScheduledKeys.push(toKey(cursor));
-    }
-    cursor.setDate(cursor.getDate() - 1);
-  }
-
-  let derived = { healthLevel: 1, status: "dead" };
-
-  if (recentScheduledKeys.length === 0) {
-    derived = { healthLevel: 3, status: "alive" };
-  } else if (isGoalDoneForDate(goal, recentScheduledKeys[0])) {
-    derived = { healthLevel: 3, status: "alive" };
-  } else if (recentScheduledKeys.length === 1 || isGoalDoneForDate(goal, recentScheduledKeys[1])) {
-    derived = { healthLevel: 2, status: "dry" };
-  }
-
-  if (storedHealthLevel >= 1 && storedHealthLevel < derived.healthLevel) {
-    if (storedHealthLevel === 2) return { healthLevel: 2, status: "dry" };
-    return { healthLevel: 1, status: "dead" };
-  }
-
-  return derived;
 }
 
 async function findFirstOpenStorageSlot(uid, goalId) {
@@ -471,8 +693,8 @@ function SwipeCalendar({ month, setMonth, selectedDate, onSelectDate }) {
                 return (
                   <Pressable
                     key={`${pageIdx}-${idx}-${day || "blank"}`}
-                    onPress={() => day && onSelectDate(iso)}
-                    disabled={!day}
+                    onPress={() => day && !isPast && onSelectDate(iso)}
+                    disabled={!day || isPast}
                     style={[
                       styles.calendarCell,
                       isPast && styles.calendarCellPast,
@@ -497,7 +719,7 @@ function SwipeCalendar({ month, setMonth, selectedDate, onSelectDate }) {
 
 export default function GoalScreen({ route, navigation }) {
   const MODAL_SWAP_DELAY = 180;
-  const { goalId, source, sharedGardenId: routeSharedGardenId } = route.params || {};
+  const { goalId, source, sharedGardenId: routeSharedGardenId, ownerId: paramOwnerId, sourceGoalId: paramSourceGoalId } = route.params || {};
   const isSharedGoalView = Boolean(routeSharedGardenId);
   const { selectedDateKey } = useGoals();
 
@@ -509,6 +731,7 @@ export default function GoalScreen({ route, navigation }) {
   const [iconSearch, setIconSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isCompletingToTrophy, setIsCompletingToTrophy] = useState(false);
+  const [isTapCoolingDown, setIsTapCoolingDown] = useState(false);
   const [shelfPosition, setShelfPosition] = useState(null);
   const [showReturnDateModal, setShowReturnDateModal] = useState(false);
   const [returnEndDateInput, setReturnEndDateInput] = useState("");
@@ -519,6 +742,13 @@ export default function GoalScreen({ route, navigation }) {
   const modalSwapTimeoutRef = useRef(null);
   const [sharedGardens, setSharedGardens] = useState([]);
   const [selectedGardenId, setSelectedGardenId] = useState("personal");
+  const [personalCustomizations, setPersonalCustomizations] = useState({});
+  const [sharedCustomizationsByGarden, setSharedCustomizationsByGarden] = useState({});
+  const [optimisticProgress, setOptimisticProgress] = useState(null);
+  const optimisticProgressRef = useRef(null);
+  const optimisticResetTimerRef = useRef(null);
+  const tapCooldownRef = useRef(false);
+  const tapCooldownTimerRef = useRef(null);
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Custom");
@@ -541,6 +771,59 @@ export default function GoalScreen({ route, navigation }) {
   const [editCalendarMonth, setEditCalendarMonth] = useState(toStartOfDay(new Date()));
   const uid = auth.currentUser?.uid;
 
+  const setLocalOptimisticProgress = (nextStateOrUpdater) => {
+    if (optimisticResetTimerRef.current) {
+      clearTimeout(optimisticResetTimerRef.current);
+    }
+    setOptimisticProgress((prev) => {
+      const next = typeof nextStateOrUpdater === "function" ? nextStateOrUpdater(prev) : nextStateOrUpdater;
+      optimisticProgressRef.current = next;
+      return next;
+    });
+    optimisticResetTimerRef.current = setTimeout(() => {
+      optimisticProgressRef.current = null;
+      setOptimisticProgress(null);
+      optimisticResetTimerRef.current = null;
+    }, 1800);
+  };
+
+  const clearLocalOptimisticProgress = () => {
+    if (optimisticResetTimerRef.current) {
+      clearTimeout(optimisticResetTimerRef.current);
+      optimisticResetTimerRef.current = null;
+    }
+    optimisticProgressRef.current = null;
+    setOptimisticProgress(null);
+  };
+
+  const startTapCooldown = (duration = 110) => {
+    if (tapCooldownTimerRef.current) {
+      clearTimeout(tapCooldownTimerRef.current);
+      tapCooldownTimerRef.current = null;
+    }
+    tapCooldownRef.current = true;
+    setIsTapCoolingDown(true);
+    tapCooldownTimerRef.current = setTimeout(() => {
+      tapCooldownRef.current = false;
+      setIsTapCoolingDown(false);
+      tapCooldownTimerRef.current = null;
+    }, duration);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (optimisticResetTimerRef.current) {
+        clearTimeout(optimisticResetTimerRef.current);
+      }
+      if (tapCooldownTimerRef.current) {
+        clearTimeout(tapCooldownTimerRef.current);
+      }
+      optimisticProgressRef.current = null;
+      tapCooldownRef.current = false;
+      setIsTapCoolingDown(false);
+    };
+  }, []);
+
   useEffect(() => {
     if (!goalId) {
       setGoal(null);
@@ -561,6 +844,9 @@ export default function GoalScreen({ route, navigation }) {
               gardenType: "shared",
               sharedGardenId: routeSharedGardenId,
               gardenId: routeSharedGardenId,
+              // Fallback to navigation params if missing
+              ownerId: docSnap.data().ownerId || paramOwnerId || null,
+              sourceGoalId: docSnap.data().sourceGoalId || paramSourceGoalId || null,
             });
           } else {
             setGoal(null);
@@ -646,8 +932,18 @@ export default function GoalScreen({ route, navigation }) {
 
     const unsubscribe = onSnapshot(
       query(collection(db, "sharedGardens"), where("memberIds", "array-contains", uid)),
-      (snap) => {
-        const docs = snap.docs.map((gardenDoc) => ({ id: gardenDoc.id, ...gardenDoc.data() }));
+      async (snap) => {
+        let docs = snap.docs.map((gardenDoc) => ({ id: gardenDoc.id, ...gardenDoc.data() }));
+        // Filter out gardens where restrictEditPlants is true and user is not owner
+        docs = await Promise.all(docs.map(async (g) => {
+          if (!g.id) return null;
+          const snap = await getDoc(doc(db, "sharedGardens", g.id));
+          const data = snap.data() || {};
+          const isOwner = data.ownerId && auth.currentUser && data.ownerId === auth.currentUser.uid;
+          if (!isOwner && data.restrictEditPlants) return null;
+          return { ...g, ...data };
+        }));
+        docs = docs.filter(Boolean);
         setSharedGardens(docs);
         setSelectedGardenId((prev) => {
           if (prev === "personal") return prev;
@@ -664,13 +960,30 @@ export default function GoalScreen({ route, navigation }) {
   }, [uid]);
 
   useEffect(() => {
+    if (!uid) return undefined;
+    const unsubscribe = subscribePersonalCustomizations(uid, setPersonalCustomizations);
+    return () => unsubscribe && unsubscribe();
+  }, [uid]);
+
+  useEffect(() => {
+    if (!routeSharedGardenId) return undefined;
+    const unsubscribe = subscribeSharedCustomizations(routeSharedGardenId, (nextCustomizations) => {
+      setSharedCustomizationsByGarden((prev) => ({
+        ...prev,
+        [routeSharedGardenId]: nextCustomizations,
+      }));
+    });
+    return () => unsubscribe && unsubscribe();
+  }, [routeSharedGardenId]);
+
+  useEffect(() => {
     if (!goal) return;
     setName(goal.name || "");
     setCategory(goal.category || "Custom");
     setIsPrivate(!!goal.isPrivate);
     setSelectedIcon(normalizeGoalIconName(goal.icon, "target"));
     setType(goal.type || "completion");
-    setTarget(String(goal?.measurable?.target ?? 1));
+    setTarget(String(clampNum(goal?.measurable?.target ?? 1, 1, MAX_QUANTITY_TARGET)));
     setUnit(goal?.measurable?.unit || "times");
     setMode(goal?.schedule?.type || "days");
     setDays(goal?.schedule?.days || []);
@@ -739,10 +1052,17 @@ export default function GoalScreen({ route, navigation }) {
   const deleteGoal = async () => {
     try {
       const assignedSharedGardenId = goal?.sharedGardenId || (goal?.gardenType === "shared" ? goal?.gardenId : null);
+      const ownerId = goal?.ownerId;
+      const currentUserId = auth.currentUser?.uid;
       if (assignedSharedGardenId) {
         await deleteDoc(doc(db, "sharedGardens", assignedSharedGardenId, "layout", goalId));
       }
-      await deleteDoc(doc(db, "users", auth.currentUser.uid, "goals", goalId));
+      // Always delete from current user's goals
+      await deleteDoc(doc(db, "users", currentUserId, "goals", goalId));
+      // If the current user is not the owner, also delete from owner's goals
+      if (ownerId && ownerId !== currentUserId) {
+        await deleteDoc(doc(db, "users", ownerId, "goals", goalId));
+      }
       handleBack();
     } catch (e) {
       Alert.alert("Error", "Could not delete goal.");
@@ -764,7 +1084,7 @@ export default function GoalScreen({ route, navigation }) {
 
   const measurableForType = useMemo(() => {
     if (type === "completion") return { target: 1, unit: "times" };
-    return { target: clampNum(target, 1, 9999), unit: unit.trim() || "units" };
+    return { target: clampNum(target, 1, MAX_QUANTITY_TARGET), unit: unit.trim() || "units" };
   }, [target, type, unit]);
 
   const completionCondition = useMemo(() => {
@@ -802,6 +1122,7 @@ export default function GoalScreen({ route, navigation }) {
     if (name.trim().length < 3) return "Give it a short name (at least 3 characters).";
     if (!selectedIcon) return "Please select an icon.";
     if (type === "quantity" && (!(Number(target) > 0) || unit.trim().length < 1)) return "Quantity needs a number and unit.";
+    if (type === "quantity" && Number(target) > MAX_QUANTITY_TARGET) return `Quantity max is ${MAX_QUANTITY_TARGET}.`;
     if (!scheduleDays.length) return "Pick at least one day.";
     if ((completionMode === "date" || completionMode === "both") && !completionEndDate.trim()) return "Enter an end date.";
     if ((completionMode === "amount" || completionMode === "both") && !(Number(completionEndAmount) > 0)) return "End amount must be greater than 0.";
@@ -854,9 +1175,13 @@ export default function GoalScreen({ route, navigation }) {
   };
 
   const saveEdits = async () => {
+    console.log('[DEBUG] saveEdits called');
     if (!auth.currentUser || !goal || formError || isSaving) return;
     setIsSaving(true);
+
     try {
+      const currentTrackingType = goal?.type || goal?.kind || "completion";
+      const typeChanged = currentTrackingType !== type;
       const currentGardenId = goal?.sharedGardenId || goal?.gardenId || "personal";
       const nextSharedGardenId = selectedGardenId === "personal" ? null : selectedGardenId;
       const wasSharedGardenId = goal?.sharedGardenId || (goal?.gardenType === "shared" ? goal?.gardenId : null);
@@ -872,7 +1197,8 @@ export default function GoalScreen({ route, navigation }) {
             : 1,
       };
 
-      const updatedGoalData = {
+      // Unfreeze trophy state if moving out of storage
+      let updatedGoalData = {
         name: name.trim(),
         category,
         isPrivate,
@@ -887,7 +1213,49 @@ export default function GoalScreen({ route, navigation }) {
         ...nextGardenPayload,
       };
 
-      await updateDoc(doc(db, "users", auth.currentUser.uid, "goals", goal.id), updatedGoalData);
+      // If moving to a different garden, always unfreeze trophy state
+
+      // If moving to a different garden, always unfreeze trophy state
+      // If unfreezing, also set resumeFromTrophyDate and resumeFromTrophyHealth
+      const prevWasFrozen = !!goal.isFrozenTrophyState;
+      const prevFrozenHealth = Number(goal.frozenHealthLevel) || 5;
+      const prevTrophyDate = goal.trophyDate;
+      updatedGoalData = updateTrophyFreezeState({ ...goal, ...updatedGoalData });
+      if (prevWasFrozen && !updatedGoalData.isFrozenTrophyState) {
+        // Just unfroze, so set resume fields
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        let resumeFromTrophyDate = prevTrophyDate ? fromKey(prevTrophyDate) : today;
+        resumeFromTrophyDate.setDate(resumeFromTrophyDate.getDate() + 1); // day after trophy
+        const resumeFromTrophyDateKey = toKey(resumeFromTrophyDate);
+        updatedGoalData.resumeFromTrophyDate = resumeFromTrophyDateKey;
+        updatedGoalData.resumeFromTrophyHealth = prevFrozenHealth;
+      }
+
+      if (typeChanged) {
+        const migratedLogs = migrateLogsForTrackingType(goal, type, measurableForType);
+        const derivedGoalData = {
+          ...goal,
+          ...updatedGoalData,
+          type,
+          measurable: measurableForType,
+          logs: migratedLogs,
+        };
+        const { currentStreak, longestStreak } = calculateGoalStreak(derivedGoalData, migratedLogs, selectedDateKey);
+
+        updatedGoalData.logs = migratedLogs;
+        updatedGoalData.currentStreak = currentStreak;
+        updatedGoalData.longestStreak = longestStreak;
+        updatedGoalData.totalCompletions = countCompletedDates(derivedGoalData, migratedLogs);
+        updatedGoalData.healthLevel = getPlantHealthState(derivedGoalData, fromKey(selectedDateKey)).healthLevel;
+      }
+
+
+
+      // Debug: print the data being sent to Firestore (plain log for Metro/Expo)
+      console.log('[DEBUG] updateGoal updatedGoalData:', updatedGoalData);
+
+      await setDoc(doc(db, "users", auth.currentUser.uid, "goals", goal.id), updatedGoalData, { merge: true });
 
       if (nextSharedGardenId) {
         const sharedLayoutRef = doc(db, "sharedGardens", nextSharedGardenId, "layout", goal.id);
@@ -922,40 +1290,11 @@ export default function GoalScreen({ route, navigation }) {
 
       setShowEditModal(false);
     } catch (error) {
+      console.log('[DEBUG] updateGoal error:', error);
       Alert.alert("Error", "Could not update goal.");
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const calculateStreak = (goalData, newLogs) => {
-    let current = 0;
-    let longest = goalData.longestStreak || 0;
-    const checkDateBase = fromKey(selectedDateKey);
-    const checkToday = new Date(checkDateBase);
-    checkToday.setHours(0, 0, 0, 0);
-    let checkDate = new Date(checkToday);
-
-    for (let i = 0; i < 365; i += 1) {
-      const dateKey = toKey(checkDate);
-      const dayOfWeek = checkDate.getDay();
-      const isScheduled = goalData.schedule?.type === "everyday"
-        || (goalData.schedule?.type === "weekdays" && dayOfWeek >= 1 && dayOfWeek <= 5)
-        || (goalData.schedule?.type === "days" && goalData.schedule?.days?.includes(dayOfWeek));
-
-      if (isScheduled) {
-        const isDoneOnDate = goalData.type === "completion"
-          ? !!newLogs?.completion?.[dateKey]?.done
-          : (newLogs?.quantity?.[dateKey]?.value ?? 0) >= (goalData.measurable?.target ?? 0);
-
-        if (isDoneOnDate) current += 1;
-        else if (dateKey !== toKey(checkToday)) break;
-      }
-      checkDate.setDate(checkDate.getDate() - 1);
-    }
-
-    if (current > longest) longest = current;
-    return { currentStreak: current, longestStreak: longest };
   };
 
   const updateOverallAppStreak = async () => {
@@ -1007,162 +1346,30 @@ export default function GoalScreen({ route, navigation }) {
 
   const performToggleComplete = async ({ archiveToStorage = false } = {}) => {
     if (!auth.currentUser || !goal || shelfPosition?.pageId === STORAGE_PAGE_ID) return;
-
+    // Block completion if selected date is not a scheduled day
+    const selectedDateObj = fromKey(selectedDateKey);
+    if (!isGoalScheduledOnDate(goal, selectedDateObj)) {
+      Alert.alert(
+        "Not Scheduled Today",
+        "You can't complete this goal on this date because it is not scheduled."
+      );
+      return;
+    }
     try {
-      const isCurrentlyDone = isGoalDoneForDate(goal, selectedDateKey);
-      const isSelectedToday = selectedDateKey === toKey(new Date());
-      const currentUserId = auth.currentUser.uid;
-      const isSharedMultiUser = isSharedGoalView && goal?.type === "completion" && !!goal?.multiUserWateringEnabled;
-
-      if (isSharedMultiUser) {
-        const sharedRef = doc(db, "sharedGardens", routeSharedGardenId, "layout", goal.id);
-        let transactionUpdate = null;
-        let ownerIdForSync = null;
-        let sourceGoalIdForSync = null;
-
-        await runTransaction(db, async (tx) => {
-          const snap = await tx.get(sharedRef);
-          if (!snap.exists()) return;
-
-          const latestGoal = { id: snap.id, ...snap.data(), gardenType: "shared" };
-          ownerIdForSync = latestGoal?.ownerId || null;
-          sourceGoalIdForSync = latestGoal?.sourceGoalId || null;
-
-          if (latestGoal?.shelfPosition?.pageId === STORAGE_PAGE_ID) return;
-
-          const latestLogs = JSON.parse(JSON.stringify(latestGoal.logs || {}));
-          if (!latestLogs.completion) latestLogs.completion = {};
-
-          const existingEntry = latestLogs.completion[selectedDateKey] || {};
-          const existingUsers = existingEntry.users || {};
-          const hasUserContribution = !!existingUsers[currentUserId];
-
-          const wasDone = isGoalDoneForDate(latestGoal, selectedDateKey);
-          const nextUsers = { ...existingUsers };
-          if (hasUserContribution) {
-            delete nextUsers[currentUserId];
-          } else {
-            nextUsers[currentUserId] = true;
-          }
-          const uniqueCount = Object.keys(nextUsers).filter((userId) => !!nextUsers[userId]).length;
-          const requiredContributors = Math.max(2, Math.floor(Number(latestGoal?.requiredContributors) || 2));
-          const isNowDone = uniqueCount >= requiredContributors;
-
-          const nextEntry = { ...existingEntry, users: nextUsers, done: isNowDone };
-          latestLogs.completion[selectedDateKey] = nextEntry;
-
-          const txUpdateData = {
-            [`logs.completion.${selectedDateKey}`]: nextEntry,
-          };
-
-          if (isNowDone !== wasDone) {
-            const nextGoalState = { ...latestGoal, logs: latestLogs };
-            const { currentStreak, longestStreak } = calculateStreak(nextGoalState, latestLogs);
-            const currentPlantHealth = getPlantHealthState(latestGoal, fromKey(selectedDateKey)).healthLevel;
-            txUpdateData.currentStreak = currentStreak;
-            txUpdateData.longestStreak = longestStreak;
-            txUpdateData.totalCompletions = increment(isNowDone ? 1 : -1);
-            txUpdateData.healthLevel = isNowDone ? (currentPlantHealth <= 1 ? 2 : 3) : 2;
-          }
-
-          tx.update(sharedRef, txUpdateData);
-          transactionUpdate = txUpdateData;
-        });
-
-        if (!transactionUpdate) return;
-
-        if (ownerIdForSync && sourceGoalIdForSync) {
-          try {
-            await updateDoc(doc(db, "users", ownerIdForSync, "goals", sourceGoalIdForSync), transactionUpdate);
-          } catch (syncError) {
-            if (syncError?.code !== "permission-denied") {
-              console.error("Error syncing shared goal progress:", syncError);
-            }
-          }
-        }
-
-        await updateOverallScoresForSharedGardenMembers(routeSharedGardenId);
-
-        return;
-      }
-
-      const goalRef = isSharedGoalView
-        ? doc(db, "sharedGardens", routeSharedGardenId, "layout", goal.id)
-        : doc(db, "users", auth.currentUser.uid, "goals", goal.id);
-      const updatedLogs = JSON.parse(JSON.stringify(goal.logs || {}));
-      const updateData = {};
-      let shouldAwardCompletion = false;
-
-      if (goal.type === "completion") {
-        if (!updatedLogs.completion) updatedLogs.completion = {};
-
-        if (isSharedMultiUser) {
-          const existingEntry = updatedLogs.completion[selectedDateKey] || {};
-          const existingUsers = existingEntry.users || {};
-          if (existingUsers[currentUserId]) return;
-
-          const nextUsers = { ...existingUsers, [currentUserId]: true };
-          const uniqueCount = Object.keys(nextUsers).filter((userId) => !!nextUsers[userId]).length;
-          const requiredContributors = Math.max(2, Math.floor(Number(goal?.requiredContributors) || 2));
-          const isNowDone = uniqueCount >= requiredContributors;
-          updatedLogs.completion[selectedDateKey] = { ...existingEntry, users: nextUsers, done: isNowDone };
-          updateData[`logs.completion.${selectedDateKey}`] = updatedLogs.completion[selectedDateKey];
-          shouldAwardCompletion = isNowDone && !isCurrentlyDone;
-        } else {
-          updatedLogs.completion[selectedDateKey] = { done: !isCurrentlyDone };
-          updateData[`logs.completion.${selectedDateKey}.done`] = !isCurrentlyDone;
-          shouldAwardCompletion = !isCurrentlyDone;
-        }
-      } else {
-        if (!updatedLogs.quantity) updatedLogs.quantity = {};
-        const targetValue = goal.measurable?.target || 1;
-        updatedLogs.quantity[selectedDateKey] = { value: isCurrentlyDone ? 0 : targetValue };
-        updateData[`logs.quantity.${selectedDateKey}.value`] = isCurrentlyDone ? 0 : targetValue;
-        shouldAwardCompletion = !isCurrentlyDone;
-      }
-
-      if (shouldAwardCompletion || (!isSharedGoalView && isCurrentlyDone)) {
-        const growthChange = isCurrentlyDone ? -1 : 1;
-        const { currentStreak, longestStreak } = calculateStreak(goal, updatedLogs);
-        const currentPlantHealth = getPlantHealthState(goal, fromKey(selectedDateKey)).healthLevel;
-        updateData.currentStreak = currentStreak;
-        updateData.longestStreak = longestStreak;
-        updateData.totalCompletions = increment(growthChange);
-        updateData.healthLevel = isCurrentlyDone ? 2 : currentPlantHealth <= 1 ? 2 : 3;
-      }
-
-      await updateDoc(goalRef, updateData);
-
-      if (isSharedGoalView && goal?.ownerId && goal?.sourceGoalId) {
-        try {
-          await updateDoc(doc(db, "users", goal.ownerId, "goals", goal.sourceGoalId), updateData);
-        } catch (syncError) {
-          if (syncError?.code !== "permission-denied") {
-            console.error("Error syncing shared goal progress:", syncError);
-          }
-        }
-      }
-
-      if (isSharedGoalView) {
-        await updateOverallScoresForSharedGardenMembers(routeSharedGardenId);
-      }
-
-      if (!isSharedGoalView && archiveToStorage && !isCurrentlyDone) {
-        const storageSlot = await findFirstOpenStorageSlot(auth.currentUser.uid, goal.id);
-        if (storageSlot) {
-          await setDoc(
-            doc(db, "users", auth.currentUser.uid, "gardenLayout", goal.id),
-            { shelfPosition: storageSlot },
-            { merge: true }
-          );
-        }
-      }
-
-      if (!isSharedGoalView && shouldAwardCompletion && isSelectedToday) {
-        const newAppStreak = await updateOverallAppStreak();
-        await checkAchievements(newAppStreak);
-      }
+      if (tapCooldownRef.current) return;
+      startTapCooldown();
+      await toggleGoalTransaction({
+        goal,
+        selectedDateKey,
+        isSharedGoalView,
+        routeSharedGardenId,
+        shelfPosition,
+        archiveToStorage,
+        findFirstOpenStorageSlot,
+        clearLocalOptimisticProgress,
+      });
     } catch (error) {
+      clearLocalOptimisticProgress();
       console.error("Error toggling goal status:", error);
       Alert.alert("Error", "Could not update goal progress.");
     }
@@ -1176,28 +1383,51 @@ export default function GoalScreen({ route, navigation }) {
       return;
     }
 
-    const isCurrentlyDone = isGoalDoneForDate(goal, selectedDateKey);
-    const willBeDone = !isCurrentlyDone;
-    const endDate = goal?.completionCondition?.endDate;
-    const hasDateBound = goal?.completionCondition?.type === "date" || goal?.completionCondition?.type === "both";
+    const activeOptimistic = optimisticProgressRef.current;
+    const isCurrentlyDone = activeOptimistic?.isDone ?? isGoalDoneForDate(goal, selectedDateKey);
+    const goalType = goal.type || goal.kind;
+    const quantityTarget = Math.max(1, Math.floor(Number(goal?.measurable?.target) || 1));
+    const currentQuantityValue = Math.max(
+      0,
+      Math.min(
+        Number(activeOptimistic?.currentValue ?? goal?.logs?.quantity?.[selectedDateKey]?.value) || 0,
+        quantityTarget
+      )
+    );
+    const nextQuantityValue = goalType === "quantity"
+      ? (isCurrentlyDone
+        ? 0
+        : Math.min(currentQuantityValue + 1, quantityTarget))
+      : null;
+    const willCompleteSelectedDay = goalType === "quantity"
+      ? nextQuantityValue >= quantityTarget
+      : !isCurrentlyDone;
+    const completionCondition = goal?.completionCondition || { type: "none" };
+    const endDate = completionCondition.endDate;
+    const hasDateBound = completionCondition.type === "date" || completionCondition.type === "both";
     const isLastDay = hasDateBound && !!endDate && endDate === selectedDateKey;
+    // Check for amount-based completion
+    const isAmountBound = completionCondition.type === "amount" || completionCondition.type === "both";
+    let willReachAmount = false;
+    if (isAmountBound) {
+      const targetAmount = Number(completionCondition.targetAmount) || 1;
+      let total = 0;
+      if (goal?.logs?.quantity) {
+        total = Object.values(goal.logs.quantity).reduce((sum, entry) => sum + (Number(entry.value) || 0), 0);
+      }
+      // If this completion will reach or exceed the target amount
+      if (total + 1 >= targetAmount) {
+        willReachAmount = true;
+      }
+    }
 
-    if (willBeDone && isLastDay) {
+    if ((isLastDay && willCompleteSelectedDay) || (willReachAmount && !isCurrentlyDone)) {
       Alert.alert(
-        "Last Day Reached",
-        "This is the goal’s end date. Turn it into a trophy or postpone the end date?",
+        "Goal Complete",
+        "Do you want to move this goal to the trophy collection or cancel?",
         [
-          { text: "Cancel", style: "cancel" },
-          { text: "Make Trophy", style: "default", onPress: completeGoalToTrophy },
-          {
-            text: "Postpone End Date",
-            style: "default",
-            onPress: () => {
-              setPostponeEndDateInput(endDate || "");
-              setPostponeCalendarMonth(monthFromISOOrToday(endDate || ""));
-              setShowPostponeDateModal(true);
-            },
-          },
+          { text: "Cancel", style: "destructive" }, // red
+          { text: "Make Trophy", style: "default", onPress: completeGoalToTrophy }, // blue
         ]
       );
       return;
@@ -1214,36 +1444,20 @@ export default function GoalScreen({ route, navigation }) {
       const goalRef = isSharedGoalView
         ? doc(db, "sharedGardens", routeSharedGardenId, "layout", goal.id)
         : doc(db, "users", auth.currentUser.uid, "goals", goal.id);
-      const isCurrentlyDone = isGoalDoneForDate(goal, selectedDateKey);
-      const updatedLogs = JSON.parse(JSON.stringify(goal.logs || {}));
 
-      if (goal.type === "completion") {
-        if (!updatedLogs.completion) updatedLogs.completion = {};
-        updatedLogs.completion[selectedDateKey] = { done: true };
-      } else {
-        if (!updatedLogs.quantity) updatedLogs.quantity = {};
-        const targetValue = goal.measurable?.target || 1;
-        updatedLogs.quantity[selectedDateKey] = { value: targetValue };
-      }
-
-      const { currentStreak, longestStreak } = calculateStreak(goal, updatedLogs);
-      const updateData = {
-        currentStreak,
-        longestStreak,
-        healthLevel: 3,
+      // Freeze health/streaks as they are now (do NOT mark today as done)
+      const preCompleteLogs = JSON.parse(JSON.stringify(goal.logs || {}));
+      const { currentStreak: frozenCurrentStreak, longestStreak: frozenLongestStreak } = calculateGoalStreak(goal, preCompleteLogs, selectedDateKey);
+      const frozenHealthLevel = getPlantHealthState({ ...goal, logs: preCompleteLogs }).healthLevel;
+      const todayTrophyDate = toKey(new Date());
+      let updateData = {
+        // Do not update logs or mark today as done
+        isFrozenTrophyState: true,
+        frozenHealthLevel,
+        frozenCurrentStreak,
+        frozenLongestStreak,
+        trophyDate: todayTrophyDate,
       };
-
-      if (!isCurrentlyDone) {
-        updateData.totalCompletions = increment(1);
-      }
-
-      if (goal.type === "completion") {
-        updateData[`logs.completion.${selectedDateKey}.done`] = true;
-      } else {
-        const targetValue = goal.measurable?.target || 1;
-        updateData[`logs.quantity.${selectedDateKey}.value`] = targetValue;
-      }
-
       await updateDoc(goalRef, updateData);
 
       if (isSharedGoalView && goal?.ownerId && goal?.sourceGoalId) {
@@ -1308,14 +1522,36 @@ export default function GoalScreen({ route, navigation }) {
         ? doc(db, "sharedGardens", routeSharedGardenId, "layout", goal.id)
         : doc(db, "users", auth.currentUser.uid, "goals", goal.id);
 
+      // Unfreeze trophy state: explicitly delete frozen fields in Firestore
+      // and store resumeFromTrophyDate and resumeFromTrophyHealth
+      const { isFrozenTrophyState, frozenHealthLevel, frozenCurrentStreak, frozenLongestStreak, trophyDate, ...restGoal } = goal;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const resumeFromTrophyDate = trophyDate ? fromKey(trophyDate) : today;
+      resumeFromTrophyDate.setDate(resumeFromTrophyDate.getDate() + 1); // day after trophy
+      const resumeFromTrophyDateKey = toKey(resumeFromTrophyDate);
       await updateDoc(goalRef, {
+        ...restGoal,
         completionCondition: nextCompletionCondition,
+        isFrozenTrophyState: deleteField(),
+        frozenHealthLevel: deleteField(),
+        frozenCurrentStreak: deleteField(),
+        frozenLongestStreak: deleteField(),
+        resumeFromTrophyDate: resumeFromTrophyDateKey,
+        resumeFromTrophyHealth: Number(frozenHealthLevel) || 5,
       });
 
       if (isSharedGoalView && goal?.ownerId && goal?.sourceGoalId) {
         try {
           await updateDoc(doc(db, "users", goal.ownerId, "goals", goal.sourceGoalId), {
+            ...restGoal,
             completionCondition: nextCompletionCondition,
+            isFrozenTrophyState: deleteField(),
+            frozenHealthLevel: deleteField(),
+            frozenCurrentStreak: deleteField(),
+            frozenLongestStreak: deleteField(),
+            resumeFromTrophyDate: resumeFromTrophyDateKey,
+            resumeFromTrophyHealth: Number(frozenHealthLevel) || 5,
           });
         } catch (syncError) {
           if (syncError?.code !== "permission-denied") {
@@ -1330,7 +1566,7 @@ export default function GoalScreen({ route, navigation }) {
       Alert.alert("Returned", "This trophy has been moved back to active goals.");
     } catch (error) {
       console.error("Error returning goal from trophy:", error);
-      Alert.alert("Error", "Could not return this goal from trophy state.");
+      Alert.alert("Error", "Could not return goal from trophy.");
     } finally {
       setIsCompletingToTrophy(false);
     }
@@ -1422,93 +1658,636 @@ export default function GoalScreen({ route, navigation }) {
   if (loading) return <Page><View style={styles.centerWrap}><ActivityIndicator size="large" color={theme.accent} /></View></Page>;
   if (!goal) return <Page><View style={styles.centerWrap}><Text style={styles.empty}>Goal not found</Text><Pressable onPress={handleBack}><Text style={styles.backLink}>Go Back</Text></Pressable></View></Page>;
 
+  // --- Robust shared multi-user quantity goal logic ---
   const isCompletion = goal.type === "completion";
+  const isQuantity = goal.type === "quantity";
   const isSharedMultiUserCompletion = isSharedGoalView && isCompletion && !!goal?.multiUserWateringEnabled;
+  const isSharedMultiUserQuantity = isSharedGoalView && isQuantity && !!goal?.multiUserWateringEnabled;
+  const currentUserId = auth.currentUser?.uid;
+  const requiredSharedContributors = (isSharedMultiUserCompletion || isSharedMultiUserQuantity)
+    ? Math.max(2, Math.floor(Number(goal?.requiredContributors) || 2))
+    : 1;
+
+  // --- Contributor count for shared multi-user quantity ---
+  // Always use Firestore logs, only count users who reached the target for the day
+  const quantityTargetValue = isQuantity ? (goal.measurable?.target ?? 1) : 1;
+  let firestoreQuantityLogs = {};
+  if (
+    goal &&
+    goal.logs &&
+    goal.logs.quantity &&
+    goal.logs.quantity[selectedDateKey] &&
+    typeof goal.logs.quantity[selectedDateKey].users === 'object' &&
+    goal.logs.quantity[selectedDateKey].users !== null
+  ) {
+    firestoreQuantityLogs = goal.logs.quantity[selectedDateKey].users;
+  }
+  let contributorQuantityCount = 0;
+  if (isSharedMultiUserQuantity) {
+    // Defensive: use contributors list if present, else all user keys in logs
+    const allContributors = Array.isArray(goal.contributors)
+      ? goal.contributors
+      : Object.keys(firestoreQuantityLogs);
+    contributorQuantityCount = allContributors.filter((userId) => Number(firestoreQuantityLogs[userId]) >= quantityTargetValue).length;
+  }
+  // For completion: count users who marked done
   const currentWaterUsers = isSharedMultiUserCompletion
     ? Object.keys(goal?.logs?.completion?.[selectedDateKey]?.users || {}).filter((userId) => !!goal?.logs?.completion?.[selectedDateKey]?.users?.[userId]).length
     : 0;
-  const currentUserId = auth.currentUser?.uid;
   const currentUserClicked = isSharedMultiUserCompletion
     ? !!(goal?.logs?.completion?.[selectedDateKey]?.users?.[currentUserId])
     : false;
-  const requiredSharedContributors = isSharedMultiUserCompletion
-    ? Math.max(2, Math.floor(Number(goal?.requiredContributors) || 2))
-    : 1;
-  const contributorProgressLabel = `${Math.min(currentWaterUsers, requiredSharedContributors)}/${requiredSharedContributors}`;
-  const currentValue = isCompletion
+  // Contributor progress label
+  const contributorProgressLabel = isSharedMultiUserQuantity
+    ? `${Math.min(contributorQuantityCount, requiredSharedContributors)}/${requiredSharedContributors}`
+    : `${Math.min(currentWaterUsers, requiredSharedContributors)}/${requiredSharedContributors}`;
+
+  // --- Per-user progress for quantity goals ---
+  // For shared multi-user quantity, only show optimistic progress for the current user's segment
+  let quantityLogs = firestoreQuantityLogs;
+  const firestoreUserValue = Number(firestoreQuantityLogs[currentUserId]) || 0;
+  if (isSharedMultiUserQuantity && optimisticProgress && typeof optimisticProgress.currentValue === 'number') {
+    // Only show optimistic value for the current user's segment
+    quantityLogs = { ...firestoreQuantityLogs, [currentUserId]: optimisticProgress.currentValue };
+  }
+  // For single-user, fallback to value
+  const baseCurrentValue = isCompletion
     ? (isSharedMultiUserCompletion ? currentWaterUsers : (goal.logs?.completion?.[selectedDateKey]?.done ? 1 : 0))
     : (goal.logs?.quantity?.[selectedDateKey]?.value ?? 0);
   const targetValue = isCompletion ? (isSharedMultiUserCompletion ? requiredSharedContributors : 1) : (goal.measurable?.target ?? 0);
-  const isDone = currentValue >= targetValue && targetValue > 0;
+  // For shared multi-user quantity, show current user's optimistic progress if available
+  // For shared multi-user quantity, always use the current user's value (optimistic if available, else Firestore)
+  const currentUserQuantityValue = isSharedMultiUserQuantity
+    ? (optimisticProgress && typeof optimisticProgress.currentValue === 'number'
+        ? optimisticProgress.currentValue
+        : firestoreUserValue)
+    : null;
+  const currentValue = isSharedMultiUserQuantity
+    ? currentUserQuantityValue
+    : (!isSharedMultiUserCompletion && optimisticProgress)
+      ? optimisticProgress.currentValue
+      : baseCurrentValue;
+
+  // --- Group-level completion, health, streak, trophy logic ---
+  // Always use isGoalDoneForDate in group mode (no currentUserId) for shared multi-user quantity
+  const isDone = isSharedMultiUserQuantity
+    ? isGoalDoneForDate(goal, selectedDateKey)
+    : (!isSharedMultiUserCompletion && optimisticProgress)
+      ? optimisticProgress.isDone
+      : (currentValue >= targetValue && targetValue > 0);
+
+  // Only use optimistic progress for current user's segments, not for group completion/health
+  // For shared multi-user quantity, always derive totalCompletions from logs
+  const goalForDerivedState = (() => {
+    if (!goal) return goal;
+
+    // For shared multi-user quantity, recalculate totalCompletions from logs
+    if (isSharedMultiUserQuantity) {
+      // Defensive: use contributors list if present, else all user keys in logs
+      const quantityLogs = goal.logs?.quantity || {};
+      const contributors = Array.isArray(goal.contributors)
+        ? goal.contributors
+        : Object.values(quantityLogs).reduce((acc, entry) => {
+            if (entry && typeof entry.users === 'object' && entry.users !== null) {
+              Object.keys(entry.users).forEach((uid) => {
+                if (!acc.includes(uid)) acc.push(uid);
+              });
+            }
+            return acc;
+          }, []);
+      const targetValue = goal.measurable?.target ?? 1;
+      const requiredContributors = Math.max(2, Math.floor(Number(goal?.requiredContributors) || 2));
+      // Count days where group completion was achieved
+      const groupDoneDates = Object.entries(quantityLogs).filter(([dateKey, entry]) => {
+        if (!entry || typeof entry.users !== 'object' || entry.users === null) return false;
+        const userDoneCount = contributors.filter((userId) => Number(entry.users[userId]) >= targetValue).length;
+        return userDoneCount >= requiredContributors;
+      });
+      const derivedTotalCompletions = groupDoneDates.length;
+      return {
+        ...goal,
+        totalCompletions: derivedTotalCompletions,
+      };
+    }
+
+    // For shared multi-user completion, recalculate totalCompletions from logs
+    if (isSharedMultiUserCompletion) {
+      const completionLogs = goal.logs?.completion || {};
+      const requiredContributors = Math.max(2, Math.floor(Number(goal?.requiredContributors) || 2));
+      const groupDoneDates = Object.entries(completionLogs).filter(([dateKey, entry]) => {
+        if (!entry || typeof entry.users !== 'object' || entry.users === null) return false;
+        const uniqueCount = Object.keys(entry.users).filter((userId) => !!entry.users[userId]).length;
+        return uniqueCount >= requiredContributors;
+      });
+      const derivedTotalCompletions = groupDoneDates.length;
+      return {
+        ...goal,
+        totalCompletions: derivedTotalCompletions,
+      };
+    }
+
+    // For optimistic progress (single-user), update logs for UI
+    if (!isSharedMultiUserCompletion && !isSharedMultiUserQuantity && optimisticProgress) {
+      const nextLogs = JSON.parse(JSON.stringify(goal.logs || {}));
+      if (isCompletion) {
+        if (!nextLogs.completion) nextLogs.completion = {};
+        nextLogs.completion[selectedDateKey] = {
+          ...(nextLogs.completion[selectedDateKey] || {}),
+          done: !!optimisticProgress.isDone,
+        };
+      } else {
+        if (!nextLogs.quantity) nextLogs.quantity = {};
+        nextLogs.quantity[selectedDateKey] = {
+          ...(nextLogs.quantity[selectedDateKey] || {}),
+          value: Number(currentValue) || 0,
+        };
+      }
+      return {
+        ...goal,
+        logs: nextLogs,
+      };
+    }
+    return goal;
+  })();
   const isTrophy = shelfPosition?.pageId === STORAGE_PAGE_ID;
-  const displayHealthState = getPlantHealthState(goal, fromKey(selectedDateKey));
-  const showReviveHeart = isDone && displayHealthState.healthLevel === 2;
+  // If goal is a trophy or was a trophy and frozen, use frozen values for streak, health, rewards
+  const isFrozenTrophy = goal?.isFrozenTrophyState;
+  const displayHealthState = getPlantHealthState(goalForDerivedState, fromKey(selectedDateKey));
+
+  // Find the date the plant became a trophy
+  const trophyDate = goal?.trophyDate || null;
+  const showReviveHeart = isDone && displayHealthState.healthLevel === 3;
   const selectedDateLabel = fromKey(selectedDateKey).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const progressUnitLabel = isSharedMultiUserCompletion ? "users" : (goal.measurable?.unit || "");
+  const topSummary = [
+    goal.frequencyLabel || formatScheduleLabel(goal.schedule),
+    goal.category || "Custom",
+  ].filter(Boolean).join(" • ");
+  const todayKey = toKey(new Date());
+  const anchor = fromKey(todayKey);
+  anchor.setHours(0, 0, 0, 0);
+  const recentHistory = [];
+
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const date = new Date(anchor);
+    date.setDate(anchor.getDate() - offset);
+    const dateKey = toKey(date);
+    const scheduled = isGoalScheduledOnDate(goalForDerivedState, date);
+    // For group-level history, use group mode for shared multi-user quantity
+    const doneForDate = scheduled && (isSharedMultiUserQuantity
+      ? isGoalDoneForDate(goal, dateKey)
+      : isGoalDoneForDate(goalForDerivedState, dateKey, currentUserId)
+    );
+    const isTodayDate = dateKey === todayKey;
+    const isPastDay = date.getTime() < anchor.getTime();
+
+    // Trophy logic: freeze stats from trophyDate forward, including today if goal is a trophy
+    let isFrozenDay = false;
+    if (trophyDate && dateKey >= trophyDate && (isTrophy || !isTodayDate)) {
+      isFrozenDay = true;
+    }
+
+    let healthLevel;
+    if (isFrozenDay) {
+      healthLevel = Number(goal?.frozenHealthLevel) || 5;
+    } else {
+      healthLevel = typeof goal?.logs?.healthHistory?.[dateKey] === 'number'
+        ? goal.logs.healthHistory[dateKey]
+        : null;
+    }
+
+    recentHistory.push({
+      dateKey,
+      dayLabel: date.toLocaleDateString(undefined, { weekday: "short" }).slice(0, 2),
+      dayNumber: date.getDate(),
+      scheduled,
+      done: doneForDate,
+      missed: scheduled && !doneForDate && isPastDay,
+      pending: scheduled && !doneForDate && isTodayDate,
+      isToday: isTodayDate,
+      healthLevel,
+      isFrozenDay,
+    });
+  }
+  const progressStatusText = isSharedMultiUserCompletion
+    ? `${contributorProgressLabel} contributors`
+    : (isTrophy ? "Stored in trophy collection" : null);
+  const showQuantitySegments = isQuantity && Number(targetValue) > 0;
+  const quantitySegmentCount = showQuantitySegments ? Math.max(1, Math.min(Math.floor(Number(targetValue) || 1), 6)) : 0;
+  const safeQuantityCurrent = showQuantitySegments
+    ? Math.max(0, Math.min(Number(currentValue) || 0, Number(targetValue) || 1))
+    : 0;
+  const filledQuantitySegments = showQuantitySegments
+    ? Math.min(quantitySegmentCount, Math.ceil((safeQuantityCurrent / (Number(targetValue) || 1)) * quantitySegmentCount))
+    : 0;
+  // Use frozen streaks for trophy/frozen
+  const rewardStreakState = (isTrophy || isFrozenTrophy)
+    ? { currentStreak: goal?.frozenCurrentStreak ?? goal.currentStreak ?? 0, longestStreak: goal?.frozenLongestStreak ?? goal.longestStreak ?? 0 }
+    : calculateGoalStreak(
+        goalForDerivedState,
+        goalForDerivedState?.logs || {},
+        selectedDateKey
+      );
+  const currentRewardStreak = Number(rewardStreakState?.currentStreak) || Number(goalForDerivedState?.currentStreak) || 0;
+  // Use frozen health for trophy/frozen
+  const currentHealthLevel = (isTrophy || isFrozenTrophy)
+    ? Number(goal?.frozenHealthLevel) || 5
+    : Number(displayHealthState.healthLevel) || 1;
+  const trophyPreviewKey = getPreviewTrophyRating(currentRewardStreak, currentHealthLevel);
+  const trophyPreview = TROPHY_ROADMAP.find((item) => item.key === trophyPreviewKey) || TROPHY_ROADMAP[0];
+  const trophyPreviewIndex = TROPHY_ROADMAP.findIndex((item) => item.key === trophyPreview.key);
+  const currentTierBase = TROPHY_ROADMAP[Math.max(0, trophyPreviewIndex)] || TROPHY_ROADMAP[0];
+  const nextTrophy = TROPHY_ROADMAP[trophyPreviewIndex + 1] || null;
+  const streakGap = nextTrophy ? Math.max(0, nextTrophy.streak - currentRewardStreak) : 0;
+  const progressDenominator = nextTrophy
+    ? Math.max(1, nextTrophy.streak - currentTierBase.streak)
+    : 1;
+  const progressNumerator = nextTrophy
+    ? Math.max(0, Math.min(currentRewardStreak - currentTierBase.streak, progressDenominator))
+    : 1;
+  const nextLevelProgress = nextTrophy ? (progressNumerator / progressDenominator) * 100 : 100;
+  const progressStageKey = (nextTrophy || trophyPreview).key;
+  const progressStageStyle = TROPHY_PROGRESS_STYLE[progressStageKey] || TROPHY_PROGRESS_STYLE.bronze;
+  const nextTrophyHint = nextTrophy
+    ? `${streakGap > 0 ? `${streakGap} more streak day${streakGap === 1 ? "" : "s"}` : "Streak ready"}${currentHealthLevel < nextTrophy.health ? ` • health ${nextTrophy.health}/5 needed` : ""}`
+    : "Top trophy tier reached.";
+  // Use frozen health for health bar if trophy/frozen
+  const healthLevelValue = (isTrophy || isFrozenTrophy)
+    ? Number(goal?.frozenHealthLevel) || 5
+    : Math.max(1, Math.min(5, Number(displayHealthState.healthLevel) || 1));
+  const HEALTH_BLUE_BY_LEVEL = {
+    1: "#8ea5bf",
+    2: "#789fc6",
+    3: "#5f9bce",
+    4: "#4a9bd8",
+    5: "#3497e6",
+  };
+  const getHealthBlue = (level) => HEALTH_BLUE_BY_LEVEL[Math.max(1, Math.min(5, Number(level) || 1))] || "#4a9bd8";
+  const healthBarColor = getHealthBlue(healthLevelValue);
+  const totalCompletionsValue = Math.max(0, Number(goalForDerivedState?.totalCompletions) || 0);
+  const growthMilestones = [
+    { stage: "Stage 1", start: 0, nextStart: 6 },
+    { stage: "Stage 2", start: 6, nextStart: 16 },
+    { stage: "Stage 3", start: 16, nextStart: 31 },
+    { stage: "Stage 4", start: 31, nextStart: null },
+  ];
+  const activeGrowthMilestone = growthMilestones.find((item, index) => {
+    const next = growthMilestones[index + 1];
+    if (!next) return totalCompletionsValue >= item.start;
+    return totalCompletionsValue >= item.start && totalCompletionsValue < next.start;
+  }) || growthMilestones[growthMilestones.length - 1];
+  const growthStageCompletions = Math.max(0, totalCompletionsValue - activeGrowthMilestone.start);
+  const growthStageNeeded = activeGrowthMilestone.nextStart
+    ? Math.max(1, activeGrowthMilestone.nextStart - activeGrowthMilestone.start)
+    : 0;
+  const growthToNextPercent = activeGrowthMilestone.nextStart
+    ? Math.max(
+        0,
+        Math.min(
+          100,
+          (growthStageCompletions / growthStageNeeded) * 100
+        )
+      )
+    : 100;
+
+  const getGoalPreviewBackdropColor = (goalData) => {
+    const isSharedGoal = !!routeSharedGardenId || !!goalData?.sharedGardenId || goalData?.gardenType === "shared";
+    const resolvedPageId = shelfPosition?.pageId || goalData?.shelfPosition?.pageId || "default";
+    const sharedGardenKey = goalData?.sharedGardenId || goalData?.gardenId || routeSharedGardenId;
+
+    const pageCustomizations = isSharedGoal
+      ? (
+          sharedCustomizationsByGarden?.[sharedGardenKey]?.[resolvedPageId]
+          || sharedCustomizationsByGarden?.[sharedGardenKey]?.default
+        )
+      : (personalCustomizations?.[resolvedPageId] || personalCustomizations?.default);
+
+    const wallBgIndex = Number(pageCustomizations?.wallBg ?? 0);
+    return WALLPAPER_OPTIONS[wallBgIndex]?.previewColor || DEFAULT_PLANT_PREVIEW_COLOR;
+  };
+
+  const previewBackdropColor = getGoalPreviewBackdropColor(goal);
+
+  const triggerDetailHaptic = (style = Haptics.ImpactFeedbackStyle.Medium) => {
+    Haptics.impactAsync(style).catch(() => {});
+  };
+
+  let statusButtonBgColor = "#f1f1f1";
+  let statusButtonShadowColor = "#d6d6d6";
+  let statusButtonIconColor = "#58cc02";
+
+  if (isTrophy) {
+    statusButtonBgColor = "#d9dde3";
+    statusButtonShadowColor = "#b7c0c9";
+    statusButtonIconColor = "#7b8794";
+  } else if (isDone) {
+    statusButtonBgColor = "#59d700";
+    statusButtonShadowColor = "#4aa93a";
+    statusButtonIconColor = "#ffffff";
+  } else if (isSharedMultiUserCompletion && currentUserClicked) {
+    statusButtonBgColor = "#8ef148";
+    statusButtonShadowColor = "#73cf39";
+    statusButtonIconColor = "#ffffff";
+  } else if (isSharedMultiUserQuantity && isDone) {
+    statusButtonBgColor = "#59d700";
+    statusButtonShadowColor = "#4aa93a";
+    statusButtonIconColor = "#ffffff";
+  } else if (isQuantity && Number(currentValue) >= (quantityTargetValue || 1)) {
+    statusButtonBgColor = "#8ef148";
+    statusButtonShadowColor = "#73cf39";
+    statusButtonIconColor = "#ffffff";
+  } else if (isQuantity && Number(currentValue) >= (quantityTargetValue || 1)) {
+    statusButtonBgColor = "#eef6e8";
+    statusButtonShadowColor = "#c6d6b9";
+    statusButtonIconColor = "#2f7d12";
+  }
+
+  const primaryActionBgColor = isTrophy ? "#6d9eff" : "#59d700";
+  const primaryActionShadowColor = isTrophy ? "#4e79cf" : "#4aa93a";
 
   return (
     <Page>
-      <View style={styles.headerRow}>
-        <Pressable onPress={handleBack} hitSlop={20} style={styles.headerBtn}>
-          <Ionicons name="chevron-back" size={28} color={theme.accent} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Goal Details</Text>
-        <View style={styles.headerActions}>
-          <Pressable onPress={openEditModal} hitSlop={20} style={styles.headerBtn}>
-            <Ionicons name="create-outline" size={22} color={theme.accent} />
+      <View style={styles.headerWrapper}>
+        <View style={styles.headerRow}>
+          <Pressable
+            onPress={handleBack}
+            onPressIn={() => triggerDetailHaptic(Haptics.ImpactFeedbackStyle.Light)}
+            hitSlop={20}
+            style={styles.headerBtn}
+          >
+            <Ionicons name="chevron-back" size={26} color={theme.accent} />
           </Pressable>
-          <Pressable onPress={confirmDelete} hitSlop={20} style={styles.headerBtn}>
-            <Ionicons name="trash-outline" size={22} color={theme.dangerText || "#ff4444"} />
-          </Pressable>
+          <Text style={styles.headerTitle}>Goal Details</Text>
+          <View style={styles.headerActions}>
+            <View style={styles.headerBtn}>
+              <EditButtonRestriction
+                goal={goal}
+                sharedGardens={sharedGardens}
+                openEditModal={openEditModal}
+              />
+            </View>
+            <Pressable
+              onPress={confirmDelete}
+              onPressIn={() => triggerDetailHaptic(Haptics.ImpactFeedbackStyle.Light)}
+              hitSlop={20}
+              style={[styles.headerBtn, styles.headerBtnDanger]}
+            >
+              <Ionicons name="trash-outline" size={20} color={theme.dangerText || "#ff4444"} />
+            </Pressable>
+          </View>
         </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.heroCard}>
-          <View style={styles.heroIconWrap}>
-            <GoalIcon name={normalizeGoalIconName(goal.icon, "target")} size={42} color="#FFF" />
-          </View>
-          <Text style={styles.heroTitle}>{goal.name}</Text>
-          <Text style={styles.heroSub}>{goal.frequencyLabel || formatScheduleLabel(goal.schedule)}</Text>
-          <View style={styles.heroBadgeRow}>
-            <View style={styles.heroBadge}><Text style={styles.heroBadgeText}>{goal.category || "Custom"}</Text></View>
-            <View style={styles.heroBadge}><Text style={styles.heroBadgeText}>{healthLabel(goal.healthLevel)}</Text></View>
+          <GoalPlantPreview
+            goal={goalForDerivedState}
+            getPlantHealthState={getPlantHealthState}
+            backdropColor={previewBackdropColor}
+            variant="hero"
+          />
+          <View style={styles.heroTextWrap}>
+            <Text style={styles.heroTitle} numberOfLines={2}>{goal.name}</Text>
+            <Text style={styles.heroSub}>{topSummary}</Text>
           </View>
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Today</Text>
           <View style={styles.progressCard}>
-            <View>
-              <Text style={styles.progressDate}>{selectedDateLabel}</Text>
-              <Text style={styles.progressValue}>{currentValue} / {targetValue} {progressUnitLabel}</Text>
-              <Text style={styles.progressStatus}>{isTrophy ? "Frozen in trophy storage 🏆" : (isDone ? "Goal reached ✨" : "In progress")}</Text>
+            <View style={styles.progressContent}>
+              <Text style={styles.progressDate}>
+                {selectedDateLabel} • {isTrophy ? "Trophy" : (isDone ? "Complete" : "Active")}
+              </Text>
+              <Text style={styles.progressValue}>{currentValue} / {targetValue}{progressUnitLabel ? ` ${progressUnitLabel}` : ""}</Text>
+              {progressStatusText ? <Text style={styles.progressStatus}>{progressStatusText}</Text> : null}
             </View>
-            <Pressable disabled={isTrophy} onPress={handleToggleComplete} style={[styles.toggleButton, isDone && styles.toggleButtonDone, isTrophy && styles.toggleButtonDisabled]}>
-              {showReviveHeart && <Ionicons name="heart" size={15} color="#FF6B8A" style={styles.toggleHeart} />}
-              <View style={[
-                styles.statusCircle,
-                isSharedMultiUserCompletion && !isDone && currentUserClicked && styles.statusCircleSelf,
-                isDone && styles.statusCircleDone,
-                isTrophy && styles.statusCircleFrozen,
-              ]}>
-                {isSharedMultiUserCompletion ? (
-                  <Text style={[styles.statusCircleCount, isDone && styles.statusCircleCountDone]}>{contributorProgressLabel}</Text>
-                ) : isDone ? (
-                  <Ionicons name="checkmark" size={20} color="#FFF" />
-                ) : null}
+
+            <View style={[styles.goalStatusButton, { width: 58, height: 62 }]}> 
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.goalStatusButtonShadow,
+                  {
+                    borderRadius: 22,
+                    backgroundColor: statusButtonShadowColor,
+                  },
+                ]}
+              />
+              <Pressable
+                hitSlop={8}
+                disabled={isTrophy || isTapCoolingDown}
+                onPressIn={() => {
+                  if (!isTrophy) triggerDetailHaptic();
+                }}
+                onPress={handleToggleComplete}
+                style={({ pressed }) => [
+                  styles.goalStatusButtonFace,
+                  {
+                    width: 58,
+                    height: 58,
+                    borderRadius: 22,
+                    backgroundColor: statusButtonBgColor,
+                    transform: [{ translateY: pressed && !isTapCoolingDown ? 4 : 0 }],
+                  },
+                  isTrophy && styles.goalStatusButtonDisabled,
+                ]}
+              >
+                {isSharedMultiUserQuantity ? (
+                  <View style={styles.quantityButtonContent}>
+                    <Text
+                      style={[
+                        styles.sharedQuantityProgressLabel,
+                        { color: (Number(currentValue) >= quantityTargetValue) ? '#fff' : '#58cc02' },
+                      ]}
+                    >
+                      {`${Math.min(Object.values(quantityLogs).filter(v => Number(v) >= quantityTargetValue).length, requiredSharedContributors)}/${requiredSharedContributors}`}
+                    </Text>
+                    <View style={styles.quantitySegmentRow}>
+                      {Array.from({ length: quantitySegmentCount }).map((_, index) => {
+                        const userValue = Math.max(0, Math.min(Number(currentValue) || 0, quantityTargetValue));
+                        const filled = Math.min(quantitySegmentCount, Math.ceil((userValue / (Number(quantityTargetValue) || 1)) * quantitySegmentCount));
+                        // For shared multi-user quantity: segments are white if user has completed their part
+                        const userDone = userValue >= quantityTargetValue;
+                        return (
+                          <View
+                            key={`goal-quantity-segment-${index}`}
+                            style={[
+                              styles.quantitySegment,
+                              index < filled
+                                ? (userDone ? styles.quantitySegmentDone : styles.quantitySegmentFilled)
+                                : styles.quantitySegmentEmpty,
+                            ]}
+                          />
+                        );
+                      })}
+                    </View>
+                  </View>
+                ) : isQuantity ? (
+                  <View style={styles.quantityButtonContent}>
+                    <View style={styles.quantitySegmentRow}>
+                      {Array.from({ length: quantitySegmentCount }).map((_, index) => (
+                        <View
+                          key={`goal-quantity-segment-${index}`}
+                          style={[
+                            styles.quantitySegment,
+                            index < filledQuantitySegments
+                              ? (isDone ? styles.quantitySegmentDone : styles.quantitySegmentFilled)
+                              : styles.quantitySegmentEmpty,
+                          ]}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                ) : isSharedMultiUserCompletion ? (
+                  <Text
+                    style={[
+                      styles.statusCircleCount,
+                      { color: (isDone || currentUserClicked) ? "#ffffff" : statusButtonIconColor },
+                    ]}
+                  >
+                    {contributorProgressLabel}
+                  </Text>
+                ) : (
+                  <Ionicons name={isDone ? "close" : "checkmark"} size={30} color={statusButtonIconColor} />
+                )}
+              </Pressable>
+            </View>
+          </View>
+          <View style={styles.todayHealthCard}>
+            <View style={styles.todayHealthHeader}>
+              <Text style={styles.todayHealthTitle}>Plant health</Text>
+              <Text style={styles.todayHealthValue}>{healthLevelValue}/5 • {healthLabel(healthLevelValue)}</Text>
+            </View>
+            <AnimatedTodayHealthBar healthLevel={healthLevelValue} color={healthBarColor} />
+            <View style={styles.growthStageWrap}>
+              <View style={styles.growthStageHeader}>
+                <Text style={styles.growthStageTitle}>Progress to next stage</Text>
+                <Text style={styles.growthStageValue}>
+                  {activeGrowthMilestone.nextStart
+                    ? `${Math.min(growthStageCompletions, growthStageNeeded)}/${growthStageNeeded}`
+                    : "Final"}
+                </Text>
               </View>
-            </Pressable>
+              <AnimatedGrowthStageBar
+                progressPercent={growthToNextPercent}
+                color={activeGrowthMilestone.nextStart ? "#59d700" : "#ffd454"}
+                showGoldStripes={!activeGrowthMilestone.nextStart}
+              />
+            </View>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Stats</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statBox}><Text style={styles.statLabel}>Current streak</Text><Text style={styles.statValue}>{goal.currentStreak || 0}</Text></View>
-            <View style={styles.statBox}><Text style={styles.statLabel}>Longest streak</Text><Text style={styles.statValue}>{goal.longestStreak || 0}</Text></View>
-            <View style={styles.statBox}><Text style={styles.statLabel}>Total logs</Text><Text style={styles.statValue}>{goal.totalCompletions || 0}</Text></View>
-            <View style={styles.statBox}><Text style={styles.statLabel}>Health</Text><Text style={styles.statValue}>{goal.healthLevel || 3}/3</Text></View>
+          <Text style={styles.sectionTitle}>Weekly streak</Text>
+          <View style={styles.historyCardDuolingo}>
+            <View style={styles.historyTopRowSimple}>
+              <Text style={styles.historyHeadline}>This week</Text>
+              <View style={styles.historyStreakBadge}>
+                <Image source={FIRE_STREAK_ICON} style={styles.historyStreakIcon} resizeMode="contain" />
+                <Text style={styles.historyStreakValue}>
+                  {goal.currentStreak || 0} day streak
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.duolingoRow}>
+              {recentHistory.map((entry) => {
+                // Show badge image for all frozen days, regardless of done status
+                return (
+                  <View key={entry.dateKey} style={styles.duolingoDayWrap}>
+                    <Text style={[
+                      styles.duolingoDayLabel,
+                      entry.isToday && styles.duolingoDayLabelToday,
+                      entry.isFrozenDay && { color: trophyPreview.color },
+                    ]}>{entry.dayLabel}</Text>
+                    {entry.isFrozenDay ? (
+                      <Image
+                        source={getBadgeImageForTrophyKey(trophyPreview.key)}
+                        style={styles.duolingoBadgeImage}
+                        resizeMode="contain"
+                      />
+                    ) : entry.done ? (
+                      <View
+                        style={[
+                          styles.duolingoBubble,
+                          styles.duolingoBubbleDone,
+                          entry.isToday && styles.duolingoBubbleToday,
+                        ]}
+                      >
+                        <LucideIcons.Check size={20} color="#ffffff" strokeWidth={3.5} />
+                      </View>
+                    ) : (
+                      <View
+                        style={[
+                          styles.duolingoBubble,
+                          entry.missed
+                            ? styles.duolingoBubbleMissed
+                            : styles.duolingoBubbleIdle,
+                          entry.isToday && styles.duolingoBubbleToday,
+                        ]}
+                      />
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+
+            <View style={styles.healthTrendWrap}>
+              <Text style={styles.healthTrendLabel}>Plant health</Text>
+              <View style={styles.healthGraphRow}>
+                {recentHistory.map((entry) => (
+                  <View key={`${entry.dateKey}-health`} style={styles.duolingoDayWrap}>
+                    <View style={styles.growthMiniWrap}>
+                      <AnimatedWeeklyHealthBar
+                        healthLevel={entry.healthLevel}
+                        color={entry.isFrozenDay ? trophyPreview.color : getHealthBlue(entry.healthLevel)}
+                      />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Rewards</Text>
+          <View style={styles.rewardCard}>
+            <View style={styles.rewardTopRow}>
+              <View style={[styles.rewardTrophyIconWrap, { backgroundColor: trophyPreview.tint }]}>
+                <Ionicons name="trophy" size={24} color={trophyPreview.color} />
+              </View>
+              <View style={styles.rewardTopText}>
+                <Text style={styles.rewardHeadline}>{isTrophy ? "Current trophy" : "Trophy on completion"}</Text>
+                <Text style={[styles.rewardTitle, { color: trophyPreview.color }]}>{trophyPreview.label} trophy</Text>
+                <Text style={styles.rewardSub}>Based on your current streak and current health.</Text>
+              </View>
+            </View>
+
+            <View style={styles.nextLevelCard}>
+              <View style={styles.nextLevelRow}>
+                <Text style={styles.nextLevelLabel}>
+                  {nextTrophy ? `Progress to ${nextTrophy.label}` : 'Progress complete'}
+                </Text>
+                <Text style={styles.nextLevelMeta}>
+                  {nextTrophy ? `${currentRewardStreak}/${nextTrophy.streak} days` : 'Max'}
+                </Text>
+              </View>
+
+              <AnimatedRewardProgressBar
+                progressPercent={nextLevelProgress}
+                trackColor={progressStageStyle.track}
+                gradientColors={progressStageStyle.gradient}
+              />
+
+              <View style={styles.nextLevelFooter}>
+                <Text style={styles.nextLevelCurrent}>{trophyPreview.label}</Text>
+                <Text style={styles.nextLevelTarget}>{nextTrophy ? nextTrophy.label : 'Complete'}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.rewardHint}>{nextTrophyHint}</Text>
           </View>
         </View>
 
@@ -1529,45 +2308,78 @@ export default function GoalScreen({ route, navigation }) {
           </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Plan</Text>
-          <View style={styles.infoCard}>
-            <DetailRow label="When" value={goal.plan?.when} />
-            <DetailRow label="Where" value={goal.plan?.where} />
-          </View>
+        <View style={styles.completeGoalButtonWrap}>
+          <View
+            pointerEvents="none"
+            style={[
+              styles.completeGoalButtonShadow,
+              { backgroundColor: primaryActionShadowColor },
+            ]}
+          />
+          <Pressable
+            onPress={isTrophy ? confirmReturnFromTrophy : confirmCompleteToTrophy}
+            onPressIn={() => triggerDetailHaptic()}
+            disabled={isCompletingToTrophy}
+            style={({ pressed }) => [
+              styles.completeGoalButton,
+              { backgroundColor: primaryActionBgColor, transform: [{ translateY: pressed ? 4 : 0 }] },
+              isCompletingToTrophy && styles.completeGoalButtonDisabled,
+            ]}
+          >
+            <Ionicons name={isTrophy ? "arrow-undo" : "trophy"} size={18} color="#FFF" />
+            <Text style={styles.completeGoalButtonText}>
+              {isCompletingToTrophy ? (isTrophy ? "Returning..." : "Completing...") : (isTrophy ? "Return To Goal" : "Complete Goal")}
+            </Text>
+          </Pressable>
         </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Why</Text>
-          <View style={styles.whyCard}>
-            <Text style={styles.whyText}>{goal.why?.trim() || "No reason added yet."}</Text>
-          </View>
-        </View>
-
-        <Pressable
-          onPress={isTrophy ? confirmReturnFromTrophy : confirmCompleteToTrophy}
-          disabled={isCompletingToTrophy}
-          style={[styles.completeGoalButton, isCompletingToTrophy && styles.completeGoalButtonDisabled]}
-        >
-          <Ionicons name={isTrophy ? "arrow-undo" : "trophy"} size={18} color="#FFF" />
-          <Text style={styles.completeGoalButtonText}>
-            {isCompletingToTrophy ? (isTrophy ? "Returning..." : "Completing...") : (isTrophy ? "Return To Goal" : "Complete Goal")}
-          </Text>
-        </Pressable>
       </ScrollView>
 
       <Modal visible={showEditModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           {editView === "form" && (
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.modalKeyboard}>
+          <View style={styles.modalKeyboard}>
             <View style={styles.modalSheet}>
               <View style={styles.modalHeader}>
-                <Pressable onPress={() => { setShowIconModal(false); setShowEditModal(false); setEditView("form"); setIconSearch(""); }}><Text style={styles.modalAction}>Cancel</Text></Pressable>
+                <View style={styles.modalHeaderSide}>
+                  <Pressable
+                    onPress={() => { setShowIconModal(false); setShowEditModal(false); setEditView("form"); setIconSearch(""); }}
+                    onPressIn={() => triggerDetailHaptic(Haptics.ImpactFeedbackStyle.Light)}
+                    style={({ pressed }) => [
+                      styles.modalHeaderButton,
+                      styles.modalHeaderButtonSecondary,
+                      pressed && styles.modalHeaderButtonPressed,
+                    ]}
+                  >
+                    <Text style={[styles.modalHeaderButtonText, styles.modalHeaderButtonTextSecondary]}>Cancel</Text>
+                  </Pressable>
+                </View>
                 <Text style={styles.modalTitle}>Edit Goal</Text>
-                <Pressable onPress={saveEdits} disabled={!!formError || isSaving}><Text style={[styles.modalAction, (!!formError || isSaving) && styles.modalActionDisabled]}>{isSaving ? "Saving" : "Save"}</Text></Pressable>
+                <View style={[styles.modalHeaderSide, styles.modalHeaderSideRight]}>
+                  <Pressable
+                    onPress={saveEdits}
+                    onPressIn={() => {
+                      if (!formError && !isSaving) triggerDetailHaptic(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    disabled={!!formError || isSaving}
+                    style={({ pressed }) => [
+                      styles.modalHeaderButton,
+                      styles.modalHeaderButtonPrimary,
+                      pressed && !formError && !isSaving && styles.modalHeaderButtonPressed,
+                      (!!formError || isSaving) && styles.modalHeaderButtonDisabled,
+                    ]}
+                  >
+                    <Text style={[styles.modalHeaderButtonText, styles.modalHeaderButtonTextPrimary]}>{isSaving ? "Saving" : "Save"}</Text>
+                  </Pressable>
+                </View>
               </View>
 
-              <ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} onScroll={() => Keyboard.dismiss()}>
+              <ScrollView
+                contentContainerStyle={styles.editContent}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+                automaticallyAdjustKeyboardInsets={true}
+                showsVerticalScrollIndicator={false}
+              >
                 <View style={styles.editCard}>
                   <Text style={styles.editLabel}>Goal name</Text>
                   <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Goal name" placeholderTextColor={theme.muted2} />
@@ -1646,7 +2458,7 @@ export default function GoalScreen({ route, navigation }) {
                   <Segmented left={{ label: "Checkmark", value: "completion" }} right={{ label: "Quantity", value: "quantity" }} value={type} onChange={setType} />
                   {type === "quantity" && (
                     <View style={styles.row}>
-                      <TextInput value={target} onChangeText={setTarget} keyboardType="numeric" style={[styles.input, styles.rowInput]} placeholder="Target" placeholderTextColor={theme.muted2} />
+                      <TextInput value={target} onChangeText={(value) => setTarget(normalizeQuantityTargetInput(value))} keyboardType="numeric" style={[styles.input, styles.rowInput]} placeholder="Target (max 6)" placeholderTextColor={theme.muted2} />
                       <TextInput value={unit} onChangeText={setUnit} style={[styles.input, styles.rowInput]} placeholder="minutes" placeholderTextColor={theme.muted2} />
                     </View>
                   )}
@@ -1672,9 +2484,8 @@ export default function GoalScreen({ route, navigation }) {
                   <Text style={styles.editLabel}>Completion</Text>
                   <View style={styles.chipWrap}>
                     <Chip label="No end" active={completionMode === "none"} onPress={() => setCompletionMode("none")} />
-                    <Chip label="End date" active={completionMode === "date"} onPress={() => setCompletionMode("date")} />
-                    <Chip label="End amount" active={completionMode === "amount"} onPress={() => setCompletionMode("amount")} />
-                    <Chip label="Both" active={completionMode === "both"} onPress={() => setCompletionMode("both")} />
+                    <Chip label="End date" active={completionMode === "date" || completionMode === "both"} onPress={() => setCompletionMode("date")} />
+                    <Chip label="End amount" active={completionMode === "amount" || completionMode === "both"} onPress={() => setCompletionMode("amount")} />
                   </View>
                   {(completionMode === "date" || completionMode === "both") && (
                     <View style={styles.topGap}>
@@ -1694,21 +2505,10 @@ export default function GoalScreen({ route, navigation }) {
                   )}
                 </View>
 
-                <View style={styles.editCard}>
-                  <Text style={styles.editLabel}>Plan</Text>
-                  <TextInput value={whenStr} onChangeText={setWhenStr} style={styles.input} placeholder="When" placeholderTextColor={theme.muted2} />
-                  <TextInput value={whereStr} onChangeText={setWhereStr} style={[styles.input, styles.topGap]} placeholder="Where" placeholderTextColor={theme.muted2} />
-                </View>
-
-                <View style={styles.editCard}>
-                  <Text style={styles.editLabel}>Why</Text>
-                  <TextInput value={whyStr} onChangeText={setWhyStr} style={[styles.input, styles.textArea]} placeholder="Why does this matter?" placeholderTextColor={theme.muted2} multiline />
-                </View>
-
                 {!!formError && <View style={styles.errorInline}><Text style={styles.errorInlineText}>{formError}</Text></View>}
               </ScrollView>
             </View>
-          </KeyboardAvoidingView>
+          </View>
           )}
         </View>
       </Modal>
@@ -1761,8 +2561,8 @@ export default function GoalScreen({ route, navigation }) {
             style={styles.iconModalList}
             contentContainerStyle={styles.iconGrid}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
             showsVerticalScrollIndicator={false}
-            onScroll={() => Keyboard.dismiss()}
           >
             <View style={styles.iconGridWrap}>
               {filteredIcons.map((item) => (
@@ -1832,31 +2632,277 @@ export default function GoalScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
-  headerBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  headerTitle: { fontSize: 18, fontWeight: "900", color: theme.title },
-  headerActions: { flexDirection: "row", alignItems: "center" },
+  headerWrapper: {
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 24,
+    borderWidth: 0,
+    borderColor: '#d9e6f4',
+    shadowColor: '#4c6782',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 0,
+    elevation: 3,
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    gap: 10,
+  },
+  headerBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: '#e7edf5',
+    shadowColor: '#c3cfdb',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 1,
+  },
+  headerBtnDanger: {
+    backgroundColor: '#fde6e3',
+  },
+  headerTitle: { fontSize: 22, fontWeight: "900", color: theme.text, flexShrink: 1 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   centerWrap: { flex: 1, justifyContent: "center", alignItems: "center" },
   empty: { fontSize: 18, fontWeight: "900", color: theme.title },
   backLink: { marginTop: 12, color: theme.accent, fontWeight: "800" },
-  scrollContent: { paddingBottom: 40 },
-  heroCard: { backgroundColor: theme.surface, borderRadius: theme.radius, padding: 24, alignItems: "center", marginBottom: 18 },
-  heroIconWrap: { width: 84, height: 84, borderRadius: 42, backgroundColor: "rgba(255,255,255,0.16)", alignItems: "center", justifyContent: "center", marginBottom: 14 },
-  heroTitle: { fontSize: 24, fontWeight: "900", color: theme.title2 },
-  heroSub: { fontSize: 14, fontWeight: "700", color: theme.muted, marginTop: 4 },
-  heroBadgeRow: { flexDirection: "row", gap: 8, marginTop: 14 },
-  heroBadge: { backgroundColor: "rgba(255,255,255,0.14)", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
-  heroBadgeText: { color: theme.title2, fontSize: 12, fontWeight: "800" },
+  scrollContent: { paddingBottom: 110 },
+  heroCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 28,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: "center",
+    marginBottom: 18,
+    shadowColor: '#cdcdcd',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  goalPlantPreviewWrap: {
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    position: 'relative',
+    borderRadius: 16,
+    paddingBottom: 2,
+  },
+  goalPlantPreviewWrapHero: {
+    width: 86,
+    height: 86,
+    borderRadius: 24,
+    paddingBottom: 4,
+    marginBottom: 0,
+    marginRight: 14,
+    flexShrink: 0,
+  },
+  goalPlantImage: {
+    position: 'absolute',
+    bottom: 20,
+    width: 30,
+    height: 36,
+    zIndex: 2,
+    elevation: 2,
+  },
+  goalPlantImageHero: {
+    bottom: 27,
+    width: 46,
+    height: 56,
+  },
+  goalPlantPot: {
+    width: 34,
+    height: 22,
+    zIndex: 1,
+  },
+  goalPlantPotHero: {
+    width: 50,
+    height: 30,
+  },
+  heroTextWrap: {
+    flex: 1,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  heroTitle: { fontSize: 22, fontWeight: "900", color: theme.text, textAlign: 'left' },
+  heroSub: { fontSize: 13, fontWeight: "800", color: theme.text2, marginTop: 4, textAlign: 'left' },
+  heroBadgeRow: { flexDirection: "row", gap: 8, marginTop: 14, flexWrap: 'wrap', justifyContent: 'center' },
+  heroBadge: { backgroundColor: '#7b92a8', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 6 },
+  heroBadgeText: { color: '#ffffff', fontSize: 12, fontWeight: "900" },
   section: { marginBottom: 18 },
-  sectionTitle: { fontSize: 12, fontWeight: "900", color: theme.text2, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 },
-  progressCard: { backgroundColor: theme.surface2, borderRadius: theme.radius, padding: 18, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  progressDate: { fontSize: 12, fontWeight: "800", color: theme.text2, marginBottom: 6 },
-  progressValue: { fontSize: 22, fontWeight: "900", color: theme.title },
-  progressStatus: { fontSize: 14, fontWeight: "700", color: theme.text2, marginTop: 4 },
+  sectionTitle: { fontSize: 12, fontWeight: "900", color: '#111111', marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 },
+  progressCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 28,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    shadowColor: '#cdcdcd',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  progressContent: { flex: 1, paddingRight: 10 },
+  progressDate: { fontSize: 12, fontWeight: "900", color: theme.text2, marginBottom: 4 },
+  progressValue: { fontSize: 20, fontWeight: "900", color: theme.text },
+  progressStatus: { fontSize: 12, fontWeight: "800", color: theme.text2, marginTop: 3 },
+  todayHealthCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 10,
+    shadowColor: '#cdcdcd',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  todayHealthHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  todayHealthTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: theme.text,
+  },
+  todayHealthValue: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#7d8a97',
+  },
+  todayHealthTrack: {
+    height: 18,
+    borderRadius: 999,
+    backgroundColor: '#e5edf5',
+    overflow: 'hidden',
+  },
+  todayHealthFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  growthStageWrap: {
+    marginTop: 10,
+  },
+  growthStageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  growthStageTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: theme.text,
+  },
+  growthStageValue: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#7d8a97',
+  },
+  growthStageTrack: {
+    height: 12,
+    borderRadius: 999,
+    backgroundColor: '#e5edf5',
+    overflow: 'hidden',
+  },
+  growthStageFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#59d700',
+    overflow: 'hidden',
+  },
+  growthStageStripeLayer: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  growthStageStripe: {
+    position: 'absolute',
+    top: -12,
+    bottom: -12,
+    width:10,
+    backgroundColor: '#ffd454',
+    transform: [{ rotate: '45deg' }],
+  },
+  growthStageHint: {
+    marginTop: 6,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#7d8a97',
+  },
+  weeklyStreakTitle: {
+    color: '#ffffff',
+  },
+  goalStatusButton: {
+    marginLeft: 8,
+    alignSelf: 'center',
+    position: 'relative',
+  },
+  goalStatusButtonShadow: {
+    position: 'absolute',
+    top: 4,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  goalStatusButtonFace: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  goalStatusButtonDisabled: { opacity: 0.6 },
+  quantityButtonContent: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  quantitySegmentRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 3,
+    justifyContent: 'center',
+  },
+  quantitySegment: {
+    flex: 1,
+    height: 6,
+    borderRadius: 999,
+    minWidth: 4,
+  },
+  quantitySegmentFilled: {
+    backgroundColor: '#58cc02',
+  },
+  quantitySegmentDone: {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+  },
+  quantitySegmentEmpty: {
+    backgroundColor: 'rgba(122,154,93,0.10)',
+  },
+  sharedQuantityProgressLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    marginBottom: 2,
+    alignSelf: 'center',
+  },
   statusCircle: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: theme.accent, alignItems: "center", justifyContent: "center", overflow: "hidden", position: "relative" },
   statusCircleDone: { backgroundColor: theme.accent },
   statusCircleSelf: { backgroundColor: "rgba(167, 152, 125, 0.52)" },
-  statusCircleCount: { fontSize: 10, fontWeight: "900", color: "#FFF" },
+  statusCircleCount: { fontSize: 11, fontWeight: "900" },
   statusCircleCountDone: { color: theme.bg },
   toggleButton: { alignItems: "center", gap: 8 },
   toggleButtonDisabled: { opacity: 0.45 },
@@ -1865,22 +2911,240 @@ const styles = StyleSheet.create({
   toggleButtonText: { fontSize: 12, fontWeight: "900", color: theme.accent },
   toggleButtonTextDone: { color: theme.title },
   statusCircleFrozen: { borderColor: theme.muted, backgroundColor: "rgba(255,255,255,0.08)" },
-  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  statBox: { width: "48%", backgroundColor: theme.surface2, borderRadius: theme.radius, padding: 16 },
-  statLabel: { fontSize: 12, fontWeight: "700", color: theme.text2, marginBottom: 6 },
-  statValue: { fontSize: 18, fontWeight: "900", color: theme.title },
-  infoCard: { backgroundColor: theme.surface2, borderRadius: theme.radius, paddingHorizontal: 16 },
-  detailRow: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: theme.outline },
+  rewardCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 14,
+    shadowColor: '#cdcdcd',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  rewardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  rewardTrophyIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  rewardTopText: {
+    flex: 1,
+  },
+  rewardHeadline: { fontSize: 12, fontWeight: '800', color: theme.text2, marginBottom: 2 },
+  rewardTitle: { fontSize: 20, fontWeight: '900' },
+  rewardSub: { fontSize: 12, fontWeight: '700', color: '#7d8a97', marginTop: 2 },
+  nextLevelCard: {
+    marginTop: 12,
+    backgroundColor: '#f5f8fb',
+    borderRadius: 18,
+    padding: 12,
+  },
+  nextLevelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  nextLevelLabel: { fontSize: 12, fontWeight: '900', color: theme.text },
+  nextLevelMeta: { fontSize: 11, fontWeight: '800', color: '#7d8a97' },
+  nextLevelTrack: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: '#dde7f1',
+    overflow: 'hidden',
+  },
+  nextLevelFillWrap: {
+    height: '100%',
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  nextLevelFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  nextLevelFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  nextLevelCurrent: { fontSize: 11, fontWeight: '900', color: '#7d8a97' },
+  nextLevelTarget: { fontSize: 11, fontWeight: '900', color: '#3b5176' },
+  rewardHint: { fontSize: 12, fontWeight: '900', color: '#3b5176', marginTop: 12 },
+  historyCardDuolingo: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 14,
+    shadowColor: '#cdcdcd',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  historyTopRowSimple: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  historyHeadline: { fontSize: 15, fontWeight: '900', color: theme.text },
+  historyStreakBadge: {
+    backgroundColor: '#fcae49',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#f38a00',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  historyStreakIcon: {
+    width: 18,
+    height: 18,
+    marginRight: 7,
+  },
+  historyStreakValue: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#ffffff',
+  },
+  duolingoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 4,
+  },
+  duolingoDayWrap: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  growthMiniWrap: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 0,
+  },
+  healthTrendWrap: {
+    marginTop: 12,
+  },
+  healthTrendLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#7d8a97',
+    marginBottom: 8,
+  },
+  healthGraphRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  growthMiniTrack: {
+    width: 16,
+    height: 56,
+    borderRadius: 999,
+    backgroundColor: '#e4ebf2',
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+  },
+  growthMiniFill: {
+    width: '100%',
+    borderRadius: 999,
+    minHeight: 12,
+  },
+  duolingoDayLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#9b9b9b',
+    marginBottom: 8,
+  },
+  duolingoDayLabelToday: {
+    color: '#f38a00',
+  },
+  duolingoBubble: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  duolingoBubbleDone: {
+    backgroundColor: '#f38a00',
+  },
+  duolingoBubbleMissed: {
+    backgroundColor: '#bdbdbd',
+  },
+  duolingoBubbleIdle: {
+    backgroundColor: '#e9e9e9',
+  },
+  duolingoBubbleToday: {},
+
+  duolingoBubbleFrozen: {
+    // backgroundColor is now set dynamically for trophy color
+    borderWidth: 0,
+    // borderColor removed for trophy color consistency
+  },
+  duolingoBadgeImage: {
+    width: 80,
+    height: 80,
+    top: -35,
+    alignSelf: 'center',
+    marginVertical: 0,
+  },
+  duolingoBubbleInner: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,255,255,0.42)',
+  },
+  infoCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    shadowColor: '#cdcdcd',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  detailRow: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#edf2f6' },
   detailLabel: { fontSize: 12, fontWeight: "800", color: theme.text2, marginBottom: 4 },
-  detailValue: { fontSize: 15, fontWeight: "800", color: theme.title },
-  whyCard: { backgroundColor: theme.surface2, borderRadius: theme.radius, padding: 16 },
-  whyText: { fontSize: 15, lineHeight: 22, color: theme.title, fontWeight: "700" },
-  completeGoalButton: {
+  detailValue: { fontSize: 15, fontWeight: "800", color: theme.text },
+  whyCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    shadowColor: '#cdcdcd',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  whyText: { fontSize: 15, lineHeight: 22, color: theme.text, fontWeight: "700" },
+  completeGoalButtonWrap: {
     marginTop: 8,
     marginBottom: 8,
+    height: 56,
+    position: 'relative',
+  },
+  completeGoalButtonShadow: {
+    position: 'absolute',
+    top: 4,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 20,
+  },
+  completeGoalButton: {
     height: 52,
-    borderRadius: theme.radius,
-    backgroundColor: theme.accent,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -1889,22 +3153,32 @@ const styles = StyleSheet.create({
   completeGoalButtonDisabled: { opacity: 0.6 },
   completeGoalButtonText: { color: "#FFF", fontSize: 15, fontWeight: "900" },
   returnDateModalCard: {
-    backgroundColor: theme.bg,
-    borderRadius: theme.radius,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
     padding: 16,
     marginHorizontal: 18,
     marginBottom: 40,
+    shadowColor: '#cdcdcd',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
   },
-  returnDateTitle: { fontSize: 18, fontWeight: "900", color: theme.title, marginBottom: 6 },
+  returnDateTitle: { fontSize: 18, fontWeight: "900", color: theme.text, marginBottom: 6 },
   returnDateHint: { fontSize: 13, fontWeight: "700", color: theme.text2, marginBottom: 12 },
   helperText: { fontSize: 12, color: theme.muted, marginBottom: 8 },
   calendarCard: {
-    backgroundColor: theme.surface2,
-    borderRadius: theme.radius,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
     padding: 12,
     marginBottom: 10,
-    borderWidth: 1,
+    borderWidth: 0,
     borderColor: theme.outline,
+    shadowColor: '#cdcdcd',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
   },
   calendarHeader: {
     alignItems: "center",
@@ -1934,11 +3208,16 @@ const styles = StyleSheet.create({
   calendarCellTextPast: { color: theme.muted },
   calendarCellTextSelected: { color: theme.bg },
   calendarCardCompact: {
-    borderWidth: 1,
+    borderWidth: 0,
     borderColor: theme.outline,
-    borderRadius: theme.radius,
+    borderRadius: 22,
     padding: 10,
-    backgroundColor: theme.surface2,
+    backgroundColor: '#ffffff',
+    shadowColor: '#cdcdcd',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
   },
   calendarHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   calendarNavBtn: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: theme.bg },
@@ -1971,37 +3250,80 @@ const styles = StyleSheet.create({
   },
   returnDateBtnPrimaryText: { fontSize: 13, fontWeight: "900", color: "#FFF" },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
-  modalKeyboard: { maxHeight: "94%" },
-  modalSheet: { backgroundColor: theme.bg, borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 18, minHeight: "75%" },
-  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
-  modalTitle: { fontSize: 18, fontWeight: "900", color: theme.title },
-  modalAction: { color: theme.accent, fontWeight: "900", fontSize: 15 },
-  modalActionDisabled: { opacity: 0.45 },
-  editContent: { paddingBottom: 30 },
-  editCard: { backgroundColor: theme.surface2, borderRadius: theme.radius, padding: 16, marginBottom: 12 },
-  editLabel: { fontSize: 13, fontWeight: "900", color: theme.title, marginBottom: 8 },
+  modalKeyboard: { width: "100%", maxHeight: "94%", justifyContent: "flex-end" },
+  modalSheet: {
+    backgroundColor: '#e5edf7',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    padding: 18,
+    maxHeight: "100%",
+  },
+  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14, gap: 10 },
+  modalHeaderSide: { width: 88 },
+  modalHeaderSideRight: { alignItems: "flex-end" },
+  modalTitle: { flex: 1, fontSize: 18, fontWeight: "900", color: theme.text, textAlign: "center" },
+  modalHeaderButton: {
+    minWidth: 78,
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 1,
+  },
+  modalHeaderButtonSecondary: {
+    backgroundColor: '#ffffff',
+    shadowColor: '#c3cfdb',
+  },
+  modalHeaderButtonPrimary: {
+    backgroundColor: '#59d700',
+    shadowColor: '#4aa93a',
+  },
+  modalHeaderButtonPressed: { transform: [{ translateY: 2 }] },
+  modalHeaderButtonDisabled: { opacity: 0.5 },
+  modalHeaderButtonText: { fontSize: 14, fontWeight: "900" },
+  modalHeaderButtonTextSecondary: { color: theme.accent },
+  modalHeaderButtonTextPrimary: { color: '#FFFFFF' },
+  editContent: { paddingBottom: 160 },
+  editCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#dbe8f6',
+    shadowColor: '#c9d9ea',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  editLabel: { fontSize: 13, fontWeight: "900", color: theme.text, marginBottom: 8 },
   switchRow: { marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  switchLabel: { fontSize: 13, fontWeight: "700", color: theme.title },
-  input: { backgroundColor: theme.bg, borderRadius: theme.radius, paddingHorizontal: 14, height: 46, fontSize: 14, color: theme.title, borderWidth: 1, borderColor: theme.outline },
+  switchLabel: { fontSize: 13, fontWeight: "700", color: theme.text },
+  input: { backgroundColor: '#f9fbfd', borderRadius: 16, paddingHorizontal: 14, height: 46, fontSize: 14, color: theme.text, borderWidth: 1, borderColor: '#d9e6f4' },
   topGap: { marginTop: 10 },
   row: { flexDirection: "row", gap: 10, marginTop: 10 },
   rowInput: { flex: 1 },
   requiredInput: { width: 84, textAlign: "center", paddingHorizontal: 8 },
   textArea: { height: 100, paddingTop: 12, textAlignVertical: "top" },
   chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
-  chip: { minHeight: 34, paddingHorizontal: 12, borderRadius: theme.radiusSm, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.outline, justifyContent: "center" },
-  chipActive: { backgroundColor: theme.accent, borderColor: theme.accent },
-  chipText: { fontSize: 12, fontWeight: "800", color: theme.title },
+  chip: { minHeight: 34, paddingHorizontal: 12, borderRadius: 14, backgroundColor: '#edf3f9', borderWidth: 1, borderColor: '#d6e1ec', justifyContent: "center" },
+  chipActive: { backgroundColor: '#28b900', borderColor: theme.accent },
+  chipText: { fontSize: 12, fontWeight: "800", color: '#4c5f75' },
   chipTextActive: { color: "#FFF" },
-  segmentWrap: { flexDirection: "row", backgroundColor: theme.bg, borderRadius: theme.radius, padding: 4, borderWidth: 1, borderColor: theme.outline },
-  segment: { flex: 1, height: 40, borderRadius: theme.radiusSm, alignItems: "center", justifyContent: "center" },
-  segmentActive: { backgroundColor: theme.accent },
-  segmentText: { fontSize: 12, fontWeight: "800", color: theme.title },
+  segmentWrap: { flexDirection: "row", backgroundColor: '#edf3f9', borderRadius: 18, padding: 4, borderWidth: 1, borderColor: '#d6e1ec' },
+  segment: { flex: 1, height: 40, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  segmentActive: { backgroundColor: '#28b900' },
+  segmentText: { fontSize: 12, fontWeight: "800", color: '#4c5f75' },
   segmentTextActive: { color: "#FFF" },
   daysGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
-  iconPickerButton: { height: 60, borderRadius: theme.radius, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.outline, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14 },
-  iconPickerButtonLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
-  iconPickerPreview: { width: 40, height: 40, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center" },
+  iconPickerButton: { height: 64, borderRadius: 18, backgroundColor: '#f7fbff', borderWidth: 1, borderColor: '#d6e4f2', flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14 },
+  iconPickerButtonLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
+  iconPickerPreview: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#eaf4ff', borderWidth: 1, borderColor: '#d2e3f5', alignItems: "center", justifyContent: "center" },
   iconPickerTextWrap: { flex: 1 },
   iconPickerTitle: { fontSize: 14, fontWeight: "800", color: theme.text },
   iconPickerSubtitle: { fontSize: 12, fontWeight: "600", color: theme.muted, marginTop: 2 },

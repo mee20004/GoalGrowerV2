@@ -1,3 +1,17 @@
+// Utility to clamp a number between min and max
+const clampNum = (n, min, max) => {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return min;
+  return Math.max(min, Math.min(max, v));
+};
+
+const MAX_QUANTITY_TARGET = 6;
+
+const normalizeQuantityTargetInput = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  return String(clampNum(Number(digits), 1, MAX_QUANTITY_TARGET));
+};
 // screens/AddGoalScreen.js
 import React, { useEffect, useMemo, useRef, useState, memo } from "react";
 import {
@@ -12,21 +26,27 @@ import {
   Alert,
   UIManager,
   findNodeHandle,
-  Dimensions,
   ScrollView,
+  FlatList,
   Switch,
   Modal,
   Keyboard,
+  Animated,
+  Easing,
+  Image,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import * as Haptics from "expo-haptics";
 import * as LucideIcons from "lucide-react-native/icons";
 import Page from "../components/Page";
 import { theme } from "../theme";
 import { useGoals, fromKey } from "../components/GoalsStore";
+import { PLANT_ASSETS } from "../constants/PlantAssets";
+import { POT_ASSETS } from "../constants/PotAssets";
 
 // FIREBASE IMPORTS
-import { collection, addDoc, serverTimestamp, onSnapshot, query, where, doc, setDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, onSnapshot, query, where, doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 
 // --- 1. ICON CONSTANTS & HELPER ---
@@ -117,6 +137,14 @@ function GoalIcon({ name, size, color }) {
   return <IconComponent size={size} color={color} strokeWidth={2.2} />;
 }
 
+const triggerSelectionHaptic = () => {
+  Haptics.selectionAsync().catch(() => {});
+};
+
+const triggerButtonHaptic = () => {
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+};
+
 const DAYS = [
   { label: "Sun", day: 0 },
   { label: "Mon", day: 1 },
@@ -133,12 +161,33 @@ const CUE_SUGGEST = ["After brushing teeth", "After scripture study", "After bre
 const REWARD_SUGGEST = ["Tea", "5-minute break", "Music", "Stretching"];
 
 const DAY_LABELS = ["S", "M", "T", "W", "Th", "F", "Sa"];
-const CATEGORIES = ["Body", "Mind", "Spirit", "Work", "Custom"];
 
-function Chip({ label, active, onPress }) {
+function Chip({ label, active, onPress, variant = "default" }) {
+  const isFilter = variant === "filter";
+
   return (
-    <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    <Pressable
+      onPress={() => {
+        triggerSelectionHaptic();
+        onPress?.();
+      }}
+      style={[
+        styles.chip,
+        isFilter && styles.filterStyleChip,
+        active && styles.chipActive,
+        active && isFilter && styles.filterStyleChipActive,
+      ]}
+    >
+      <Text
+        style={[
+          styles.chipText,
+          isFilter && styles.filterStyleChipText,
+          active && styles.chipTextActive,
+          active && isFilter && styles.filterStyleChipTextActive,
+        ]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -146,10 +195,22 @@ function Chip({ label, active, onPress }) {
 function Segmented({ left, right, value, onChange }) {
   return (
     <View style={styles.segmentWrap}>
-      <Pressable onPress={() => onChange(left.value)} style={[styles.segment, value === left.value && styles.segmentActive]}>
+      <Pressable
+        onPress={() => {
+          triggerSelectionHaptic();
+          onChange(left.value);
+        }}
+        style={[styles.segment, value === left.value && styles.segmentActive]}
+      >
         <Text style={[styles.segmentText, value === left.value && styles.segmentTextActive]}>{left.label}</Text>
       </Pressable>
-      <Pressable onPress={() => onChange(right.value)} style={[styles.segment, value === right.value && styles.segmentActive]}>
+      <Pressable
+        onPress={() => {
+          triggerSelectionHaptic();
+          onChange(right.value);
+        }}
+        style={[styles.segment, value === right.value && styles.segmentActive]}
+      >
         <Text style={[styles.segmentText, value === right.value && styles.segmentTextActive]}>{right.label}</Text>
       </Pressable>
     </View>
@@ -238,7 +299,10 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 // --- 2. OPTIMIZED ICON COMPONENT ---
 const IconItem = memo(({ iconName, isActive, onSelect }) => (
   <Pressable 
-    onPress={() => onSelect(iconName)} 
+    onPress={() => {
+      triggerSelectionHaptic();
+      onSelect(iconName);
+    }} 
     style={[styles.iconBox, isActive && styles.iconBoxActive]}
   >
     {isActive && (
@@ -250,6 +314,136 @@ const IconItem = memo(({ iconName, isActive, onSelect }) => (
   </Pressable>
 ));
 
+const ASSET_CAROUSEL_ITEM_SIZE = 76;
+
+const CenteredAssetCarousel = memo(
+  ({
+    carouselKey,
+    title,
+    data,
+    selectedIndex,
+    onSelectIndex,
+    renderPreview,
+    itemSize = ASSET_CAROUSEL_ITEM_SIZE,
+    showTitle = true,
+    showCenterRing = true,
+    sectionStyle,
+    wrapStyle,
+    itemStyle,
+    activeItemStyle,
+  }) => {
+  const listRef = useRef(null);
+  const [carouselWidth, setCarouselWidth] = useState(0);
+  const isMomentumScrollingRef = useRef(false);
+  const lastOffsetRef = useRef(0);
+  const selectedIndexRef = useRef(selectedIndex);
+
+  const sidePadding = Math.max(0, (carouselWidth - itemSize) / 2);
+
+  useEffect(() => {
+    selectedIndexRef.current = selectedIndex;
+  }, [selectedIndex]);
+
+  const settleToNearestItem = (offsetX, animateToCenter = false) => {
+    const nextIndex = Math.round(offsetX / itemSize);
+    const safeIndex = Math.max(0, Math.min(data.length - 1, nextIndex));
+    if (safeIndex !== selectedIndexRef.current) {
+      triggerSelectionHaptic();
+      onSelectIndex(safeIndex);
+    }
+    listRef.current?.scrollToOffset({
+      offset: safeIndex * itemSize,
+      animated: animateToCenter,
+    });
+  };
+
+  useEffect(() => {
+    if (!listRef.current || !carouselWidth || !data.length) return;
+    listRef.current.scrollToOffset({
+      offset: Math.max(0, Math.min(data.length - 1, selectedIndex)) * itemSize,
+      animated: false,
+    });
+  }, [carouselWidth, data.length, itemSize, selectedIndex]);
+
+  if (!data.length) return null;
+
+  return (
+    <View style={[styles.assetCarouselSection, sectionStyle]}>
+      {showTitle ? <Text style={styles.assetCarouselTitle}>{title}</Text> : null}
+      <View
+        style={[styles.assetCarouselWrap, wrapStyle]}
+        onLayout={(event) => setCarouselWidth(event.nativeEvent.layout.width)}
+      >
+        <FlatList
+          ref={listRef}
+          data={data}
+          horizontal
+          scrollEventThrottle={16}
+          removeClippedSubviews={false}
+          keyExtractor={(item, index) => `${carouselKey || title}-${item?.key || item?.species || index}`}
+          showsHorizontalScrollIndicator={false}
+          bounces={false}
+          snapToInterval={itemSize}
+          snapToAlignment="start"
+          decelerationRate="normal"
+          contentContainerStyle={{ paddingHorizontal: sidePadding }}
+          getItemLayout={(_, index) => ({
+            length: itemSize,
+            offset: itemSize * index,
+            index,
+          })}
+          renderItem={({ item, index }) => {
+            const isActive = index === selectedIndex;
+            return (
+              <Pressable
+                onPress={() => {
+                  triggerSelectionHaptic();
+                  onSelectIndex(index);
+                  listRef.current?.scrollToOffset({
+                    offset: index * itemSize,
+                    animated: true,
+                  });
+                }}
+                style={[
+                  styles.assetCarouselItem,
+                  itemStyle,
+                  isActive && styles.assetCarouselItemActive,
+                  isActive && activeItemStyle,
+                ]}
+              >
+                {renderPreview(item, isActive)}
+              </Pressable>
+            );
+          }}
+          onScroll={(event) => {
+            lastOffsetRef.current = event.nativeEvent.contentOffset.x;
+          }}
+          onMomentumScrollBegin={() => {
+            isMomentumScrollingRef.current = true;
+          }}
+          onMomentumScrollEnd={(event) => {
+            isMomentumScrollingRef.current = false;
+            const offsetX = event.nativeEvent.contentOffset.x;
+            lastOffsetRef.current = offsetX;
+            settleToNearestItem(offsetX, false);
+          }}
+          onScrollEndDrag={(event) => {
+            const offsetX = event.nativeEvent.contentOffset.x;
+            lastOffsetRef.current = offsetX;
+            requestAnimationFrame(() => {
+              if (!isMomentumScrollingRef.current) {
+                settleToNearestItem(lastOffsetRef.current, true);
+              }
+            });
+          }}
+        />
+        {showCenterRing ? <View pointerEvents="none" style={[styles.assetCarouselCenterRing, { width: itemSize }]} /> : null}
+      </View>
+    </View>
+  );
+}
+);
+
 function measureRef(ref, cb) {
   const node = findNodeHandle(ref.current);
   if (!node) return cb(null);
@@ -258,7 +452,13 @@ function measureRef(ref, cb) {
 
 function Pill({ label, active, onPress }) {
   return (
-    <Pressable onPress={onPress} style={[styles.pill, active && styles.pillActive]}>
+    <Pressable
+      onPress={() => {
+        triggerSelectionHaptic();
+        onPress?.();
+      }}
+      style={[styles.pill, active && styles.pillActive]}
+    >
       <Text style={[styles.pillText, active && styles.pillTextActive]}>{label}</Text>
     </Pressable>
   );
@@ -266,17 +466,49 @@ function Pill({ label, active, onPress }) {
 
 function PrimaryButton({ label, onPress, disabled, style }) {
   return (
-    <Pressable onPress={onPress} disabled={disabled} style={[styles.primaryBtn, style, disabled && { opacity: 0.55 }]}>
-      <Text style={styles.primaryBtnText}>{label}</Text>
-    </Pressable>
+    <View style={[styles.actionButtonWrap, style]}>
+      <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
+      <Pressable
+        onPress={() => {
+          if (disabled) return;
+          triggerButtonHaptic();
+          onPress?.();
+        }}
+        disabled={disabled}
+        style={({ pressed }) => [
+          styles.actionButtonFace,
+          styles.actionButtonPrimary,
+          pressed && styles.actionButtonPressed,
+          disabled && styles.actionButtonPrimaryDisabled,
+        ]}
+      >
+        <Text style={[styles.actionButtonText, styles.actionButtonTextPrimary, disabled && styles.actionButtonTextDisabled]}>{label}</Text>
+      </Pressable>
+    </View>
   );
 }
 
 function GhostButton({ label, onPress, disabled, style }) {
   return (
-    <Pressable onPress={onPress} disabled={disabled} style={[styles.btnBase, styles.btnSecondary, style, disabled && { opacity: 0.55 }]}>
-      <Text style={[styles.btnTextBase, styles.btnTextSecondary]}>{label}</Text>
-    </Pressable>
+    <View style={[styles.actionButtonWrap, style]}>
+      <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowSecondary]} />
+      <Pressable
+        onPress={() => {
+          if (disabled) return;
+          triggerButtonHaptic();
+          onPress?.();
+        }}
+        disabled={disabled}
+        style={({ pressed }) => [
+          styles.actionButtonFace,
+          styles.actionButtonSecondary,
+          pressed && styles.actionButtonPressed,
+          disabled && styles.actionButtonSecondaryDisabled,
+        ]}
+      >
+        <Text style={[styles.actionButtonText, styles.actionButtonTextSecondary, disabled && styles.actionButtonTextDisabled]}>{label}</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -304,24 +536,47 @@ function CoachMark({ visible, title, body, onClose }) {
   );
 }
 
-function Dot({ total = 0, index = 0, done = [] }) {
+function StepProgressBar({ total = 1, index = 0 }) {
+  const progress = Math.min(1, Math.max(0, (index + 1) / Math.max(total, 1)));
+  const animatedProgress = useRef(new Animated.Value(progress)).current;
+
+  useEffect(() => {
+    Animated.timing(animatedProgress, {
+      toValue: progress,
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [animatedProgress, progress]);
+
+  const animatedWidth = animatedProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0%", "100%"],
+  });
+
   return (
-    <View style={styles.dotsRow} accessibilityRole="progressbar">
-      {Array.from({ length: total }).map((_, i) => (
-        <View
-          key={i}
-          style={[
-            styles.dot,
-            !!done[i] && styles.dotDone,
-            i === index && styles.dotActive,
-          ]}
-        />
-      ))}
+    <View
+      style={styles.progressBarTrack}
+      accessibilityRole="progressbar"
+      accessibilityValue={{ min: 0, max: total, now: index + 1 }}
+    >
+      <Animated.View style={[styles.progressBarFill, { width: animatedWidth }]} />
     </View>
   );
 }
 
 export default function AddGoalScreen({ navigation }) {
+
+  // Step state for multi-step form
+  const [step, setStep] = useState(0);
+
+  const [sharedGardenSettings, setSharedGardenSettings] = useState({
+    restrictAddPeople: false,
+    restrictCustomize: false,
+    restrictEditPlants: false,
+    ownerId: null,
+  });
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const { selectedDateKey } = useGoals();
   const [isSaving, setIsSaving] = useState(false);
   const [showIconPicker, setShowIconPicker] = useState(false);
@@ -336,10 +591,12 @@ export default function AddGoalScreen({ navigation }) {
 
   // Form State
   const [name, setName] = useState("");
-  const [category, setCategory] = useState("Custom");
   const [isPrivate, setIsPrivate] = useState(false);
   const [selectedIcon, setSelectedIcon] = useState("target");
+  const [selectedPlantSpecies, setSelectedPlantSpecies] = useState("fern");
+  const [selectedPotType, setSelectedPotType] = useState("default");
   const [searchTerm, setSearchTerm] = useState("");
+  const [visibleIconCount, setVisibleIconCount] = useState(120);
   const [type, setType] = useState("completion");
   const [target, setTarget] = useState("1");
   const [unit, setUnit] = useState("times");
@@ -356,13 +613,52 @@ export default function AddGoalScreen({ navigation }) {
   const [requiredContributors, setRequiredContributors] = useState("2");
   const [calendarMonth, setCalendarMonth] = useState(toStartOfDay(new Date()));
   const [calendarWidth, setCalendarWidth] = useState(0);
+  const [scrollViewHeight, setScrollViewHeight] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
   const calendarPagerRef = useRef(null);
 
+
+  // Reset form state on screen focus
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      setStep(0);
+      setName("");
+      setIsPrivate(false);
+      setSelectedIcon("target");
+      setSelectedPlantSpecies("fern");
+      setSelectedPotType("default");
+      setSearchTerm("");
+      setVisibleIconCount(120);
+      setType("completion");
+      setTarget("1");
+      setUnit("times");
+      setMode("days");
+      setDays([selectedDay]);
+      setWhenStr("");
+      setWhereStr("");
+      setWhyStr("");
+      setCompletionMode("none");
+      setCompletionEndDate("");
+      setCompletionEndAmount("");
+      setCompletionEndUnit("times");
+      setMultiUserWateringEnabled(false);
+      setRequiredContributors("2");
+      setCalendarMonth(toStartOfDay(new Date()));
+      // calendarWidth and calendarPagerRef do not need reset
+    });
+    return unsubscribe;
+  }, [navigation, selectedDay]);
+
   // Filtered Icons Logic
+  const allSelectableIcons = useMemo(
+    () => dedupeIcons([...FEATURED_ICONS, ...pickerIconNames]),
+    []
+  );
+
   const filteredIcons = useMemo(() => {
     const cleanSearch = searchTerm.toLowerCase().trim();
     if (!cleanSearch) {
-      return dedupeIcons([...FEATURED_ICONS, ...pickerIconNames]).slice(0, 500);
+      return allSelectableIcons.slice(0, visibleIconCount);
     }
 
     const directMatches = pickerIconNames.filter((name) => name.includes(cleanSearch));
@@ -371,8 +667,10 @@ export default function AddGoalScreen({ navigation }) {
       .flatMap(([, icons]) => icons)
       .filter((name) => ICON_NAME_SET.has(name));
 
-    return dedupeIcons([...synonymMatches, ...directMatches]).slice(0, 500);
-  }, [searchTerm]);
+    return dedupeIcons([...synonymMatches, ...directMatches]).slice(0, 180);
+  }, [allSelectableIcons, searchTerm, visibleIconCount]);
+
+  const hasMoreIcons = !searchTerm.trim() && filteredIcons.length < allSelectableIcons.length;
 
   const scheduleDays = useMemo(() => {
     if (mode === "everyday") return [0, 1, 2, 3, 4, 5, 6];
@@ -380,12 +678,69 @@ export default function AddGoalScreen({ navigation }) {
     return days.length ? days : [selectedDay];
   }, [mode, days, selectedDay]);
 
-  const [step, setStep] = useState(0);
-  const stepLabels = ["Details", "Icon", "Tracking", "Schedule", "Completion", "Review"];
+  const stepLabels = ["Details", "Plant & Pot", "Icon", "Tracking", "Schedule", "Completion", "Review"];
+
+  const plantOptions = useMemo(() => {
+    const validSpecies = Object.keys(PLANT_ASSETS || {}).filter((species) => {
+      return (
+        PLANT_ASSETS?.[species]?.stage4?.alive ||
+        PLANT_ASSETS?.[species]?.stage3?.alive ||
+        PLANT_ASSETS?.[species]?.stage2?.alive ||
+        PLANT_ASSETS?.[species]?.stage1?.alive
+      );
+    });
+
+    return validSpecies.map((species) => ({
+      species,
+      label: species.charAt(0).toUpperCase() + species.slice(1),
+      preview:
+        PLANT_ASSETS?.[species]?.stage4?.alive ||
+        PLANT_ASSETS?.[species]?.stage3?.alive ||
+        PLANT_ASSETS?.[species]?.stage2?.alive ||
+        PLANT_ASSETS?.[species]?.stage1?.alive,
+    }));
+  }, []);
+
+  const selectedPlantIndex = useMemo(
+    () => Math.max(0, plantOptions.findIndex((option) => option.species === selectedPlantSpecies)),
+    [plantOptions, selectedPlantSpecies]
+  );
+
+  const selectedPlantPreview = useMemo(
+    () => plantOptions[selectedPlantIndex]?.preview || plantOptions[0]?.preview || null,
+    [plantOptions, selectedPlantIndex]
+  );
+
+  const potOptions = useMemo(() => {
+    return Object.entries(POT_ASSETS || {})
+      .map(([key, preview]) => ({
+        key,
+        label: key.charAt(0).toUpperCase() + key.slice(1),
+        preview,
+      }))
+      .filter((option) => !!option.preview);
+  }, []);
+
+  const selectedPotIndex = useMemo(
+    () => Math.max(0, potOptions.findIndex((option) => option.key === selectedPotType)),
+    [potOptions, selectedPotType]
+  );
+
+  const selectPlantByIndex = (index) => {
+    const option = plantOptions[index];
+    if (!option) return;
+    setSelectedPlantSpecies(option.species);
+  };
+
+  const selectPotByIndex = (index) => {
+    const option = potOptions[index];
+    if (!option) return;
+    setSelectedPotType(option.key);
+  };
 
   const measurableForType = useMemo(() => {
     if (type === "quantity") {
-      return { target: Number(target) > 0 ? Number(target) : 1, unit: unit.trim() || "times" };
+      return { target: clampNum(target, 1, MAX_QUANTITY_TARGET), unit: unit.trim() || "times" };
     }
     return { target: 1, unit: "times" };
   }, [type, target, unit]);
@@ -411,18 +766,6 @@ export default function AddGoalScreen({ navigation }) {
     if (completionMode === "amount" && Number(completionEndAmount) > 0) {
       return {
         type: "amount",
-        targetAmount: clampNum(completionEndAmount, 1, 999999),
-        unit: completionEndUnit.trim() || "times",
-      };
-    }
-    if (
-      completionMode === "both" &&
-      isValidISODate(completionEndDate.trim()) &&
-      Number(completionEndAmount) > 0
-    ) {
-      return {
-        type: "both",
-        endDate: completionEndDate.trim(),
         targetAmount: clampNum(completionEndAmount, 1, 999999),
         unit: completionEndUnit.trim() || "times",
       };
@@ -453,27 +796,56 @@ export default function AddGoalScreen({ navigation }) {
     if (!uid) {
       setSharedGardens([]);
       setSelectedGardenId("personal");
+      setSettingsLoaded(false);
       return undefined;
     }
 
     const unsubscribe = onSnapshot(
       query(collection(db, "sharedGardens"), where("memberIds", "array-contains", uid)),
-      (snap) => {
-        const docs = snap.docs.map((gardenDoc) => ({ id: gardenDoc.id, ...gardenDoc.data() }));
+      async (snap) => {
+        let docs = snap.docs.map((gardenDoc) => ({ id: gardenDoc.id, ...gardenDoc.data() }));
+        // Filter out gardens where restrictEditPlants is true and user is not owner
+        docs = await Promise.all(docs.map(async (g) => {
+          if (!g.id) return null;
+          const snap = await getDoc(doc(db, "sharedGardens", g.id));
+          const data = snap.data() || {};
+          const isOwner = data.ownerId && auth.currentUser && data.ownerId === auth.currentUser.uid;
+          if (!isOwner && data.restrictEditPlants) return null;
+          return { ...g, ...data };
+        }));
+        docs = docs.filter(Boolean);
         setSharedGardens(docs);
         setSelectedGardenId((prev) => {
           if (prev === "personal") return prev;
           return docs.some((garden) => garden.id === prev) ? prev : "personal";
         });
+        // Fetch settings for selected garden
+        const selected = docs.find((g) => g.id === selectedGardenId) || docs[0];
+        if (selected) {
+          getDoc(doc(db, "sharedGardens", selected.id)).then((snap) => {
+            const data = snap.data() || {};
+            setSharedGardenSettings({
+              restrictAddPeople: !!data.restrictAddPeople,
+              restrictCustomize: !!data.restrictCustomize,
+              restrictEditPlants: !!data.restrictEditPlants,
+              ownerId: data.ownerId || null,
+            });
+            setSettingsLoaded(true);
+          });
+        } else {
+          setSharedGardenSettings({ restrictAddPeople: false, restrictCustomize: false, restrictEditPlants: false, ownerId: null });
+          setSettingsLoaded(true);
+        }
       },
       () => {
         setSharedGardens([]);
         setSelectedGardenId("personal");
+        setSettingsLoaded(false);
       }
     );
 
     return () => unsubscribe();
-  }, [uid]);
+  }, [uid, selectedGardenId]);
 
   const selectedGardenName = useMemo(() => {
     if (selectedGardenId === "personal") return "Personal Garden";
@@ -541,7 +913,8 @@ export default function AddGoalScreen({ navigation }) {
     if (name.trim().length < 3) return "Give it a short name (at least 3 characters).";
     if (!selectedIcon) return "Please select an icon.";
     if (type === "quantity" && (!(Number(target) > 0) || unit.trim().length < 1)) return "Quantity needs a number + unit.";
-    if (!scheduleDays.length) return "Pick at least one day.";
+    if (type === "quantity" && Number(target) > MAX_QUANTITY_TARGET) return `Quantity max is ${MAX_QUANTITY_TARGET}.`;
+    if ((mode === "days" && !days.length) || !scheduleDays.length) return "Pick at least one day.";
     if ((completionMode === "date" || completionMode === "both") && !isValidISODate(completionEndDate.trim())) {
       return "Enter a valid end date (YYYY-MM-DD).";
     }
@@ -576,108 +949,219 @@ export default function AddGoalScreen({ navigation }) {
   ]);
 
   const canSave = !formError;
+  const shouldEnableScroll = contentHeight > scrollViewHeight + 8;
 
   const renderStepContent = () => {
     if (step === 0) {
       return (
-        <View style={styles.card}>
-          <Text style={styles.sectionLabel}>Goal name</Text>
-          <TextInput value={name} onChangeText={setName} placeholder="Example: Read" placeholderTextColor={theme.muted2} style={styles.input} />
-          <View style={styles.gap16} />
-          <Text style={styles.sectionLabel}>Category</Text>
-          <View style={styles.chipWrap}>
-            {CATEGORIES.map((c) => (
-              <Chip key={c} label={c} active={category === c} onPress={() => setCategory(c)} />
-            ))}
+        <>
+          <View style={[styles.card, styles.nameSectionCard]}>
+          <View style={styles.nameInlineRow}>
+            <Text style={styles.nameInlineLabel}>Name:</Text>
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholderTextColor={theme.muted2}
+              style={[styles.input, styles.nameInlineInput]}
+            />
           </View>
-          <View style={styles.switchRow}>
-            <Text style={styles.switchLabel}>Private goal</Text>
-            <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ false: theme.outline, true: theme.accent }} />
           </View>
-          <View style={styles.gap16} />
-          <Text style={styles.sectionLabel}>Garden</Text>
-          <View style={styles.chipWrap}>
-            <Chip label="Personal" active={selectedGardenId === "personal"} onPress={() => setSelectedGardenId("personal")} />
-            {sharedGardens.map((garden) => (
+
+          <View style={styles.sectionGap} />
+
+          <View style={[styles.card, styles.privateSectionCard]}>
+            <View style={[styles.switchRow, styles.privateSectionTopRow]}>
+              <Text style={styles.switchLabel}>Private goal</Text>
+              <Switch
+                value={isPrivate}
+                onValueChange={(value) => {
+                  triggerSelectionHaptic();
+                  setIsPrivate(value);
+                }}
+                trackColor={{ false: theme.outline, true: theme.accent }}
+              />
+            </View>
+            <View style={styles.privateSectionGap} />
+            <Text style={styles.sectionLabel}>Garden</Text>
+            <View style={[styles.chipWrap, styles.gardenChipWrap]}>
               <Chip
-                key={garden.id}
-                label={garden.name || "Shared Garden"}
-                active={selectedGardenId === garden.id}
-                onPress={() => setSelectedGardenId(garden.id)}
+                label="Personal"
+                variant="filter"
+                active={selectedGardenId === "personal"}
+                onPress={() => setSelectedGardenId("personal")}
               />
-            ))}
+              {sharedGardens.map((garden) => (
+                <Chip
+                  key={garden.id}
+                  label={garden.name || "Shared Garden"}
+                  variant="filter"
+                  active={selectedGardenId === garden.id}
+                  onPress={() => setSelectedGardenId(garden.id)}
+                />
+              ))}
+            </View>
+            {selectedGardenId !== "personal" && (
+              <View style={[styles.switchRow, styles.privateSectionRow]}>
+                <Text style={styles.switchLabel}>Multi-user watering</Text>
+                <Switch
+                  value={multiUserWateringEnabled}
+                  onValueChange={(value) => {
+                    triggerSelectionHaptic();
+                    setMultiUserWateringEnabled(value);
+                  }}
+                  trackColor={{ false: theme.outline, true: theme.accent }}
+                />
+              </View>
+            )}
+            {selectedGardenId !== "personal" && multiUserWateringEnabled && (
+              <View style={[styles.contributorRow, styles.privateSectionRow]}>
+                <Text style={styles.switchLabel}>Required contributors</Text>
+                <TextInput
+                  value={requiredContributors}
+                  onChangeText={setRequiredContributors}
+                  keyboardType="number-pad"
+                  style={[styles.input, styles.contributorInput]}
+                  placeholder="2"
+                  placeholderTextColor={theme.muted2}
+                />
+              </View>
+            )}
           </View>
-          {selectedGardenId !== "personal" && (
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Multi-user watering</Text>
-              <Switch value={multiUserWateringEnabled} onValueChange={setMultiUserWateringEnabled} trackColor={{ false: theme.outline, true: theme.accent }} />
-            </View>
-          )}
-          {selectedGardenId !== "personal" && multiUserWateringEnabled && (
-            <View style={styles.contributorRow}>
-              <Text style={styles.switchLabel}>Required contributors</Text>
-              <TextInput
-                value={requiredContributors}
-                onChangeText={setRequiredContributors}
-                keyboardType="number-pad"
-                style={[styles.input, styles.contributorInput]}
-                placeholder="2"
-                placeholderTextColor={theme.muted2}
-              />
-            </View>
-          )}
-        </View>
+        </>
       );
     }
     if (step === 1) {
       return (
         <View style={styles.card}>
-          <Text style={styles.sectionLabel}>Icon</Text>
-          <Pressable style={styles.iconPickerButton} onPress={() => setShowIconPicker(true)}>
-            <View style={styles.iconPickerButtonLeft}>
-              <View style={styles.iconPickerPreview}>
-                <GoalIcon name={selectedIcon} size={24} color={theme.accent} />
-              </View>
-              <View style={styles.iconPickerTextWrap}>
-                <Text style={styles.iconPickerTitle}>Choose icon</Text>
-                <Text style={styles.iconPickerSubtitle} numberOfLines={1}>{selectedIcon}</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={theme.muted} />
-          </Pressable>
+          <Text style={styles.sectionLabel}>Plant and Pot</Text>
+
+          <View style={styles.livePreviewCard}>
+            <CenteredAssetCarousel
+              carouselKey="visible-plant-options"
+              title="Plant options"
+              data={plantOptions}
+              selectedIndex={selectedPlantIndex}
+              onSelectIndex={selectPlantByIndex}
+              itemSize={92}
+              showTitle={false}
+              showCenterRing={false}
+              sectionStyle={styles.plantOptionsSection}
+              wrapStyle={styles.plantOptionsWrap}
+              itemStyle={styles.plantOptionsItem}
+              activeItemStyle={styles.plantOptionsItemActive}
+              renderPreview={(item, isActive) => (
+                <Image
+                  source={item.preview}
+                  resizeMode="contain"
+                  style={[styles.plantOptionsImage, isActive && styles.plantOptionsImageActive]}
+                />
+              )}
+            />
+
+            <CenteredAssetCarousel
+              carouselKey="visible-pot-options"
+              title="Pot options"
+              data={potOptions}
+              selectedIndex={selectedPotIndex}
+              onSelectIndex={selectPotByIndex}
+              itemSize={92}
+              showTitle={false}
+              showCenterRing={false}
+              sectionStyle={styles.potOptionsSection}
+              wrapStyle={styles.potOptionsWrap}
+              itemStyle={styles.potOptionsItem}
+              activeItemStyle={styles.potOptionsItemActive}
+              renderPreview={(item, isActive) => (
+                <Image
+                  source={item.preview}
+                  resizeMode="contain"
+                  style={[styles.potOptionsImage, isActive && styles.potOptionsImageActive]}
+                />
+              )}
+            />
+          </View>
         </View>
       );
     }
     if (step === 2) {
       return (
         <View style={styles.card}>
-          <Text style={styles.sectionLabel}>Tracking</Text>
-          <Segmented left={{ label: "Checkmark", value: "completion" }} right={{ label: "Quantity", value: "quantity" }} value={type} onChange={setType} />
-          {type === "quantity" && (
-            <View style={styles.row}>
-              <TextInput value={target} onChangeText={setTarget} keyboardType="numeric" style={[styles.input, { flex: 1, marginRight: 10 }]} />
-              <TextInput value={unit} onChangeText={setUnit} placeholder="minutes" style={[styles.input, { flex: 1 }]} />
+          <Text style={styles.sectionLabel}>Icon</Text>
+          <View style={styles.iconModalSearchWrap}>
+            <View style={[styles.searchBar, styles.iconModalSearchBar]}>
+              <Ionicons name="search" size={18} color={theme.muted} />
+              <TextInput
+                value={searchTerm}
+                onChangeText={setSearchTerm}
+                placeholder="Search icons..."
+                placeholderTextColor={theme.muted2}
+                style={styles.searchInput}
+                autoCapitalize="none"
+              />
+              {!!searchTerm && (
+                <Pressable
+                  onPress={() => {
+                    triggerSelectionHaptic();
+                    setSearchTerm("");
+                  }}
+                  hitSlop={8}
+                >
+                  <Ionicons name="close-circle" size={18} color={theme.muted} />
+                </Pressable>
+              )}
             </View>
-          )}
+            <View style={styles.iconSelectedRow}>
+              <Text style={styles.iconSelectedRowLabel}>Selected</Text>
+              <View style={styles.iconSelectedPill}>
+                <GoalIcon name={selectedIcon} size={14} color="#FFFFFF" />
+                <Text style={styles.iconSelectedPillText}>{selectedIcon}</Text>
+              </View>
+            </View>
+          </View>
+          <ScrollView
+            style={styles.iconModalList}
+            contentContainerStyle={styles.iconGrid}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            onScroll={() => Keyboard.dismiss()}
+          >
+            <View style={styles.iconGridWrap}>
+              {filteredIcons.map((item) => (
+                <IconItem
+                  key={item}
+                  iconName={item}
+                  isActive={selectedIcon === item}
+                  onSelect={setSelectedIcon}
+                />
+              ))}
+            </View>
+            {!searchTerm.trim() && (
+              <Text style={styles.iconLoadHint}>Showing popular icons first for faster loading.</Text>
+            )}
+            {hasMoreIcons && (
+              <Pressable
+                style={styles.loadMoreIconsBtn}
+                onPress={() => {
+                  triggerSelectionHaptic();
+                  setVisibleIconCount((prev) => prev + 120);
+                }}
+              >
+                <Text style={styles.loadMoreIconsText}>Show more icons</Text>
+              </Pressable>
+            )}
+          </ScrollView>
         </View>
       );
     }
     if (step === 3) {
       return (
         <View style={styles.card}>
-          <Text style={styles.sectionLabel}>Schedule</Text>
-          <View style={styles.row}>
-            <Chip label="Every day" active={mode === "everyday"} onPress={() => setMode("everyday")} />
-            <Chip label="Weekdays" active={mode === "weekdays"} onPress={() => setMode("weekdays")} />
-            <Chip label="Custom" active={mode === "days"} onPress={() => setMode("days")} />
-          </View>
-          {mode === "days" && (
-            <View style={styles.daysGrid}>
-              {DAYS.map((d) => (
-                <Pressable key={d.label} onPress={() => toggleDay(d.day)} style={[styles.dayPill, days.includes(d.day) && styles.dayPillActive]}>
-                  <Text style={[styles.dayText, days.includes(d.day) && styles.dayTextActive]}>{d.label}</Text>
-                </Pressable>
-              ))}
+          <Text style={styles.sectionLabel}>Tracking</Text>
+          <Segmented left={{ label: "Checkmark", value: "completion" }} right={{ label: "Quantity", value: "quantity" }} value={type} onChange={setType} />
+          {type === "quantity" && (
+            <View style={styles.row}>
+              <TextInput value={target} onChangeText={(value) => setTarget(normalizeQuantityTargetInput(value))} keyboardType="numeric" style={[styles.input, { flex: 1, marginRight: 10 }]} placeholder="Target (max 6)" placeholderTextColor={theme.muted2} />
+              <TextInput value={unit} onChangeText={setUnit} placeholder="minutes" style={[styles.input, { flex: 1 }]} />
             </View>
           )}
         </View>
@@ -686,14 +1170,41 @@ export default function AddGoalScreen({ navigation }) {
     if (step === 4) {
       return (
         <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Schedule</Text>
+          <View style={styles.row}>
+            <Chip label="Every day" variant="filter" active={mode === "everyday"} onPress={() => setMode("everyday")} />
+            <Chip label="Weekdays" variant="filter" active={mode === "weekdays"} onPress={() => setMode("weekdays")} />
+            <Chip label="Custom" variant="filter" active={mode === "days"} onPress={() => setMode("days")} />
+          </View>
+          {mode === "days" && (
+            <View style={styles.daysGrid}>
+              {DAYS.map((d) => (
+                <Pressable
+                  key={d.label}
+                  onPress={() => {
+                    triggerSelectionHaptic();
+                    toggleDay(d.day);
+                  }}
+                  style={[styles.dayPill, days.includes(d.day) && styles.dayPillActive]}
+                >
+                  <Text style={[styles.dayText, days.includes(d.day) && styles.dayTextActive]}>{d.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </View>
+      );
+    }
+    if (step === 5) {
+      return (
+        <View style={styles.card}>
           <Text style={styles.sectionLabel}>Goal completion</Text>
           <View style={styles.completionModeRow}>
-            <Chip label="No end" active={completionMode === "none"} onPress={() => changeCompletionMode("none")} />
-            <Chip label="End date" active={completionMode === "date"} onPress={() => changeCompletionMode("date")} />
-            <Chip label="End amount" active={completionMode === "amount"} onPress={() => changeCompletionMode("amount")} />
-            <Chip label="Both" active={completionMode === "both"} onPress={() => changeCompletionMode("both")} />
+            <Chip label="No end" variant="filter" active={completionMode === "none"} onPress={() => changeCompletionMode("none")} />
+            <Chip label="End date" variant="filter" active={completionMode === "date"} onPress={() => changeCompletionMode("date")} />
+            <Chip label="End amount" variant="filter" active={completionMode === "amount"} onPress={() => changeCompletionMode("amount")} />
           </View>
-          {(completionMode === "date" || completionMode === "both") && (
+          {completionMode === "date" && (
             <>
               <TextInput
                 value={completionEndDate}
@@ -706,7 +1217,7 @@ export default function AddGoalScreen({ navigation }) {
               {!!completionDateMeta && <Text style={styles.helperText}>Ends {completionDateMeta.readable}</Text>}
             </>
           )}
-          {(completionMode === "amount" || completionMode === "both") && (
+          {completionMode === "amount" && (
             <View style={styles.row}>
               <TextInput
                 value={completionEndAmount}
@@ -737,15 +1248,28 @@ export default function AddGoalScreen({ navigation }) {
   };
 
   const goNextStep = () => setStep((prev) => Math.min(prev + 1, stepLabels.length - 1));
-  const goBackStep = () => setStep((prev) => Math.max(prev - 1, 0));
+  const goBackStep = () => {
+    if (step === 0) {
+      navigation.goBack();
+    } else {
+      setStep((prev) => Math.max(prev - 1, 0));
+    }
+  };
+
+  const isOwner = selectedGardenId !== "personal" && sharedGardenSettings.ownerId && auth.currentUser && sharedGardenSettings.ownerId === auth.currentUser.uid;
+  const canEditPlants = selectedGardenId === "personal" || isOwner || !sharedGardenSettings.restrictEditPlants;
 
   const save = async () => {
     if (!auth.currentUser || isSaving || !canSave) return;
+    if (selectedGardenId !== "personal" && !canEditPlants) {
+      Alert.alert("Restricted", "Only the owner can add goals to this shared garden.");
+      return;
+    }
     setIsSaving(true);
     try {
       const goalData = {
         name: name.trim(),
-        category,
+        category: "Other",
         isPrivate,
         icon: selectedIcon,
         gardenId: selectedGardenId,
@@ -766,8 +1290,11 @@ export default function AddGoalScreen({ navigation }) {
         createdAt: serverTimestamp(),
         currentStreak: 0,
         longestStreak: 0,
-        healthLevel: 3,
-        species: "fern"
+        healthLevel: 5,
+        species: selectedPlantSpecies,
+        plantSpecies: selectedPlantSpecies,
+        potType: selectedPotType,
+        potStyle: selectedPotType,
       };
 
       const userGoalsRef = collection(db, "users", auth.currentUser.uid, "goals");
@@ -799,199 +1326,262 @@ export default function AddGoalScreen({ navigation }) {
 
   return (
     <Page>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 70}
-      >
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.hTitle}>Plant a goal</Text>
-            <Text style={styles.hSub}>Fill out your goal details below.</Text>
-          </View>
-        </View>
-
-        <ScrollView style={styles.contentArea} contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled" onScroll={() => Keyboard.dismiss()}>
-          <View style={styles.stepHeaderRow}>
-            <Text style={styles.stepTitle}>{stepLabels[step]}</Text>
-            <Text style={styles.stepCount}>{step + 1}/{stepLabels.length}</Text>
-          </View>
-          <Dot total={stepLabels.length} index={step} done={stepLabels.map((_, i) => i < step)} />
-
-          {renderStepContent()}
-
-          {!!formError && (
-            <View style={styles.errorInline}>
-              <Text style={styles.errorInlineText}>{formError}</Text>
+      <View style={styles.screenWrap}>
+        <KeyboardAvoidingView
+          style={styles.keyboardArea}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+        >
+          <View style={styles.headerWrapper}>
+            <View style={styles.headerContent}>
+              <View style={styles.headerRow}>
+                <Text style={styles.headerTitle}>Add Goal</Text>
+              </View>
             </View>
-          )}
-        </ScrollView>
+          </View>
+
+          <ScrollView
+            style={styles.contentArea}
+            contentContainerStyle={styles.formScrollContent}
+            keyboardShouldPersistTaps="handled"
+            onScroll={() => Keyboard.dismiss()}
+            onLayout={(event) => setScrollViewHeight(event.nativeEvent.layout.height)}
+            onContentSizeChange={(_, height) => setContentHeight(height)}
+            scrollEnabled={shouldEnableScroll}
+            bounces={shouldEnableScroll}
+            alwaysBounceVertical={shouldEnableScroll}
+          >
+            {renderStepContent()}
+
+            {!!formError && (
+              <View style={styles.errorInline}>
+                <Text style={styles.errorInlineText}>{formError}</Text>
+              </View>
+            )}
+          </ScrollView>
+        </KeyboardAvoidingView>
 
         <View style={styles.stepFooterRow}>
+          <View style={styles.footerProgressWrap}>
+            <StepProgressBar total={stepLabels.length} index={step} />
+          </View>
           <View style={styles.stepButtonGroup}>
             <Button
               variant="secondary"
               label="Back"
               onPress={goBackStep}
-              disabled={step === 0 || isSaving}
+              disabled={isSaving}
               style={styles.stepButton}
             />
             {step < stepLabels.length - 1 ? (
-              <Button variant="primary" label="Next" onPress={goNextStep} disabled={isSaving} style={styles.stepButton} />
+              <Button
+                variant="primary"
+                label="Next"
+                onPress={goNextStep}
+                disabled={isSaving || (step === 0 && name.trim().length < 3)}
+                style={styles.stepButton}
+              />
             ) : (
-              <Button variant="primary" label={isSaving ? "Saving..." : "Save Goal"} onPress={save} disabled={isSaving || !canSave} style={styles.stepButton} />
+              <Button variant="primary" label={isSaving ? "Saving..." : "Save Goal"} onPress={save} disabled={isSaving || !canSave || (selectedGardenId !== "personal" && !canEditPlants)} style={styles.stepButton} />
             )}
           </View>
         </View>
 
-        <Modal visible={showIconPicker} animationType="slide" presentationStyle="fullScreen">
-          <View style={styles.iconModalScreen}>
-            <View style={styles.iconModalHeader}>
-              <Pressable onPress={() => setShowIconPicker(false)} style={styles.iconModalHeaderBtn}>
-                <Ionicons name="close" size={22} color={theme.text} />
-              </Pressable>
-              <View style={styles.iconModalHeaderCenter}>
-                <Text style={styles.iconModalTitle}>Choose an icon</Text>
-                <Text style={styles.iconModalSubTitle}>{filteredIcons.length} icons</Text>
-              </View>
-              <Pressable onPress={() => setShowIconPicker(false)} style={styles.iconModalDoneBtn}>
-                <Text style={styles.iconModalDoneText}>Done</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.iconModalSearchWrap}>
-              <View style={[styles.searchBar, styles.iconModalSearchBar]}>
-                <Ionicons name="search" size={18} color={theme.muted} />
-                <TextInput
-                  value={searchTerm}
-                  onChangeText={setSearchTerm}
-                  placeholder="Search icons..."
-                  placeholderTextColor={theme.muted2}
-                  style={styles.searchInput}
-                  autoCapitalize="none"
-                  autoFocus
-                />
-                {!!searchTerm && (
-                  <Pressable onPress={() => setSearchTerm("")} hitSlop={8}>
-                    <Ionicons name="close-circle" size={18} color={theme.muted} />
-                  </Pressable>
-                )}
-              </View>
-              <View style={styles.iconSelectedRow}>
-                <Text style={styles.iconSelectedRowLabel}>Selected</Text>
-                <View style={styles.iconSelectedPill}>
-                  <GoalIcon name={selectedIcon} size={14} color="#FFFFFF" />
-                  <Text style={styles.iconSelectedPillText}>{selectedIcon}</Text>
-                </View>
-              </View>
-            </View>
-
-            <ScrollView
-              style={styles.iconModalList}
-              contentContainerStyle={styles.iconGrid}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              onScroll={() => Keyboard.dismiss()}
-            >
-              <View style={styles.iconGridWrap}>
-                {filteredIcons.map((item) => (
-                  <IconItem
-                    key={item}
-                    iconName={item}
-                    isActive={selectedIcon === item}
-                    onSelect={(iconName) => {
-                      setSelectedIcon(iconName);
-                      setShowIconPicker(false);
-                    }}
-                  />
-                ))}
-              </View>
-            </ScrollView>
-          </View>
-        </Modal>
+        {/* Icon picker modal removed; now inline in step 1 */}
 
         {/* Help overlay */}
         <CoachMark visible={helpOpen} title={helpCopy.title} body={helpCopy.body} onClose={() => setHelpOpen(false)} />
-      </KeyboardAvoidingView>
+      </View>
     </Page>
   );
 }
 
 const styles = StyleSheet.create({
-  btnBase: {
-    height: 48,
-    minWidth: 120,
-    maxWidth: 160,
-    width: 140,
-    borderRadius: theme.radius,
+  screenWrap: { flex: 1 },
+  keyboardArea: { flex: 1 },
+  actionButtonWrap: {
+    flex: 1,
+    height: 56,
+    position: "relative",
+  },
+  actionButtonShadow: {
+    position: "absolute",
+    top: 4,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 20,
+  },
+  actionButtonShadowPrimary: { backgroundColor: "#4aa93a" },
+  actionButtonShadowSecondary: { backgroundColor: "#c3cfdb" },
+  actionButtonFace: {
+    height: 52,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    flex: 1,
-    borderWidth: 1,
-    borderColor: theme.accent,
-    marginHorizontal: 4,
-    backgroundColor: theme.surface,
+    paddingHorizontal: 16,
   },
-  btnPrimary: {
+  actionButtonPrimary: { backgroundColor: "#59d700" },
+  actionButtonSecondary: { backgroundColor: "#e7edf5" },
+  actionButtonPrimaryDisabled: { backgroundColor: "#97cd71"},
+  actionButtonSecondaryDisabled: { backgroundColor: "#dde3ea" },
+  actionButtonPressed: { transform: [{ translateY: 4 }] },
+  actionButtonText: { fontSize: 15, fontWeight: "900" },
+  actionButtonTextPrimary: { color: "#FFFFFF" },
+  actionButtonTextSecondary: { color: theme.accent },
+  actionButtonTextDisabled: { color: "#f7fbf3" },
+  headerWrapper: {
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 24,
+    shadowColor: '#4c6782',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 0,
+    elevation: 3,
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  headerContent: {
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    paddingLeft: 16,
+    alignItems: 'stretch',
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    minHeight: 44,
+  },
+  headerTitle: { fontSize: 22, fontWeight: "900", color: theme.text },
+  progressBarTrack: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "#d7e1eb",
+    overflow: "hidden",
+  },
+  progressBarFill: {
+    height: "100%",
+    borderRadius: 999,
     backgroundColor: theme.accent,
-    borderColor: theme.accent,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.13,
-    shadowRadius: 3,
+  },
+  contentArea: { flex: 1 },
+  formScrollContent: { paddingBottom: 20 },
+  stepIntroCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 22,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#e3edf7",
+    shadowColor: "#cdcdcd",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
     elevation: 2,
   },
-  btnSecondary: {
-    backgroundColor: theme.surface,
-    borderColor: theme.accent,
+  card: {
+    backgroundColor: "#ffffff",
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#dbe8f6",
+    shadowColor: "#c9d9ea",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
   },
-  btnTextBase: { fontSize: 16, fontWeight: "800" },
-  btnTextPrimary: { color: theme.bg },
-  btnTextSecondary: { color: theme.accent },
-  headerRow: { flexDirection: "row", marginBottom: 10 },
-  hTitle: { fontSize: 20, fontWeight: "800", color: theme.text },
-  hSub: { marginTop: 4, fontSize: 12, fontWeight: "600", color: theme.muted },
-  dotsRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
-  dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: theme.outline, marginRight: 8 },
-  dotDone: { backgroundColor: theme.text2 },
-  dotActive: { backgroundColor: theme.accent },
-  contentArea: { flex: 1 },
-  formScrollContent: { paddingBottom: 12 },
-  card: { backgroundColor: theme.surface, borderRadius: theme.radius, padding: 16, marginBottom: 10 },
+  nameSectionCard: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  privateSectionCard: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  privateSectionTopRow: {
+    marginTop: 0,
+  },
+  privateSectionRow: {
+    marginTop: 8,
+  },
+  privateSectionGap: { height: 8 },
   footer: { flexDirection: "row", paddingTop: 10, paddingBottom: 8 },
-  stepFooterRow: { paddingVertical: 10, paddingHorizontal: 12 },
+  stepFooterRow: { paddingTop: 8, paddingBottom: 12, paddingHorizontal: 2 },
+  footerProgressWrap: { marginBottom: 12 },
   stepButtonGroup: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    width: '100%',
+    width: "100%",
     gap: 12,
+    marginBottom: 100,
   },
-  stepButton: {
-    flex: 1,
-    minHeight: 48,
-    maxHeight: 48,
-    marginHorizontal: 0,
-    borderRadius: theme.radius,
-    borderWidth: 1,
-    borderColor: theme.accent,
-    backgroundColor: theme.surface,
+  stepButton: { flex: 1 },
+  sectionLabel: { fontSize: 13, fontWeight: "900", color: theme.text, marginBottom: 8 },
+  nameInlineRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 10,
   },
-  sectionLabel: { fontSize: 13, fontWeight: "800", color: theme.text, marginBottom: 6 },
+  nameInlineLabel: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: theme.text,
+  },
+  nameInlineInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  nameHeaderCard: {
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#d6e4f2',
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 12,
+    shadowColor: '#4c6782',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 0,
+    elevation: 2,
+  },
+  nameHeaderEyebrow: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: theme.muted,
+    marginBottom: 6,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  nameHeaderInput: {
+    height: 45,
+    borderRadius: 16,
+    fontSize: 16,
+    fontWeight: '800',
+  },
   switchRow: { marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   contributorRow: { marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   switchLabel: { fontSize: 13, fontWeight: "700", color: theme.text },
   helperText: { fontSize: 12, color: theme.muted, marginBottom: 8 },
-  completionModeRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 8, marginBottom: 10 },
+  completionModeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4, marginBottom: 10 },
   calendarCard: {
-    backgroundColor: theme.surface2,
-    borderRadius: theme.radius,
+    backgroundColor: "#ffffff",
+    borderRadius: 24,
     padding: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: theme.outline,
+    borderColor: "#dbe8f6",
+    shadowColor: "#cdcdcd",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
   },
   calendarHeader: {
     alignItems: "center",
@@ -1024,26 +1614,88 @@ const styles = StyleSheet.create({
   datePreviewBox: { marginTop: 10, backgroundColor: theme.surface2, borderRadius: theme.radius, padding: 10 },
   datePreviewText: { fontSize: 12, color: theme.text, fontWeight: "700" },
   completionInput: { marginTop: 2 },
-  input: { backgroundColor: theme.surface2, borderRadius: theme.radius, paddingHorizontal: 14, height: 46, fontSize: 14, color: theme.text },
+  input: {
+    backgroundColor: "#f9fbfd",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    height: 46,
+    fontSize: 14,
+    color: theme.text,
+    borderWidth: 1,
+    borderColor: "#d9e6f4",
+  },
   contributorInput: { width: 82, textAlign: "center", paddingHorizontal: 8 },
   textArea: { height: 96, paddingTop: 12, textAlignVertical: "top" },
   gap16: { height: 16 },
-  chipWrap: { flexDirection: "row", flexWrap: "wrap", marginTop: 10, gap: 10 },
-  chip: { height: 34, paddingHorizontal: 12, borderRadius: theme.radius, backgroundColor: theme.surface2, justifyContent: "center" },
-  chipActive: { backgroundColor: theme.accent },
-  chipText: { fontSize: 12, fontWeight: "700", color: theme.text },
+  sectionGap: { height: 8 },
+  chipWrap: { flexDirection: "row", flexWrap: "wrap", marginTop: 4, gap: 8 },
+  gardenChipWrap: { gap: 4 },
+  chip: {
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: "#edf3f9",
+    borderWidth: 1,
+    borderColor: "#d6e1ec",
+    justifyContent: "center",
+  },
+  filterStyleChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#c9c9c9',
+    borderColor: 'transparent',
+  },
+  chipActive: { backgroundColor: "#28b900", borderColor: theme.accent },
+  filterStyleChipActive: {
+    backgroundColor: '#28b900',
+    borderColor: theme.accent,
+  },
+  chipText: { fontSize: 12, fontWeight: "800", color: "#4c5f75" },
+  filterStyleChipText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#ffffff',
+  },
   chipTextActive: { color: theme.bg },
-  segmentWrap: { flexDirection: "row", backgroundColor: theme.surface2, borderRadius: theme.radius, padding: 4, marginTop: 10 },
-  segment: { flex: 1, height: 40, borderRadius: theme.radius, alignItems: "center", justifyContent: "center" },
-  segmentActive: { backgroundColor: theme.accent },
-  segmentText: { fontSize: 12, fontWeight: "700", color: theme.text },
-  segmentTextActive: { color: theme.bg },
-  row: { flexDirection: "row", marginTop: 10 },
-  daysGrid: { flexDirection: "row", flexWrap: "wrap", marginTop: 10, gap: 10 },
-  dayPill: { minWidth: 92, height: 40, borderRadius: theme.radiusSm, backgroundColor: theme.surface2, alignItems: "center", justifyContent: "center" },
-  dayPillActive: { backgroundColor: theme.accent },
-  dayText: { fontSize: 12, fontWeight: "700", color: theme.text },
-  dayTextActive: { color: theme.bg },
+  filterStyleChipTextActive: { color: '#ffffff' },
+  segmentWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 6,
+    marginTop: 10,
+    flexWrap: 'wrap',
+  },
+  segment: {
+    minHeight: 36,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 14,
+    backgroundColor: '#c9c9c9',
+    borderWidth: 1,
+    borderColor: 'transparent',
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  segmentActive: { backgroundColor: '#28b900', borderColor: theme.accent },
+  segmentText: { fontSize: 14, fontWeight: '900', color: '#ffffff' },
+  segmentTextActive: { color: '#ffffff' },
+  row: { flexDirection: "row", marginTop: 10, gap: 10 },
+  daysGrid: { flexDirection: "row", flexWrap: "wrap", marginTop: 10, gap: 8 },
+  dayPill: {
+    minWidth: 92,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#c9c9c9',
+    borderWidth: 1,
+    borderColor: 'transparent',
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dayPillActive: { backgroundColor: '#28b900', borderColor: theme.accent },
+  dayText: { fontSize: 14, fontWeight: '900', color: '#ffffff' },
+  dayTextActive: { color: '#ffffff' },
   iconPickerButton: {
     marginTop: 6,
     minHeight: 68,
@@ -1068,7 +1720,17 @@ const styles = StyleSheet.create({
   iconPickerTextWrap: { flex: 1 },
   iconPickerTitle: { fontSize: 14, fontWeight: "800", color: theme.text },
   iconPickerSubtitle: { fontSize: 12, fontWeight: "600", color: theme.muted, marginTop: 3 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.surface2, borderRadius: 12, paddingHorizontal: 12, height: 45, marginBottom: 10 },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f7fbff',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    height: 45,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#d6e4f2',
+  },
   searchInput: { flex: 1, marginLeft: 8, fontSize: 14, color: theme.text },
   iconList: { maxHeight: 260 },
   iconGrid: { paddingBottom: 20 },
@@ -1078,13 +1740,18 @@ const styles = StyleSheet.create({
     height: 84,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
+    borderRadius: 14,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#111111',
+    borderColor: '#d6e1ec',
     marginBottom: 10,
     paddingTop: 10,
     paddingHorizontal: 6,
+    shadowColor: '#d9e3ee',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 1,
   },
   iconBoxActive: { backgroundColor: '#111111', borderColor: '#111111', elevation: 4 },
   iconSelectedBadge: {
@@ -1122,19 +1789,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconModalDoneText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-  iconModalSearchWrap: { paddingHorizontal: 16, paddingTop: 14 },
+  iconModalSearchWrap: { paddingHorizontal: 0, paddingTop: 0 },
   iconModalSearchBar: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#111111',
+    borderColor: '#d6e4f2',
     marginBottom: 8,
   },
-  iconSelectedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  iconSelectedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   iconSelectedRowLabel: { fontSize: 12, fontWeight: '700', color: theme.muted },
   iconSelectedPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#111111',
+    backgroundColor: '#59d700',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -1142,8 +1809,369 @@ const styles = StyleSheet.create({
   },
   iconSelectedPillText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
   iconModalList: { flex: 1, paddingHorizontal: 12, paddingTop: 4 },
-  reviewRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.surface2 },
-  reviewLabel: { fontSize: 13, fontWeight: "700", color: theme.muted },
+  iconLoadHint: { marginTop: 4, marginBottom: 12, fontSize: 12, fontWeight: '700', color: theme.muted, textAlign: 'center' },
+  livePreviewCard: {
+    marginTop: 2,
+    marginBottom: 4,
+    height: 220,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#d6e4f2",
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "visible",
+    paddingTop: 8,
+    paddingBottom: 8,
+    paddingHorizontal: 6,
+  },
+  assetCarouselSection: {
+    width: "100%",
+    marginTop: 8,
+    overflow: "visible",
+  },
+  assetCarouselTitle: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: theme.muted,
+    marginBottom: 6,
+    textAlign: "center",
+  },
+  assetCarouselWrap: {
+    height: 86,
+    justifyContent: "center",
+    overflow: "visible",
+  },
+  assetCarouselItem: {
+    width: ASSET_CAROUSEL_ITEM_SIZE,
+    height: 76,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "visible",
+    opacity: 0.45,
+    transform: [{ scale: 0.86 }],
+  },
+  assetCarouselItemActive: {
+    opacity: 1,
+    transform: [{ scale: 1 }],
+  },
+  assetCarouselCenterRing: {
+    position: "absolute",
+    alignSelf: "center",
+    width: ASSET_CAROUSEL_ITEM_SIZE,
+    height: 76,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#59d700",
+    backgroundColor: "rgba(89, 215, 0, 0.08)",
+    zIndex: -1,
+  },
+  assetCarouselPlantImage: {
+    width: 42,
+    height: 50,
+  },
+  assetCarouselPlantImageActive: {
+    width: 50,
+    height: 58,
+  },
+  assetCarouselPotImage: {
+    width: 52,
+    height: 34,
+  },
+  assetCarouselPotImageActive: {
+    width: 60,
+    height: 38,
+  },
+  plantOptionsSection: {
+    marginTop: 0,
+    zIndex: 3,
+    elevation: 3,
+  },
+  plantOptionsWrap: {
+    height: 98,
+    overflow: "visible",
+  },
+  plantOptionsItem: {
+    width: 92,
+    height: 102,
+    opacity: 0.42,
+    transform: [{ scale: 0.88 }],
+    justifyContent: "flex-end",
+    paddingBottom: 0,
+    overflow: "visible",
+  },
+  plantOptionsItemActive: {
+    opacity: 1,
+    transform: [{ scale: 1 }],
+  },
+  plantOptionsImage: {
+    width: 66,
+    height: 90,
+  },
+  plantOptionsImageActive: {
+    width: 84,
+    height: 108,
+  },
+  potOptionsSection: {
+    marginTop: -46,
+    zIndex: 1,
+    elevation: 1,
+    overflow: "visible",
+  },
+  potOptionsWrap: {
+    height: 116,
+    paddingTop: 34,
+    overflow: "visible",
+  },
+  potOptionsItem: {
+    width: 92,
+    height: 92,
+    opacity: 0.42,
+    transform: [{ scale: 0.88 }],
+    justifyContent: "flex-start",
+    paddingTop: 0,
+    overflow: "visible",
+  },
+  potOptionsItemActive: {
+    height: 102,
+    opacity: 1,
+    transform: [{ scale: 1 }],
+    overflow: "visible",
+  },
+  potOptionsImage: {
+    width: 74,
+    height: 46,
+    marginTop: 4,
+  },
+  potOptionsImageActive: {
+    width: 90,
+    height: 56,
+    marginTop: 4,
+  },
+  topCarouselSection: {
+    marginTop: 0,
+  },
+  topPlantCarouselWrap: {
+    width: 210,
+    height: 106,
+    position: "absolute",
+    top: 0,
+    zIndex: 3,
+  },
+  topPotCarouselWrap: {
+    width: 210,
+    height: 86,
+    position: "absolute",
+    bottom: 8,
+    zIndex: 1,
+  },
+  topCarouselItem: {
+    opacity: 0.35,
+    transform: [{ scale: 0.82 }],
+  },
+  topCarouselItemActive: {
+    opacity: 1,
+    transform: [{ scale: 1 }],
+  },
+  topCarouselPlantImage: {
+    width: 54,
+    height: 76,
+  },
+  topCarouselPlantImageActive: {
+    width: 76,
+    height: 96,
+  },
+  topCarouselPotImage: {
+    width: 58,
+    height: 38,
+  },
+  topCarouselPotImageActive: {
+    width: 78,
+    height: 48,
+  },
+  selectionSubLabel: {
+    marginTop: 2,
+    fontSize: 13,
+    fontWeight: "800",
+    color: theme.muted,
+  },
+  selectorPagerWrap: {
+    marginTop: 4,
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: "#f4f9ff",
+    borderWidth: 1,
+    borderColor: "#dce8f4",
+  },
+  selectorCard: {
+    width: "100%",
+    minHeight: 50,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#d6e4f2",
+  },
+  selectorCardActive: {
+    borderColor: "#59d700",
+    backgroundColor: "#f8fff2",
+  },
+  selectorControlRow: {
+    marginTop: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  selectorArrowButton: {
+    width: 42,
+    minHeight: 50,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#d6e4f2",
+  },
+  selectorCardStatic: {
+    flex: 1,
+  },
+  plantPagerWrap: {
+    marginTop: 4,
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: "#f4f9ff",
+    borderWidth: 1,
+    borderColor: "#dce8f4",
+  },
+  plantPagerPage: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  plantCard: {
+    width: "100%",
+    minHeight: 220,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#d6e4f2",
+  },
+  plantCardActive: {
+    borderColor: "#59d700",
+    backgroundColor: "#f8fff2",
+  },
+  previewAssemblyWrap: {
+    width: 168,
+    height: 170,
+    alignItems: "center",
+    justifyContent: "flex-end",
+    marginBottom: 2,
+    position: "relative",
+  },
+  previewPlantImage: {
+    width: 94,
+    height: 112,
+    position: "absolute",
+    bottom: 55,
+    zIndex: 2,
+  },
+  previewPotImage: {
+    width: 106,
+    height: 66,
+    zIndex: 1,
+  },
+  plantPreviewName: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: theme.text,
+  },
+  plantDotsRow: {
+    marginTop: 6,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  plantDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#c3d2e2",
+  },
+  plantDotActive: {
+    width: 20,
+    borderRadius: 999,
+    backgroundColor: "#59d700",
+  },
+  potPagerWrap: {
+    marginTop: 4,
+    borderRadius: 18,
+    overflow: "hidden",
+    backgroundColor: "#f4f9ff",
+    borderWidth: 1,
+    borderColor: "#dce8f4",
+  },
+  potPagerPage: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  potCard: {
+    width: "100%",
+    minHeight: 180,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#d6e4f2",
+  },
+  potCardActive: {
+    borderColor: "#59d700",
+    backgroundColor: "#f8fff2",
+  },
+  potPreviewName: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: theme.text,
+  },
+  potDotsRow: {
+    marginTop: 6,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  potDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#c3d2e2",
+  },
+  potDotActive: {
+    width: 20,
+    borderRadius: 999,
+    backgroundColor: "#59d700",
+  },
+  loadMoreIconsBtn: {
+    alignSelf: 'center',
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: '#eaf4ff',
+    borderWidth: 1,
+    borderColor: '#d6e4f2',
+  },
+  loadMoreIconsText: { fontSize: 12, fontWeight: '900', color: theme.accent },
+  reviewRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#edf2f6' },
+  reviewLabel: { fontSize: 13, fontWeight: "700", color: theme.text2 },
   reviewValue: { fontSize: 13, fontWeight: "800", color: theme.text },
   skipRow: { flexDirection: "row", marginTop: 12, gap: 10 },
   skipToggle: { flex: 1, height: 36, borderRadius: theme.radius, backgroundColor: theme.surface2, alignItems: "center", justifyContent: "center" },

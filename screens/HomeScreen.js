@@ -95,8 +95,24 @@ export default function HomeScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, paddingHorizontal: 16, paddingTop: 10 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
-  title: { fontSize: 20, fontWeight: "900", color: INK },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 24,
+    shadowColor: '#4c6782',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 0,
+    elevation: 3,
+    marginTop: 8,
+    marginBottom: 12,
+    paddingLeft: 16,
+    paddingRight: 10,
+    minHeight: 44,
+  },
+  title: { fontSize: 22, fontWeight: "900", color: INK },
   iconBtn: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
 
   progressRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },

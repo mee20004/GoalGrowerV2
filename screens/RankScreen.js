@@ -1,11 +1,14 @@
 // screens/RankScreen.js
 import React, { useState, useCallback } from "react";
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Image } from "react-native";
+import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "@react-navigation/native";
 import { collection, query, orderBy, limit, getDocs, doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { theme } from "../theme";
+import Page from "../components/Page";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import FireStreakIcon from "../assets/Icons/FireStreakIcon";
 
 const FILTERS = [
   { key: "global", label: "Global" },
@@ -32,11 +35,23 @@ export default function RankScreen({ navigation }) {
         const q = query(usersRef, orderBy("overallScore", "desc"), limit(50));
         const querySnapshot = await getDocs(q);
 
-        const rankedUsers = querySnapshot.docs.map((userDoc, index) => ({
-          id: userDoc.id,
-          rank: index + 1,
-          ...userDoc.data(),
-        }));
+        const currentUid = auth.currentUser?.uid;
+        let rankedUsers = querySnapshot.docs
+          .map((userDoc) => ({ id: userDoc.id, ...userDoc.data() }))
+          .filter((user) => !user.privateAccount || user.id === currentUid)
+          .slice(0, 50);
+
+        // Ensure the logged-in user is present if they're not in the top 50
+        if (currentUid && !rankedUsers.some((user) => user.id === currentUid)) {
+          const currentUserDoc = await getDoc(doc(db, "users", currentUid));
+          if (currentUserDoc.exists()) {
+            rankedUsers.push({ id: currentUserDoc.id, ...currentUserDoc.data() });
+          }
+        }
+
+        rankedUsers = rankedUsers
+          .sort((a, b) => (Number(b.overallScore) || 0) - (Number(a.overallScore) || 0))
+          .map((user, index) => ({ ...user, rank: index + 1 }));
 
         setLeaderboard(rankedUsers);
         return;
@@ -63,8 +78,10 @@ export default function RankScreen({ navigation }) {
         return;
       }
 
+      // Always include the current user
+      const allIds = Array.from(new Set([...relationIds, currentUid]));
       const userDocs = await Promise.all(
-        relationIds.map((uid) => getDoc(doc(db, "users", uid)))
+        allIds.map((uid) => getDoc(doc(db, "users", uid)))
       );
 
       const rankedUsers = userDocs
@@ -96,6 +113,10 @@ export default function RankScreen({ navigation }) {
         ? "No followers to rank yet."
         : "No following users to rank yet.";
 
+  const triggerFilterHaptic = () => {
+    Haptics.selectionAsync().catch(() => {});
+  };
+
   const renderRankIcon = (rank) => {
     if (rank === 1) return <Text style={styles.medal}>🥇</Text>;
     if (rank === 2) return <Text style={styles.medal}>🥈</Text>;
@@ -107,26 +128,32 @@ export default function RankScreen({ navigation }) {
     const isCurrentUser = item.id === auth.currentUser?.uid;
 
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.userCard, isCurrentUser && styles.currentUserCard]}
-        onPress={() => navigation.navigate("UserProfile", { userId: item.id })}
+        onPress={() => {
+          if (isCurrentUser) {
+            navigation.navigate("ProfileTab", {
+              screen: "ProfileHome",
+              params: {},
+            });
+          } else {
+            navigation.navigate("UserProfile", { userId: item.id });
+          }
+        }}
         activeOpacity={0.7}
       >
         <View style={styles.rankContainer}>
-          {renderRankIcon(item.rank)}
-        </View>
-
-        <View style={styles.avatar}>
-          <Ionicons name="person" size={20} color={isCurrentUser ? "#2D5A27" : theme.muted} />
+	  {renderRankIcon(item.rank)}
         </View>
 
         <View style={styles.userInfo}>
           <Text style={[styles.username, isCurrentUser && styles.currentUsername]}>
             {item.username || "Unknown"} {isCurrentUser && "(You)"}
           </Text>
-          <Text style={styles.streakText}>
-            🔥 {item.streakCount || 0} Day Streak
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Image source={FireStreakIcon} style={{ width: 18, height: 18, marginRight: 2 }} resizeMode="contain" />
+            <Text style={styles.streakText}>{item.streakCount || 0} Day Streak</Text>
+          </View>
         </View>
 
         <View style={styles.scoreContainer}>
@@ -138,25 +165,32 @@ export default function RankScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>{leaderboardTitle}</Text>
-        <Text style={styles.headerSubtitle}>Top 50</Text>
+    <Page>
+      <View style={styles.container}>
+      <View style={styles.headerWrapper}>
+        <View style={styles.headerContent}>
+          <View style={styles.headerRow}>
+            <Text style={styles.headerTitle}>Rank</Text>
 
-        <View style={styles.filterRow}>
-          {FILTERS.map((filter) => {
-            const isActive = activeFilter === filter.key;
-            return (
-              <TouchableOpacity
-                key={filter.key}
-                style={[styles.filterChip, isActive && styles.filterChipActive]}
-                onPress={() => setActiveFilter(filter.key)}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>{filter.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
+            <View style={styles.filterRow}>
+              {FILTERS.map((filter) => {
+                const isActive = activeFilter === filter.key;
+                return (
+                  <TouchableOpacity
+                    key={filter.key}
+                    style={[styles.filterChip, isActive && styles.filterChipActive]}
+                    onPress={() => {
+                      triggerFilterHaptic();
+                      setActiveFilter(filter.key);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>{filter.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
         </View>
       </View>
 
@@ -176,91 +210,117 @@ export default function RankScreen({ navigation }) {
           }
         />
       )}
-    </View>
+      </View>
+    </Page>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.bg },
   centerContent: { flex: 1, justifyContent: "center", alignItems: "center" },
-  
-  header: {
-    paddingTop: 60,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E5E5",
-    alignItems: "center",
+
+  headerWrapper: {
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 24,
+    borderWidth: 0,
+    borderColor: '#d9e6f4',
+    shadowColor: '#4c6782',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 0,
+    elevation: 3,
+    marginTop: 8,
+    marginBottom: 12,
   },
-  headerTitle: { fontSize: 24, fontWeight: "900", color: "#2D5A27" },
-  headerSubtitle: { fontSize: 14, color: "#888", fontWeight: "700", marginTop: 4 },
+  headerContent: {
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    paddingLeft: 16,
+    alignItems: 'stretch',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    minHeight: 44,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: theme.text,
+  },
   filterRow: {
-    marginTop: 14,
-    flexDirection: "row",
-    gap: 8,
+    marginTop: 0,
+    flexDirection: 'row',
+    gap: 4,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    flexWrap: 'nowrap',
+    backgroundColor: '#aaaaaa00',
+    borderRadius: 18,
+    padding: 7,
+    flexShrink: 1,
   },
   filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#dcdcdc',
     borderWidth: 1,
-    borderColor: "#D8D8D8",
-    backgroundColor: "#F5F5F5",
+    borderColor: 'transparent',
+    marginHorizontal: 0,
   },
   filterChipActive: {
-    backgroundColor: "#2D5A27",
-    borderColor: "#2D5A27",
+    backgroundColor: '#28b900',
   },
   filterChipText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#666",
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#ffffff",
   },
   filterChipTextActive: {
     color: "#fff",
   },
-  
-  listContent: { padding: 16, paddingBottom: 40 },
-  
+
+  listContent: { paddingTop: 4, paddingBottom: 100, gap: 10 },
+
   userCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 16,
+    backgroundColor: theme.surface,
+    paddingHorizontal: 22,
+    paddingVertical: 22,
+    borderRadius: 32,
     marginBottom: 12,
-    borderWidth: 2,
-    borderColor: "#E5E5E5",
-    borderBottomWidth: 4,
+    borderWidth: 0,
+    borderColor: "#cdcdcd",
+    shadowColor: '#cdcdcd',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
   },
   currentUserCard: {
-    borderColor: "#2D5A27",
-    backgroundColor: "#F2FBEF",
+    borderColor: '#28b900',
+    backgroundColor: '#ffffff',
+    shadowColor: '#28b900',
   },
-  
+
   rankContainer: { width: 40, alignItems: "center", justifyContent: "center", marginRight: 8 },
   medal: { fontSize: 28 },
-  rankNumber: { fontSize: 18, fontWeight: "900", color: "#888" },
-  
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: theme.surface,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  
+  rankNumber: { fontSize: 18, fontWeight: "900", color: theme.muted },
+
+  // avatar removed
+
   userInfo: { flex: 1 },
-  username: { fontSize: 16, fontWeight: "800", color: "#333", marginBottom: 4 },
-  currentUsername: { color: "#2D5A27" },
-  streakText: { fontSize: 12, fontWeight: "700", color: "#FF9600" },
-  
+  username: { fontSize: 16, fontWeight: "900", color: theme.text, marginBottom: 4 },
+  currentUsername: { color: '#28b900' },
+  streakText: { fontSize: 12, fontWeight: "800", color: "#FF9600" },
+
   scoreContainer: { alignItems: "flex-end", justifyContent: "center" },
-  scoreNumber: { fontSize: 20, fontWeight: "900", color: "#2D5A27" },
-  scoreLabel: { fontSize: 10, fontWeight: "800", color: "#888", marginTop: -2 },
-  
-  emptyText: { textAlign: "center", color: "#888", marginTop: 40, fontStyle: "italic" }
+  scoreNumber: { fontSize: 20, fontWeight: "900", color: '#28b900' },
+  scoreLabel: { fontSize: 10, fontWeight: "800", color: theme.muted, marginTop: -2 },
+
+  emptyText: { textAlign: "center", color: theme.muted, marginTop: 40, fontStyle: "italic", fontWeight: '900', fontSize: 16 },
 });

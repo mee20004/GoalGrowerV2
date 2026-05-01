@@ -12,9 +12,9 @@ export function getGoalTrophyRating(goal) {
   const longestStreak = Number(goal?.longestStreak) || 0;
   const healthLevel = Number(goal?.healthLevel) || 0;
 
-  if (longestStreak >= 24 && healthLevel >= 3) return "platinum";
-  if (longestStreak >= 18 && healthLevel >= 3) return "gold";
-  if (longestStreak >= 7 && healthLevel >= 2) return "silver";
+  if (longestStreak >= 24 && healthLevel >= 5) return "platinum";
+  if (longestStreak >= 18 && healthLevel >= 4) return "gold";
+  if (longestStreak >= 7 && healthLevel >= 3) return "silver";
   return "bronze";
 }
 
@@ -26,7 +26,7 @@ export function calculateGoalScore(goal) {
   return (currentStreak * 8) + (longestStreak * 4) + trophyBonus;
 }
 
-async function getScoredGoalsForUser(uid) {
+export async function getScoredGoalsForUser(uid) {
   const personalGoalsSnap = await getDocs(collection(db, "users", uid, "goals"));
   const personalGoals = personalGoalsSnap.docs
     .map((goalDoc) => ({ id: goalDoc.id, ...goalDoc.data() }))

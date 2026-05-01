@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { Text, View } from "react-native";
+import { useCallback } from "react";
+import { Asset } from 'expo-asset';
+import { StackActions } from '@react-navigation/native';
+import { Text, View, Image } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import CenteredTabBar from './components/CenteredTabBar';
 
 // Firebase
 import { onAuthStateChanged } from "firebase/auth";
@@ -16,20 +20,33 @@ import Login from "./login";
 // Stores & Theme
 import { GoalsProvider } from "./components/GoalsStore";
 import { theme } from "./theme";
+import { PLANT_ASSETS } from "./constants/PlantAssets";
+import { FAR_BG_ASSETS } from "./constants/FarBGAssets";
+import { FRAME_ASSETS } from "./constants/FrameAssets";
+import { WALLPAPER_ASSETS } from "./constants/WallpaperAssets";
 
 // Screens
 import GoalsScreen from "./screens/GoalsScreen";
 import AddGoalScreen from "./screens/AddGoalScreen";
 import GoalScreen from "./screens/GoalScreen";
 import ProfileScreen from "./screens/ProfileScreen";
-import CalendarScreen from "./screens/CalendarScreen";
 import AddFriendsScreen from "./screens/AddFriendsScreen";
 import UserProfileScreen from './screens/UserProfileScreen';
 import UserGardenScreen from './screens/UserGardenScreen';
 import SharedGardenScreen from './screens/SharedGardenScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import FollowingListScreen from './screens/FollowingListScreen';
 import RankScreen from './screens/RankScreen';
 import GardenScreen from './screens/GardenScreen'; // <-- 1. IMPORT GARDEN SCREEN
+import JourneyScreen from './screens/JourneyScreen';
+
+const TASKBAR_ICON_MAP = {
+  Rank: require("./assets/Icons/Taskbar/TrophyIcon.png"),
+  Goals: require("./assets/Icons/Taskbar/CheckIcon.png"),
+  Garden: require("./assets/Icons/Taskbar/GardenIcon.png"),
+  ProfileTab: require("./assets/Icons/Taskbar/ProfileIcon.png"),
+  Journey: require("./assets/Icons/Taskbar/Journey.png"),
+};
 
 // Helper Placeholder Screen
 function Placeholder({ title }) {
@@ -58,6 +75,7 @@ function GoalsStack() {
           animationDuration: 180,
         }}
       />
+      <Stack.Screen name="AddGoal" component={AddGoalScreen} />
     </Stack.Navigator>
   );
 }
@@ -70,6 +88,7 @@ function AddStack() {
   );
 }
 
+import FollowersListScreen from './screens/FollowersListScreen';
 function ProfileStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -78,6 +97,8 @@ function ProfileStack() {
       <Stack.Screen name="UserProfile" component={UserProfileScreen} />
       <Stack.Screen name="UserGarden" component={UserGardenScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="FollowingListScreen" component={FollowingListScreen} />
+      <Stack.Screen name="FollowersListScreen" component={FollowersListScreen} />
     </Stack.Navigator>
   );
 }
@@ -88,6 +109,14 @@ function RankStack() {
       <Stack.Screen name="RankHome" component={RankScreen} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} />
       <Stack.Screen name="UserGarden" component={UserGardenScreen} />
+    </Stack.Navigator>
+  );
+}
+
+function JourneyStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="JourneyHome" component={JourneyScreen} />
     </Stack.Navigator>
   );
 }
@@ -106,6 +135,9 @@ function GardenStack() {
           animationDuration: 180,
         }}
       />
+      <Stack.Screen name="AddGoal" component={AddGoalScreen} />
+      <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="SharedGardenSettings" component={require('./screens/SharedGardenSettingsScreen').default} />
     </Stack.Navigator>
   );
 }
@@ -117,45 +149,80 @@ function MainTabs() {
 
   return (
     <Tab.Navigator
+      tabBar={props => <CenteredTabBar {...props} />}
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarShowLabel: true,
+        tabBarShowLabel: false, // Hide text under icons
         tabBarHideOnKeyboard: false,
-        tabBarStyle: {
-          height: 64 + insets.bottom,
-          paddingTop: 8,
-          paddingBottom: Math.max(10, insets.bottom),
-          backgroundColor: theme.surface,
-          borderTopWidth: 0,
-          elevation: 10,
-        },
         tabBarActiveTintColor: theme.text,
         tabBarInactiveTintColor: theme.muted,
         tabBarLabelStyle: { fontSize: 10, fontWeight: "800", marginTop: 2 },
         tabBarIcon: ({ color, focused }) => {
-          const map = {
-            Rank: focused ? "trophy" : "trophy-outline",
-            Goals: focused ? "leaf" : "leaf-outline",
-            Add: focused ? "add-circle" : "add-circle-outline",
-            Calendar: focused ? "calendar" : "calendar-outline",
-            Garden: focused ? "flower" : "flower-outline",
-            ProfileTab: focused ? "person" : "person-outline",
-          };
-          const iconName = map[route.name] ?? "ellipse-outline";
-          const iconSize = route.name === "Add" ? 28 : 22;
-          return <Ionicons name={iconName} size={iconSize} color={color} />;
+          const iconSource = TASKBAR_ICON_MAP[route.name];
+          if (iconSource) {
+            return (
+              <Image
+                source={iconSource}
+                style={{
+                  width: 24,
+                  height: 24,
+                  opacity: focused ? 1 : 0.7,
+                }}
+                resizeMode="contain"
+              />
+            );
+          }
+
+          // Fallback for any unexpected route.
+          return <Ionicons name="ellipse-outline" size={22} color={color} />;
         },
       })}
     >
       <Tab.Screen name="Rank" component={RankStack} options={{ tabBarLabel: "Rank" }} />
-      <Tab.Screen name="Goals" component={GoalsStack} options={{ tabBarLabel: "Goals" }} />
-      <Tab.Screen name="Add" component={AddStack} options={{ tabBarLabel: "Add" }} />
-      <Tab.Screen name="Calendar" component={CalendarScreen} options={{ tabBarLabel: "Calendar" }} />
+      <Tab.Screen
+        name="Goals"
+        component={GoalsStack}
+        options={{ tabBarLabel: "Goals" }}
+        listeners={({ navigation }) => ({
+          tabPress: e => {
+            e.preventDefault();
+            navigation.navigate('Goals', {
+              screen: 'GoalsHome',
+              params: {},
+            });
+          },
+        })}
+      />
+      <Tab.Screen
+        name="Journey"
+        component={JourneyStack}
+        options={{
+          tabBarLabel: "Journey",
+          tabBarIcon: ({ focused }) => (
+            <Image
+              source={TASKBAR_ICON_MAP.Journey}
+              style={{ width: 24, height: 24, opacity: focused ? 1 : 0.7 }}
+              resizeMode="contain"
+            />
+          ),
+        }}
+      />
       {/* <-- 3. WIRE UP THE GARDEN TAB */}
       <Tab.Screen
         name="Garden"
         component={GardenStack}
         options={{ tabBarLabel: "Garden", unmountOnBlur: false }}
+        listeners={({ navigation }) => ({
+          tabPress: e => {
+            // Prevent default behavior
+            e.preventDefault();
+            // Always navigate to the root of the Garden stack
+            navigation.navigate('Garden', {
+              screen: 'GardenHome',
+              params: {},
+            });
+          },
+        })}
       />
       <Tab.Screen name="ProfileTab" component={ProfileStack} options={{ tabBarLabel: "Profile" }} />
     </Tab.Navigator>
@@ -165,6 +232,40 @@ function MainTabs() {
 // --- ROOT APP COMPONENT ---
 
 export default function App() {
+    // Preload all major assets for GardenScreen and GoalsScreen on app load
+    const preloadAllAssets = useCallback(async () => {
+      // Flatten plant asset tree
+      const flattenPlantAssets = (obj) => {
+        let arr = [];
+        for (const v of Object.values(obj)) {
+          if (typeof v === 'number') arr.push(v);
+          else if (typeof v === 'object') arr = arr.concat(flattenPlantAssets(v));
+        }
+        return arr;
+      };
+      const plantImages = flattenPlantAssets(PLANT_ASSETS);
+      const allAssets = [
+        ...plantImages,
+        ...FAR_BG_ASSETS,
+        ...FRAME_ASSETS,
+        ...WALLPAPER_ASSETS,
+        require('./assets/plants/pot.png'),
+        require('./assets/plants/pot_b.png'),
+        require('./assets/plants/pot_s.png'),
+        require('./assets/plants/pot_g.png'),
+        require('./assets/plants/pot_p.png'),
+        require('./assets/far_background.png'),
+      ];
+      try {
+        await Asset.loadAsync(allAssets);
+      } catch (e) {
+        // Ignore errors, just try to cache as much as possible
+      }
+    }, []);
+
+    useEffect(() => {
+      preloadAllAssets();
+    }, [preloadAllAssets]);
   const [user, setUser] = useState(null);
   const [hasUsername, setHasUsername] = useState(false);
   const [initializing, setInitializing] = useState(true);

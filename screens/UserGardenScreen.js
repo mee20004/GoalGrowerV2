@@ -23,6 +23,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { subscribePersonalCustomizations } from "../utils/customizationFirestore";
 import { auth } from "../firebaseConfig";
+import { toKey } from "../components/GoalsStore";
+import { getPlantHealthState } from "../utils/goalState";
 
 import { SHELF_COLOR_SCHEMES } from "../constants/ShelfColors";
 
@@ -75,6 +77,12 @@ const TROPHY_POT_IMAGES = {
   gold: require("../assets/plants/pot_g.png"),
   platinum: require("../assets/plants/pot_p.png"),
 };
+const TROPHY_BADGE_IMAGES = {
+  bronze: require("../assets/Icons/Badge_Bronze.png"),
+  silver: require("../assets/Icons/Badge_Silver.png"),
+  gold: require("../assets/Icons/Badge_Gold.png"),
+  platinum: require("../assets/Icons/Badge_Platinum.png"),
+};
 
 function isGoalDoneForDate(goal, dateKey) {
   if (goal?.type === "completion") {
@@ -84,92 +92,21 @@ function isGoalDoneForDate(goal, dateKey) {
   return (goal?.logs?.quantity?.[dateKey]?.value ?? 0) >= (goal?.measurable?.target ?? 0);
 }
 
-function dateFromFirestoreValue(value) {
-  if (!value) return null;
-  if (typeof value?.toDate === "function") {
-    const converted = value.toDate();
-    return Number.isNaN(converted?.getTime?.()) ? null : converted;
-  }
-  if (typeof value?.seconds === "number") {
-    const converted = new Date(value.seconds * 1000);
-    return Number.isNaN(converted.getTime()) ? null : converted;
-  }
-  const converted = new Date(value);
-  return Number.isNaN(converted.getTime()) ? null : converted;
-}
-
-function toDateKey(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function isGoalScheduledOnDate(goal, date) {
-  const scheduleType = goal?.schedule?.type;
-  const dayOfWeek = new Date(date).getDay();
-
-  if (scheduleType === "everyday") return true;
-  if (scheduleType === "weekdays") return dayOfWeek >= 1 && dayOfWeek <= 5;
-  if (scheduleType === "days") return !!goal?.schedule?.days?.includes(dayOfWeek);
-
-  if (Array.isArray(goal?.schedule?.days) && goal.schedule.days.length > 0) {
-    return goal.schedule.days.includes(dayOfWeek);
-  }
-
-  return true;
-}
-
-function getPlantHealthState(goal, now = new Date()) {
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-
-  const storedHealthLevel = Number(goal?.healthLevel);
-  if (goal?.shelfPosition?.pageId === STORAGE_PAGE_ID && storedHealthLevel >= 1 && storedHealthLevel <= 3) {
-    if (storedHealthLevel === 2) return { healthLevel: 2, status: "dry" };
-    if (storedHealthLevel === 1) return { healthLevel: 1, status: "dead" };
-    return { healthLevel: 3, status: "alive" };
-  }
-
-  const createdAtDate = dateFromFirestoreValue(goal?.createdAt);
-  const earliestDate = createdAtDate ? new Date(createdAtDate) : null;
-  if (earliestDate) earliestDate.setHours(0, 0, 0, 0);
-
-  const recentScheduledKeys = [];
-  const cursor = new Date(today);
-  for (let i = 0; i < 370 && recentScheduledKeys.length < 2; i += 1) {
-    if (earliestDate && cursor.getTime() < earliestDate.getTime()) break;
-    if (isGoalScheduledOnDate(goal, cursor)) {
-      recentScheduledKeys.push(toDateKey(cursor));
-    }
-    cursor.setDate(cursor.getDate() - 1);
-  }
-
-  let derived = { healthLevel: 1, status: "dead" };
-
-  if (recentScheduledKeys.length === 0) {
-    derived = { healthLevel: 3, status: "alive" };
-  } else if (isGoalDoneForDate(goal, recentScheduledKeys[0])) {
-    derived = { healthLevel: 3, status: "alive" };
-  } else if (recentScheduledKeys.length === 1 || isGoalDoneForDate(goal, recentScheduledKeys[1])) {
-    derived = { healthLevel: 2, status: "dry" };
-  }
-
-  if (storedHealthLevel >= 1 && storedHealthLevel < derived.healthLevel) {
-    if (storedHealthLevel === 2) return { healthLevel: 2, status: "dry" };
-    return { healthLevel: 1, status: "dead" };
-  }
-
-  return derived;
-}
-
 function getStoragePlantRating(plant) {
   if (plant?.shelfPosition?.pageId !== STORAGE_PAGE_ID) return null;
 
   const longestStreak = Number(plant?.longestStreak) || 0;
+  // Use current health level from plant state
   const healthLevel = getPlantHealthState(plant).healthLevel;
 
-  if (longestStreak >= 24 && healthLevel >= 3) return "platinum";
-  if (longestStreak >= 18 && healthLevel >= 3) return "gold";
-  if (longestStreak >= 7 && healthLevel >= 2) return "silver";
+  if (longestStreak >= 24 && healthLevel >= 5) return "platinum";
+  if (longestStreak >= 18 && healthLevel >= 4) return "gold";
+  if (longestStreak >= 7 && healthLevel >= 3) return "silver";
   return "bronze";
+}
+
+function getTrophyBadgeSource(rating) {
+  return TROPHY_BADGE_IMAGES[rating] || null;
 }
 
 const TROPHY_PARTICLE_COLORS = {
@@ -639,15 +576,18 @@ const GardenAmbientParticles = () => {
 };
 
 const PlantVisual = ({ plant }) => {
+
   const total = Number(plant.totalCompletions) || 0;
   const rating = getStoragePlantRating(plant);
   const swayAnim = useRef(new Animated.Value(0)).current;
 
+  // TEMP DEBUG: Log plant and health state for every plant rendered
+  // eslint-disable-next-line no-console
+  console.log('[DEBUG][PlantVisual] Plant:', plant);
+  // eslint-disable-next-line no-console
+  console.log('[DEBUG][PlantVisual] getPlantHealthState:', require("../utils/goalState").getPlantHealthState(plant));
+
   useEffect(() => {
-    if (rating) {
-      swayAnim.setValue(0);
-      return;
-    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(swayAnim, { toValue: 1, duration: 600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
@@ -661,23 +601,21 @@ const PlantVisual = ({ plant }) => {
       loop.stop();
       swayAnim.setValue(0);
     };
-  }, [rating, swayAnim]);
+  }, [swayAnim]);
 
   let stage = "stage1";
   if (total > 30) stage = "stage4";
   else if (total > 15) stage = "stage3";
   else if (total > 5) stage = "stage2";
 
-  const healthState = getPlantHealthState(plant);
-  const { status } = healthState;
   const species = plant.plantSpecies || (plant.type !== "completion" && plant.type !== "quantity" ? plant.type : "fern");
-  const asset = PLANT_ASSETS[species]?.[stage]?.[status] || PLANT_ASSETS[species]?.[stage]?.alive || PLANT_ASSETS.fern.stage1.alive;
-  const trophyVariantKey = rating === "platinum" ? "p" : rating === "gold" ? "g" : rating === "silver" ? "s" : rating === "bronze" ? "b" : null;
-  const trophyPlantAsset = rating && species === "fern" ? PLANT_ASSETS.fern?.[trophyVariantKey]?.[stage] : null;
+  const speciesAssets = PLANT_ASSETS[species] || PLANT_ASSETS.fern;
+  const healthStatus = getPlantHealthState(plant).status;
+  // Use the correct image for the health status, fallback to 'alive' if missing
+  const plantSource = speciesAssets?.[stage]?.[healthStatus] || speciesAssets?.[stage]?.alive || PLANT_ASSETS.fern?.[stage]?.alive || PLANT_ASSETS.fern.stage1.alive;
+  const potSource = POT_IMAGE;
   const showTrophyParticles = Boolean(rating);
-  const plantSource = trophyPlantAsset || asset;
-  const potSource = rating ? (TROPHY_POT_IMAGES[rating] || POT_IMAGE) : POT_IMAGE;
-  const showReviveHeart = healthState.healthLevel === 2 && isGoalDoneForDate(plant, toDateKey(new Date()));
+  const trophyBadgeSource = getTrophyBadgeSource(rating);
 
   const getPotIcon = () => {
     if (plant.icon) return normalizeGoalIconName(plant.icon, plant.type === "coding" ? "code" : "target");
@@ -698,7 +636,7 @@ const PlantVisual = ({ plant }) => {
             source={plantSource}
             style={[
               styles.plantImage,
-              !rating && {
+              {
                 transform: [
                   { translateY: 42.5 },
                   { rotate: swayAnim.interpolate({ inputRange: [-1, 1], outputRange: ["-4deg", "6deg"] }) },
@@ -708,14 +646,12 @@ const PlantVisual = ({ plant }) => {
             ]}
             resizeMode="contain"
           />
-          {showReviveHeart && (
-            <View style={styles.reviveHeartBadge}>
-              <Ionicons name="heart" size={12} color="#fff" />
-            </View>
-          )}
           <View style={styles.potLabel}>
             <GoalIcon name={getPotIcon()} size={18} color="#fff" />
           </View>
+          {trophyBadgeSource ? (
+            <Image source={trophyBadgeSource} style={styles.trophyTierBadgeIcon} resizeMode="contain" />
+          ) : null}
         </ImageBackground>
       </View>
       {(plant.title || plant.name) ? (
@@ -754,7 +690,7 @@ export default function UserGardenScreen({ route, navigation }) {
   const pageScrollX = useRef(new Animated.Value(0)).current;
   const [drawerShouldShow, setDrawerShouldShow] = useState(true);
   const drawerShouldShowRef = useRef(true);
-  const [drawerBottom, setDrawerBottom] = useState(0);
+  const [drawerTop, setDrawerTop] = useState(0);
   const [parentHeight, setParentHeight] = useState(0);
   const [shelfLayout, setShelfLayout] = useState({ y: 0, height: 0 });
   const drawerHeight = 200; // Should match styles.drawer.height
@@ -780,13 +716,12 @@ export default function UserGardenScreen({ route, navigation }) {
   }, []);
 
   useEffect(() => {
-    if (parentHeight && shelfLayout.height) {
-      // The drawer's top should align with the bottom of the shelf, so offset by shelf height
-      const drawerHeight = 200; // matches styles.drawer.height
-      const offset = Math.max(parentHeight - (shelfLayout.y + shelfLayout.height) - drawerHeight, 0);
-      setDrawerBottom(offset);
+    if (shelfLayout.height) {
+      // The drawer's top should align just below the bottom shelf, with a small gap
+      const gap = 70; // px below the shelf
+      setDrawerTop(shelfLayout.y + shelfLayout.height + gap);
     }
-  }, [parentHeight, shelfLayout]);
+  }, [shelfLayout]);
 
   useEffect(() => {
     if (!userId) {
@@ -811,11 +746,14 @@ export default function UserGardenScreen({ route, navigation }) {
         unsubGoals = onSnapshot(
           collection(db, "users", userId, "goals"),
           (goalsSnap) => {
-            const merged = goalsSnap.docs.map((goalDoc) => ({
-              id: goalDoc.id,
-              ...goalDoc.data(),
-              shelfPosition: layoutMap[goalDoc.id] || null,
-            })).filter((goal) => !goal.isPrivate);
+            const merged = goalsSnap.docs
+              .map((goalDoc) => ({
+                id: goalDoc.id,
+                ...goalDoc.data(),
+                shelfPosition: layoutMap[goalDoc.id] || null,
+              }))
+              // Only show personal goals (not shared/migrated ones)
+              .filter((goal) => !goal.isPrivate && goal.gardenType !== "shared" && !goal.sharedGardenId);
             setAllPlants(merged);
             setLoading(false);
           },
@@ -890,6 +828,11 @@ export default function UserGardenScreen({ route, navigation }) {
 
   const renderStorageShelf = (pageId, shelfIdx, plantsOnPage) => {
     const shelfName = `storageShelf_${shelfIdx}`;
+    // TEMP DEBUG: Log all plants on storage page
+    if (pageId === "storage" && shelfIdx === 0) {
+      // eslint-disable-next-line no-console
+      console.log('[DEBUG][StoragePage] plantsOnPage:', plantsOnPage);
+    }
     return (
       <View key={`${pageId}_${shelfName}`} style={[styles.shelfWrapper, styles.storageShelfWrapper]}>
         <LinearGradient
@@ -1018,7 +961,7 @@ export default function UserGardenScreen({ route, navigation }) {
             {FRAME_ASSETS[windowFrameIdx] && (
               <Image source={FRAME_ASSETS[windowFrameIdx]} style={[styles.gardenImageStyle, { position: "absolute", width, height }]} resizeMode="cover" />
             )}
-            <View pointerEvents="none" style={[styles.pageDrawerUnderlay, { bottom: drawerBottom }]}> 
+            <View pointerEvents="none" style={[styles.pageDrawerUnderlay, { top: drawerTop, left: 0, right: 0 }]}> 
               <View className="pageDrawerUnderlayTopBandPrimary" style={styles.pageDrawerUnderlayTopBandPrimary} />
               <View className="pageDrawerUnderlayTopBandSecondary" style={styles.pageDrawerUnderlayTopBandSecondary} />
             </View>
@@ -1139,7 +1082,7 @@ export default function UserGardenScreen({ route, navigation }) {
       </View>
 
       {/* Drawer is visually present but plants are hidden for read-only user garden */}
-      <View pointerEvents={drawerShouldShow ? "auto" : "none"} style={[styles.drawer, { bottom: drawerBottom - ((insets.top || 0) + 62) }, !drawerShouldShow && styles.drawerHidden]}>
+      <View pointerEvents={drawerShouldShow ? "auto" : "none"} style={[styles.drawer, { top: drawerTop }, !drawerShouldShow && styles.drawerHidden]}>
         <View style={styles.drawerTopBandPrimary} />
         <View style={styles.drawerTopBandSecondary} />
         {/* Plants in the drawer are intentionally hidden in UserGardenScreen */}
@@ -1193,10 +1136,10 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
   },
-  pageDotsContainer: { position: "absolute", bottom: 10, left: 0, right: 0, alignItems: "center", zIndex: 999999 },
+  pageDotsContainer: { position: "absolute", bottom: 95, left: 0, right: 0, alignItems: "center", zIndex: 999999 },
   pageDots: { flexDirection: "row", justifyContent: "center", alignItems: "center", paddingVertical: 6 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "rgb(103, 103, 103)", marginHorizontal: 4 },
-  pageList: { flex: 1 },
+  pageList: { flex: 1, marginTop: -48 },
   pageFrame: {
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
@@ -1317,6 +1260,31 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   potLabel: { position: "absolute", bottom: 30, minWidth: 24, minHeight: 24, justifyContent: "center", alignItems: "center", zIndex: 4 },
+  trophyTierBadge: {
+    position: "absolute",
+    right: 3,
+    top: -2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 7,
+  },
+  trophyTierBadgeText: {
+    fontSize: 9,
+    fontWeight: "900",
+    lineHeight: 10,
+  },
+  trophyTierBadgeIcon: {
+    position: "absolute",
+    right: -4,
+    bottom: 20,
+    width: 42,
+    height: 42,
+    zIndex: 7,
+  },
   farBackground: { flex: 1, width: "100%", backgroundColor: "#1a1a1a" },
   farImageStyle: { top: 0, left: 40, opacity: 1, height: "120%", transform: [{ scale: 1.3 }] },
   gardenBackground: { flex: 1, width: "100%", height: "100%", bottom: 0 },

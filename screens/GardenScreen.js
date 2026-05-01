@@ -1,3 +1,63 @@
+// --- TROPHY STORAGE SLOT FINDERS (DEBUG) ---
+async function findFirstOpenStorageSlot(uid, goalId) {
+  const layoutSnap = await getDocs(collection(db, "users", uid, "gardenLayout"));
+  const occupied = new Set();
+  const occupiedBy = {};
+
+  layoutSnap.forEach((layoutDoc) => {
+    if (layoutDoc.id === goalId) return;
+    const shelfPosition = layoutDoc.data()?.shelfPosition;
+    if (shelfPosition?.pageId === STORAGE_PAGE_ID) {
+      const key = `${shelfPosition.shelfName}_${shelfPosition.slotIndex}`;
+      occupied.add(key);
+      occupiedBy[key] = layoutDoc.id;
+    }
+  });
+  console.log('[TROPHY DEBUG] Occupied trophy slots (personal):', Array.from(occupied), occupiedBy);
+
+  for (let shelfIdx = 0; shelfIdx < STORAGE_SHELF_COUNT; shelfIdx += 1) {
+    const shelfName = `storageShelf_${shelfIdx}`;
+    for (let slotIndex = 0; slotIndex < 4; slotIndex += 1) {
+      const key = `${shelfName}_${slotIndex}`;
+      if (!occupied.has(key)) {
+        return { pageId: STORAGE_PAGE_ID, shelfName, slotIndex };
+      }
+    }
+  }
+
+  return null;
+}
+
+async function findFirstOpenSharedStorageSlot(gardenId, goalId) {
+  if (!gardenId) return null;
+
+  const layoutSnap = await getDocs(collection(db, "sharedGardens", gardenId, "layout"));
+  const occupied = new Set();
+  const occupiedBy = {};
+
+  layoutSnap.forEach((layoutDoc) => {
+    if (layoutDoc.id === goalId) return;
+    const shelfPosition = layoutDoc.data()?.shelfPosition;
+    if (shelfPosition?.pageId === STORAGE_PAGE_ID) {
+      const key = `${shelfPosition.shelfName}_${shelfPosition.slotIndex}`;
+      occupied.add(key);
+      occupiedBy[key] = layoutDoc.id;
+    }
+  });
+  console.log('[TROPHY DEBUG] Occupied trophy slots (shared):', Array.from(occupied), occupiedBy);
+
+  for (let shelfIdx = 0; shelfIdx < STORAGE_SHELF_COUNT; shelfIdx += 1) {
+    const shelfName = `storageShelf_${shelfIdx}`;
+    for (let slotIndex = 0; slotIndex < 4; slotIndex += 1) {
+      const key = `${shelfName}_${slotIndex}`;
+      if (!occupied.has(key)) {
+        return { pageId: STORAGE_PAGE_ID, shelfName, slotIndex };
+      }
+    }
+  }
+
+  return null;
+}
 import React, { useState, useCallback, useRef, useEffect, memo } from "react";
 import { 
   View, Text, StyleSheet, ActivityIndicator, ScrollView, FlatList, 
@@ -13,6 +73,8 @@ const persistedGardenState = {
   isEditing: false,
   drawerScrollOffset: 0,
 };
+// Ref to prevent multiple restriction alerts
+let editRestrictionAlertShown = { current: false };
 import { collection, doc, onSnapshot, setDoc, writeBatch, increment, updateDoc, getDoc, getDocs, arrayUnion, query, where, deleteDoc, runTransaction, deleteField } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { theme } from "../theme";
@@ -21,6 +83,7 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import * as LucideIcons from "lucide-react-native/icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
+import { POT_ASSETS } from "../constants/PotAssets";
 import CustomizationScreen from "../components/CustomizationScreen";
 import { subscribeSharedCustomizations, saveSharedCustomizations } from "../utils/customizationFirestore";
 import { subscribePersonalCustomizations, savePersonalCustomizations } from "../utils/customizationFirestore";
@@ -31,19 +94,23 @@ import { SHELF_COLOR_SCHEMES } from "../constants/ShelfColors";
 import { toKey } from "../components/GoalsStore";
 import { ACHIEVEMENTS } from "../AchievementsStore";
 import { updateOverallScoreForUser, updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
+import {
+  calculateGoalStreak,
+  getGrowthStage,
+  getPlantHealthState,
+  getRequiredContributors,
+  isGoalDoneForDate,
+  isGoalScheduledOnDate,
+} from "../utils/goalState";
+import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
 const FAR_BG = require('../assets/far_background.png');
 // Asset arrays are now imported from constants
 const STORAGE_PAGE_ID = 'storage';
 const STORAGE_SHELF_COUNT = 10;
 const SHARED_GARDEN_DEFAULT_PAGE_ID = 'default';
 const MULTI_USER_MIN_WATERERS = 2;
-
-function getRequiredContributors(goal) {
-  const requiredContributors = Number(goal?.requiredContributors);
-  return Number.isFinite(requiredContributors) && requiredContributors >= 2
-    ? Math.floor(requiredContributors)
-    : MULTI_USER_MIN_WATERERS;
-}
+const SHARED_EDIT_LOCK_MS = 45000;
+const SHARED_EDIT_LOCK_RENEW_MS = 15000;
 const toPascalCase = (value) =>
   String(value || '')
     .split(/[-_\s]+/)
@@ -88,104 +155,29 @@ const TROPHY_POT_IMAGES = {
   gold: require('../assets/plants/pot_g.png'),
   platinum: require('../assets/plants/pot_p.png'),
 };
+const TROPHY_BADGE_IMAGES = {
+  bronze: require('../assets/Icons/Badge_Bronze.png'),
+  silver: require('../assets/Icons/Badge_Silver.png'),
+  gold: require('../assets/Icons/Badge_Gold.png'),
+  platinum: require('../assets/Icons/Badge_Platinum.png'),
+};
 
 function getStoragePlantRating(plant) {
   if (plant?.shelfPosition?.pageId !== STORAGE_PAGE_ID) return null;
 
   const longestStreak = Number(plant?.longestStreak) || 0;
-  const healthLevel = getPlantHealthState(plant).healthLevel;
+  const healthLevel = 5;
 
-  if (longestStreak >= 24 && healthLevel >= 3) return 'platinum';
-  if (longestStreak >= 18 && healthLevel >= 3) return 'gold';
-  if (longestStreak >= 7 && healthLevel >= 2) return 'silver';
+  if (longestStreak >= 24 && healthLevel >= 5) return 'platinum';
+  if (longestStreak >= 18 && healthLevel >= 4) return 'gold';
+  if (longestStreak >= 7 && healthLevel >= 3) return 'silver';
   return 'bronze';
 }
 
-function isGoalDoneForDate(goal, dateKey) {
-  if (goal?.type === "completion") {
-    const isSharedMultiUser = !!goal?.multiUserWateringEnabled && goal?.gardenType === "shared";
-    if (isSharedMultiUser) {
-      const usersMap = goal?.logs?.completion?.[dateKey]?.users || {};
-      const uniqueCount = Object.keys(usersMap).filter((userId) => !!usersMap[userId]).length;
-      return uniqueCount >= getRequiredContributors(goal);
-    }
-    return !!goal?.logs?.completion?.[dateKey]?.done;
-  }
-
-  return (goal?.logs?.quantity?.[dateKey]?.value ?? 0) >= (goal?.measurable?.target ?? 0);
+function getTrophyBadgeSource(rating) {
+  return TROPHY_BADGE_IMAGES[rating] || null;
 }
 
-function isGoalScheduledOnDate(goal, date) {
-  const scheduleType = goal?.schedule?.type;
-  const dayOfWeek = new Date(date).getDay();
-
-  if (scheduleType === 'everyday') return true;
-  if (scheduleType === 'weekdays') return dayOfWeek >= 1 && dayOfWeek <= 5;
-  if (scheduleType === 'days') return !!goal?.schedule?.days?.includes(dayOfWeek);
-
-  if (Array.isArray(goal?.schedule?.days) && goal.schedule.days.length > 0) {
-    return goal.schedule.days.includes(dayOfWeek);
-  }
-
-  return true;
-}
-
-function dateFromFirestoreValue(value) {
-  if (!value) return null;
-  if (typeof value?.toDate === 'function') {
-    const converted = value.toDate();
-    return Number.isNaN(converted?.getTime?.()) ? null : converted;
-  }
-  if (typeof value?.seconds === 'number') {
-    const converted = new Date(value.seconds * 1000);
-    return Number.isNaN(converted.getTime()) ? null : converted;
-  }
-  const converted = new Date(value);
-  return Number.isNaN(converted.getTime()) ? null : converted;
-}
-
-function getPlantHealthState(goal, now = new Date()) {
-  const today = new Date(now);
-  today.setHours(0, 0, 0, 0);
-
-  const storedHealthLevel = Number(goal?.healthLevel);
-  if (goal?.shelfPosition?.pageId === STORAGE_PAGE_ID && storedHealthLevel >= 1 && storedHealthLevel <= 3) {
-    if (storedHealthLevel === 2) return { healthLevel: 2, status: 'dry' };
-    if (storedHealthLevel === 1) return { healthLevel: 1, status: 'dead' };
-    return { healthLevel: 3, status: 'alive' };
-  }
-
-  const createdAtDate = dateFromFirestoreValue(goal?.createdAt);
-  const earliestDate = createdAtDate ? new Date(createdAtDate) : null;
-  if (earliestDate) earliestDate.setHours(0, 0, 0, 0);
-
-  const recentScheduledKeys = [];
-  const cursor = new Date(today);
-  for (let i = 0; i < 370 && recentScheduledKeys.length < 2; i += 1) {
-    if (earliestDate && cursor.getTime() < earliestDate.getTime()) break;
-    if (isGoalScheduledOnDate(goal, cursor)) {
-      recentScheduledKeys.push(toKey(cursor));
-    }
-    cursor.setDate(cursor.getDate() - 1);
-  }
-
-  let derived = { healthLevel: 1, status: 'dead' };
-
-  if (recentScheduledKeys.length === 0) {
-    derived = { healthLevel: 3, status: 'alive' };
-  } else if (isGoalDoneForDate(goal, recentScheduledKeys[0])) {
-    derived = { healthLevel: 3, status: 'alive' };
-  } else if (recentScheduledKeys.length === 1 || isGoalDoneForDate(goal, recentScheduledKeys[1])) {
-    derived = { healthLevel: 2, status: 'dry' };
-  }
-
-  if (storedHealthLevel >= 1 && storedHealthLevel < derived.healthLevel) {
-    if (storedHealthLevel === 2) return { healthLevel: 2, status: 'dry' };
-    return { healthLevel: 1, status: 'dead' };
-  }
-
-  return derived;
-}
 
 const TROPHY_PARTICLE_COLORS = {
   bronze: ['rgba(242, 196, 145, 0.95)', 'rgba(255, 220, 184, 0.9)', 'rgba(247, 177, 115, 0.92)'],
@@ -335,273 +327,12 @@ const TrophyParticles = ({ rating }) => {
   const burstAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const nextParticles = buildRandomParticles(rating);
-    const nextOrbitParticles = buildOrbitParticles(rating);
-    setParticles(nextParticles);
-    setOrbitParticles(nextOrbitParticles);
-
-    const count = nextParticles.length;
-    progressRefs.current = Array.from({ length: count }, (_, idx) => {
-      const existing = progressRefs.current[idx];
-      return existing || new Animated.Value(Math.random());
-    });
-
-    const orbitCount = nextOrbitParticles.length;
-    orbitProgressRefs.current = Array.from({ length: orbitCount }, (_, idx) => {
-      const existing = orbitProgressRefs.current[idx];
-      return existing || new Animated.Value(Math.random());
-    });
-  }, [rating]);
-
-  useEffect(() => {
-    if (rating !== 'gold' && rating !== 'platinum') {
-      beamAnim.setValue(0);
-      return;
-    }
-
-    beamAnim.setValue(0);
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(beamAnim, {
-          toValue: 1,
-          duration: 1200,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(beamAnim, {
-          toValue: 0,
-          duration: 1400,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [rating]);
-
-  useEffect(() => {
-    if (!rating) return;
-    burstAnim.setValue(0);
-    Animated.timing(burstAnim, {
-      toValue: 1,
-      duration: 560,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: true,
-    }).start(({ finished }) => {
-      if (finished) burstAnim.setValue(0);
-    });
-  }, [rating]);
-
-  useEffect(() => {
-    let isActive = true;
-    const timers = [];
-
-    const animateParticle = (idx) => {
-      if (!isActive || !progressRefs.current[idx]) return;
-      const progress = progressRefs.current[idx];
-      progress.setValue(0);
-
-      Animated.sequence([
-        Animated.timing(progress, {
-          toValue: 1,
-          duration: particles[idx]?.duration || randomInt(1200, 1900),
-          useNativeDriver: true,
-        }),
-      ]).start(({ finished }) => {
-        if (!isActive || !finished) return;
-
-        setParticles((prev) => {
-          if (!prev[idx]) return prev;
-          const next = [...prev];
-          next[idx] = buildRandomParticle(rating, idx);
-          return next;
-        });
-
-        progress.setValue(0);
-        const waitMs = particles[idx]?.waitMs || randomInt(30, 180);
-        const timer = setTimeout(() => animateParticle(idx), waitMs);
-        timers.push(timer);
-      });
-    };
-
-    progressRefs.current.forEach((_, idx) => {
-      const startDelay = randomInt(0, 500);
-      const timer = setTimeout(() => animateParticle(idx), startDelay);
-      timers.push(timer);
-    });
-
-    return () => {
-      isActive = false;
-      timers.forEach(clearTimeout);
-      progressRefs.current.forEach((value) => value?.stopAnimation());
-    };
-  }, [rating]);
-
-  useEffect(() => {
-    let isActive = true;
-    const timers = [];
-
-    const animateOrbitParticle = (idx) => {
-      if (!isActive || !orbitProgressRefs.current[idx]) return;
-      const progress = orbitProgressRefs.current[idx];
-      progress.setValue(0);
-
-      Animated.timing(progress, {
-        toValue: 1,
-        duration: orbitParticles[idx]?.duration || randomInt(1600, 2400),
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (!isActive || !finished) return;
-
-        setOrbitParticles((prev) => {
-          if (!prev[idx]) return prev;
-          const next = [...prev];
-          next[idx] = buildOrbitParticle(rating, idx);
-          return next;
-        });
-
-        const waitMs = randomInt(10, 80);
-        const timer = setTimeout(() => animateOrbitParticle(idx), waitMs);
-        timers.push(timer);
-      });
-    };
-
-    orbitProgressRefs.current.forEach((_, idx) => {
-      const startDelay = randomInt(0, 400);
-      const timer = setTimeout(() => animateOrbitParticle(idx), startDelay);
-      timers.push(timer);
-    });
-
-    return () => {
-      isActive = false;
-      timers.forEach(clearTimeout);
-      orbitProgressRefs.current.forEach((value) => value?.stopAnimation());
-    };
+    setParticles(buildRandomParticles(rating));
+    setOrbitParticles(buildOrbitParticles(rating));
   }, [rating]);
 
   return (
     <View pointerEvents="none" style={styles.particleLayer}>
-      {(rating === 'gold' || rating === 'platinum') && (
-        <Animated.View
-          style={[
-            styles.trophyBeamWrap,
-            {
-              opacity: beamAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [rating === 'platinum' ? 0.2 : 0.08, rating === 'platinum' ? 0.5 : 0.22],
-              }),
-              transform: [
-                {
-                  scaleY: beamAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.85, 1.15],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          {[
-            { x: -16, angle: -32 },
-            { x: -8, angle: -18 },
-            { x: 0, angle: 0 },
-            { x: 8, angle: 18 },
-            { x: 16, angle: 32 },
-          ].map((ray, idx) => (
-            <LinearGradient
-              key={`beam-${rating}-${ray.x}-${idx}`}
-              colors={
-                rating === 'platinum'
-                  ? ['rgba(214, 239, 255, 0.86)', 'rgba(206, 226, 255, 0.36)', 'rgba(194, 171, 255, 0.09)', 'rgba(194, 171, 255, 0)']
-                  : ['rgba(255, 245, 186, 0.56)', 'rgba(255, 231, 148, 0.2)', 'rgba(255, 214, 118, 0.05)', 'rgba(255, 214, 118, 0)']
-              }
-              start={{ x: 0.5, y: 1 }}
-              end={{ x: 0.5, y: 0 }}
-              style={[
-                styles.trophyBeamRay,
-                {
-                  transform: [
-                    { translateX: ray.x },
-                    { translateY: 46 },
-                    { rotate: `${ray.angle}deg` },
-                    { translateY: -46 },
-                    { scaleY: 1 - Math.abs(ray.x) / 84 },
-                  ],
-                  opacity: 1 - Math.abs(ray.x) / 44,
-                },
-              ]}
-            />
-          ))}
-        </Animated.View>
-      )}
-
-      {rating && (
-        <Animated.View
-          style={[
-            styles.trophyBurst,
-            {
-              opacity: burstAnim.interpolate({ inputRange: [0, 0.18, 1], outputRange: [0, 0.64, 0] }),
-              transform: [{ scale: burstAnim.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1.35] }) }],
-            },
-          ]}
-        />
-      )}
-
-      {orbitParticles.map((particle, idx) => {
-        const progress = orbitProgressRefs.current[idx] || new Animated.Value(0);
-        const spin = progress.interpolate({
-          inputRange: [0, 1],
-          outputRange: particle.direction === -1 ? ['360deg', '0deg'] : ['0deg', '360deg'],
-          extrapolate: 'clamp',
-        });
-        const opacity = progress.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0.2, 0.95, 0.2],
-          extrapolate: 'clamp',
-        });
-        const scale = progress.interpolate({
-          inputRange: [0, 0.5, 1],
-          outputRange: [0.85, 1.2, 0.85],
-          extrapolate: 'clamp',
-        });
-
-        return (
-          <View
-            key={particle.key || `orbit-${rating}-${idx}`}
-            style={[
-              styles.orbitCenter,
-              {
-                transform: [{ rotate: `${particle.startAngle}deg` }],
-              },
-            ]}
-          >
-            <Animated.View
-              style={{
-                transform: [{ rotate: spin }, { translateX: particle.radius }, { scale }],
-              }}
-            >
-              <Animated.View
-                style={[
-                  styles.orbitDot,
-                  {
-                    width: particle.size,
-                    height: particle.size,
-                    borderRadius: particle.size / 2,
-                    backgroundColor: particle.color,
-                    shadowColor: particle.color,
-                    shadowOpacity: particle.glowOpacity || 0,
-                    shadowRadius: particle.glowRadius || 0,
-                    shadowOffset: { width: 0, height: 0 },
-                    opacity,
-                  },
-                ]}
-              />
-            </Animated.View>
-          </View>
-        );
-      })}
-
       {particles.map((particle, idx) => {
         const progress = progressRefs.current[idx] || new Animated.Value(0);
         const shiftedProgress = progress.interpolate({ inputRange: [0, 1], outputRange: [0, particle.speedFactor], extrapolate: 'clamp' });
@@ -651,7 +382,7 @@ const TrophyParticles = ({ rating }) => {
       })}
     </View>
   );
-};
+}
 
 // --- GARDEN AMBIENT PARTICLES ---
 const AMBIENT_COUNT = 20;
@@ -722,29 +453,20 @@ const GardenAmbientParticles = () => {
 };
 
 // --- 1. PLANT VISUAL COMPONENT ---
+
 const PlantVisual = ({ plant, isDraggingHighlight }) => {
-    // Debug log to check why platinum fern _p asset is not showing
-    if (species === 'fern') {
-      console.log('[Fern Debug]', {
-        species,
-        stage,
-        rating,
-        trophyVariantKey,
-        trophyPlantAsset,
-        hasStage4P: !!PLANT_ASSETS.fern?.p?.stage4,
-        asset,
-        plant
-      });
-    }
   const total = Number(plant.totalCompletions) || 0;
-  const rating = getStoragePlantRating(plant);
+  // Only use getStoragePlantRating for badge visuals, not for health
+  const isTrophy = plant?.shelfPosition?.pageId === STORAGE_PAGE_ID;
+  const rating = isTrophy ? getStoragePlantRating(plant) : null;
+
+  // Always use calculated healthLevel for today for ALL plants (matches GoalScreen)
+  const today = new Date();
+  const displayHealthState = getPlantHealthState(plant, today);
+  const healthLevel = displayHealthState.healthLevel;
 
   const swayAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (rating) {
-      swayAnim.setValue(0);
-      return;
-    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(swayAnim, { toValue: 1,  duration: 600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
@@ -754,41 +476,92 @@ const PlantVisual = ({ plant, isDraggingHighlight }) => {
     );
     const timer = setTimeout(() => loop.start(), Math.random() * 1500);
     return () => { clearTimeout(timer); loop.stop(); swayAnim.setValue(0); };
-  }, [rating]);
-  
-  let stage = 'stage1';
-  if (total > 30) stage = 'stage4';
-  else if (total > 15) stage = 'stage3';
-  else if (total > 5) stage = 'stage2';
+  }, [swayAnim]);
 
-  const healthState = getPlantHealthState(plant);
-  const { status } = healthState;
-  const species = plant.plantSpecies || (plant.type !== "completion" && plant.type !== "quantity" ? plant.type : "fern");
-  const asset = PLANT_ASSETS[species]?.[stage]?.[status] || PLANT_ASSETS[species]?.[stage]?.['alive'] || PLANT_ASSETS['fern']['stage1']['alive'];
-  const trophyVariantKey = rating === 'platinum' ? 'p' : rating === 'gold' ? 'g' : rating === 'silver' ? 's' : rating === 'bronze' ? 'b' : null;
-  let trophyPlantAsset = null;
-  if (rating && species === 'fern') {
-    trophyPlantAsset = PLANT_ASSETS.fern?.[trophyVariantKey]?.[stage];
-    // Fallback: if platinum, stage4, and asset missing, force stage4_p
-    if (!trophyPlantAsset && rating === 'platinum' && stage === 'stage4') {
-      trophyPlantAsset = PLANT_ASSETS.fern?.p?.stage4;
-    }
-  }
+
+  // --- Use the exact same logic as GoalPlantPreview for plant image selection ---
+  const stage = getGrowthStage(plant?.totalCompletions);
+  const { status } = getPlantHealthState(plant);
+  const species = plant?.plantSpecies || ((plant?.type !== "completion" && plant?.type !== "quantity") ? plant?.type : "fern");
+  const speciesAssets = PLANT_ASSETS[species] || PLANT_ASSETS.fern;
+  const plantSource =
+    speciesAssets?.[stage]?.[status]
+    || speciesAssets?.[stage]?.alive
+    || PLANT_ASSETS.fern?.stage1?.alive;
+
+  // Use the potType or potStyle field from the plant/goal, fallback to default
+  let potKey = plant.potType || plant.potStyle || "default";
+  let potSource = POT_ASSETS[potKey] || POT_ASSETS["default"];
   const showTrophyParticles = Boolean(rating);
-  const plantSource = trophyPlantAsset || asset;
-  const potSource = rating ? (TROPHY_POT_IMAGES[rating] || POT_IMAGE) : POT_IMAGE;
-  const showReviveHeart = healthState.healthLevel === 2 && isGoalDoneForDate(plant, toKey(new Date()));
-  const todayKey = toKey(new Date());
-  const isSharedMultiUserGoal = !!plant?.multiUserWateringEnabled && plant?.gardenType === "shared" && plant?.type === "completion";
-  const contributorUsersMap = isSharedMultiUserGoal ? (plant?.logs?.completion?.[todayKey]?.users || {}) : {};
-  const currentContributors = isSharedMultiUserGoal
+  const trophyBadgeSource = getTrophyBadgeSource(rating);
+  const todayKey = toKey(today);
+  const isScheduledToday = isGoalScheduledOnDate(plant, today);
+  const isSharedMultiUserCompletion = !!plant?.multiUserWateringEnabled && plant?.gardenType === "shared" && (plant?.type || plant?.kind) === "completion";
+  const isSharedMultiUserQuantity = !!plant?.multiUserWateringEnabled && plant?.gardenType === "shared" && (plant?.type || plant?.kind) === "quantity";
+  const isQuantityGoal = (plant?.type || plant?.kind) === "quantity";
+  const currentUserId = auth.currentUser?.uid;
+  const todayQuantityLog = plant?.logs?.quantity?.[todayKey] || {};
+  let quantityLogs = {};
+  if (isSharedMultiUserQuantity && typeof todayQuantityLog.users === 'object' && todayQuantityLog.users !== null) {
+    quantityLogs = todayQuantityLog.users;
+  }
+  const quantityTargetForBadge = isQuantityGoal
+    ? Math.max(1, Math.floor(Number(plant?.measurable?.target) || 1))
+    : 0;
+  let contributorQuantityCount = 0;
+  if (isSharedMultiUserQuantity) {
+    const allContributors = Array.isArray(plant.contributors)
+      ? plant.contributors
+      : Object.keys(quantityLogs);
+    contributorQuantityCount = allContributors.filter((userId) => Number(quantityLogs[userId]) >= quantityTargetForBadge).length;
+  }
+  const requiredContributorsForBadge = (isSharedMultiUserCompletion || isSharedMultiUserQuantity)
+    ? Math.max(2, Math.floor(Number(plant.requiredContributors) || 2))
+    : 1;
+  const contributorUsersMap = isSharedMultiUserCompletion ? (plant?.logs?.completion?.[todayKey]?.users || {}) : {};
+  const currentContributors = isSharedMultiUserCompletion
     ? Object.keys(contributorUsersMap).filter((id) => !!contributorUsersMap[id]).length
     : 0;
-  const requiredContributorsForBadge = isSharedMultiUserGoal ? getRequiredContributors(plant) : 1;
-  const isGoalDoneToday = isSharedMultiUserGoal ? currentContributors >= requiredContributorsForBadge : false;
-  const currentUserContributedToday = isSharedMultiUserGoal ? !!contributorUsersMap[auth.currentUser?.uid] : false;
-  const showContributorBadge = isSharedMultiUserGoal && !isGoalDoneToday;
-  const contributorBadgeLabel = `${Math.min(currentContributors, requiredContributorsForBadge)}/${requiredContributorsForBadge}`;
+  const firestoreUserValue = Number(quantityLogs[currentUserId]) || 0;
+  const isGoalDoneToday = isSharedMultiUserQuantity
+    ? (() => {
+        const allContributors = Array.isArray(plant.contributors)
+          ? plant.contributors
+          : Object.keys(quantityLogs);
+        const userDoneCount = allContributors.filter((userId) => Number(quantityLogs[userId]) >= quantityTargetForBadge).length;
+        return userDoneCount >= requiredContributorsForBadge;
+      })()
+    : isSharedMultiUserCompletion
+      ? (currentContributors >= requiredContributorsForBadge)
+      : isGoalDoneForDate(plant, todayKey);
+  const currentUserContributedToday = isSharedMultiUserCompletion
+    ? !!contributorUsersMap[currentUserId]
+    : isSharedMultiUserQuantity
+      ? firestoreUserValue >= quantityTargetForBadge
+      : false;
+  const showCompletionBadge = plant?.shelfPosition?.pageId !== STORAGE_PAGE_ID;
+  // Progress bar logic
+  const progressCurrentValue = isSharedMultiUserCompletion
+    ? Math.min(currentContributors, requiredContributorsForBadge)
+    : isSharedMultiUserQuantity
+      ? Math.min(contributorQuantityCount, requiredContributorsForBadge)
+      : isQuantityGoal
+        ? Math.max(0, Math.min(Number(plant?.logs?.quantity?.[todayKey]?.value) || 0, quantityTargetForBadge))
+        : (isGoalDoneToday ? 1 : 0);
+  const progressTargetValue = (isSharedMultiUserCompletion || isSharedMultiUserQuantity)
+    ? requiredContributorsForBadge
+    : isQuantityGoal
+      ? quantityTargetForBadge
+      : 1;
+  const progressFillRatio = progressTargetValue > 0
+    ? Math.max(0, Math.min(progressCurrentValue / progressTargetValue, 1))
+    : 0;
+  const completionBadgeLabel = isSharedMultiUserCompletion
+    ? `${Math.min(currentContributors, requiredContributorsForBadge)}/${requiredContributorsForBadge}`
+    : isSharedMultiUserQuantity
+      ? `${Math.min(contributorQuantityCount, requiredContributorsForBadge)}/${requiredContributorsForBadge}`
+      : null;
+  const completionBadgeIcon = isGoalDoneToday ? 'checkmark' : 'remove';
   const [displayedPlantSource, setDisplayedPlantSource] = useState(plantSource);
   const swapScaleAnim = useRef(new Animated.Value(1)).current;
   const previousSourceRef = useRef(plantSource);
@@ -837,6 +610,12 @@ const PlantVisual = ({ plant, isDraggingHighlight }) => {
     return plant.type === 'coding' ? 'code' : 'target';
   };
 
+  // --- UI: Two bars for shared multi-user quantity ---
+  const showDualBars = isSharedMultiUserQuantity;
+  const userBarRatio = quantityTargetForBadge > 0 ? Math.max(0, Math.min(firestoreUserValue / quantityTargetForBadge, 1)) : 0;
+  const groupBarRatio = requiredContributorsForBadge > 0 ? Math.max(0, Math.min(contributorQuantityCount / requiredContributorsForBadge, 1)) : 0;
+  // --- Use healthLevel for any visuals here if needed ---
+  // Example: <Text>Health: {healthLevel}</Text>
   return (
     <View style={styles.plantAssemblyWrapper}>
       <View style={styles.plantAssembly}>
@@ -851,7 +630,7 @@ const PlantVisual = ({ plant, isDraggingHighlight }) => {
             style={[
               styles.plantImage,
               isDraggingHighlight && styles.draggingShadow,
-              !rating && {
+              {
                 transform: [
                   { translateY: 42.5 },
                   { rotate: swayAnim.interpolate({ inputRange: [-1, 1], outputRange: ['-4deg', '6deg'] }) },
@@ -859,29 +638,15 @@ const PlantVisual = ({ plant, isDraggingHighlight }) => {
                   { translateY: -42.5 },
                 ],
               },
-              rating && {
-                transform: [
-                  { translateY: 42.5 },
-                  { scale: swapScaleAnim },
-                  { translateY: -42.5 },
-                ],
-              },
             ]}
             resizeMode="contain"
           />
-          {showReviveHeart && (
-            <View style={styles.reviveHeartBadge}>
-              <Ionicons name="heart" size={12} color="#fff" />
-            </View>
-          )}
           <View style={styles.potLabel}>
             <GoalIcon name={getPotIcon()} size={18} color="#fff" />
           </View>
-          {showContributorBadge && (
-            <View style={[styles.contributorPotBadge, currentUserContributedToday && styles.contributorPotBadgeSelf]}>
-              <Text style={styles.contributorPotBadgeText}>{contributorBadgeLabel}</Text>
-            </View>
-          )}
+          {trophyBadgeSource ? (
+            <Image source={trophyBadgeSource} style={styles.trophyTierBadgeIcon} resizeMode="contain" />
+          ) : null}
         </ImageBackground>
       </View>
       {(plant.title || plant.name) ? (
@@ -889,6 +654,61 @@ const PlantVisual = ({ plant, isDraggingHighlight }) => {
           {plant.title || plant.name}
         </Text>
       ) : null}
+      {showCompletionBadge && (
+        <View style={[styles.plantProgressWrap, !isScheduledToday && styles.completionPotBadgeInactive]}>
+          {showDualBars ? (
+            <View style={{ marginTop: 10 }}>
+              {/* User bar */}
+              <View style={[styles.plantProgressTrack, { marginBottom: 4 }]}> 
+                <View
+                  style={[
+                    styles.plantProgressFill,
+                    { width: `${Math.max(0, Math.min(userBarRatio * 100, 100))}%` },
+                    firestoreUserValue >= quantityTargetForBadge
+                      ? styles.plantProgressFillSharedSelf
+                      : styles.plantProgressFillQuantity,
+                  ]}
+                />
+              </View>
+              {/* Group bar */}
+              <View style={styles.plantProgressTrack}>
+                <View
+                  style={[
+                    styles.plantProgressFill,
+                    { width: `${Math.max(0, Math.min(groupBarRatio * 100, 100))}%` },
+                    isGoalDoneToday
+                      ? styles.plantProgressFillDone
+                      : styles.plantProgressFillShared,
+                  ]}
+                />
+              </View>
+            </View>
+          ) : (
+            <>
+              <View style={styles.plantProgressTrack}>
+                <View
+                  style={[
+                    styles.plantProgressFill,
+                    {
+                      width: `${Math.max(0, Math.min(progressFillRatio * 100, 100))}%`,
+                    },
+                    isGoalDoneToday
+                      ? styles.plantProgressFillDone
+                      : isSharedMultiUserCompletion
+                        ? (currentUserContributedToday ? styles.plantProgressFillSharedSelf : styles.plantProgressFillShared)
+                      : isQuantityGoal && progressCurrentValue > 0
+                        ? styles.plantProgressFillQuantity
+                        : styles.plantProgressFillPending,
+                  ]}
+                />
+              </View>
+              {(isSharedMultiUserCompletion || isSharedMultiUserQuantity) ? (
+                <Text style={styles.sharedProgressLabel}>{completionBadgeLabel}</Text>
+              ) : null}
+            </>
+          )}
+        </View>
+      )}
     </View>
   );
 };
@@ -988,7 +808,6 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
           if (longPressTimeoutRef.current) clearTimeout(longPressTimeoutRef.current);
           longPressTimeoutRef.current = setTimeout(() => {
             longPressTriggeredRef.current = true;
-            onLongPress && onLongPress();
             startDrag(lastTouchRef.current);
           }, 400);
         }
@@ -1053,8 +872,16 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
 
 // --- 3. MAIN GARDEN SCREEN ---
 export default function GardenScreen({ route, navigation }) {
+    // Utility to update a goal and always recalculate healthLevel for today
+    async function updateGoalWithHealth(goal, updatedFields) {
+      const today = new Date();
+      const updatedGoal = { ...goal, ...updatedFields };
+      const updatedHealthLevel = getPlantHealthState(updatedGoal, today).healthLevel;
+      const updateData = { ...updatedFields, healthLevel: updatedHealthLevel };
+      await updateDoc(doc(db, "users", auth.currentUser.uid, "goals", goal.id), updateData);
+    }
   // --- Drawer and shelf positioning state/logic ---
-  const [drawerBottom, setDrawerBottom] = useState(0);
+  const [drawerTop, setDrawerTop] = useState(0);
   const [parentHeight, setParentHeight] = useState(0);
   const [shelfLayout, setShelfLayout] = useState({ y: 0, height: 0 });
 
@@ -1068,17 +895,24 @@ export default function GardenScreen({ route, navigation }) {
   }, []);
 
   useEffect(() => {
-    if (parentHeight && shelfLayout.height) {
-      // The drawer's top should align with the bottom of the shelf, so offset by shelf height
-      const drawerHeight = 200; // matches styles.drawer.height
-      const offset = Math.max(parentHeight - (shelfLayout.y + shelfLayout.height) - drawerHeight, 0);
-      setDrawerBottom(offset);
+    if (shelfLayout.height) {
+      // The drawer's top should align just below the bottom shelf, with a small gap
+      const gap = 0; // px below the shelf
+      setDrawerTop(shelfLayout.y + shelfLayout.height + gap);
     }
-  }, [parentHeight, shelfLayout]);
+  }, [shelfLayout]);
     // --- Customization State ---
     const [showCustomization, setShowCustomization] = useState(false);
     // { [pageId]: { farBg, windowFrame, wallBg, shelfColor } }
     const [customizations, setCustomizations] = useState({});
+
+    // Exit edit mode when customization modal is opened
+    useEffect(() => {
+      if (showCustomization && isEditing) {
+        setIsEditing(false);
+        if (shouldPersistState) persistedGardenState.isEditing = false;
+      }
+    }, [showCustomization]);
   // Subscribe to shared customizations if in shared garden
   useEffect(() => {
     let unsub;
@@ -1090,14 +924,39 @@ export default function GardenScreen({ route, navigation }) {
     return () => unsub && unsub();
   }, [isSharedGarden, sharedGardenId]);
   const insets = useSafeAreaInsets();
+
   const sharedGardenId = route?.params?.gardenId || route?.params?.sharedGardenId || null;
   const isSharedGarden = Boolean(sharedGardenId);
   const viewedUserId = route?.params?.userId || auth.currentUser?.uid;
+  const [sharedGardenSettings, setSharedGardenSettings] = useState({
+    restrictAddPeople: false,
+    restrictCustomize: false,
+    restrictEditPlants: false,
+    ownerId: null,
+    editModeLock: null,
+  });
+  const isOwner = isSharedGarden && sharedGardenSettings.ownerId && auth.currentUser && sharedGardenSettings.ownerId === auth.currentUser.uid;
   const isReadOnly = isSharedGarden
     ? Boolean(route?.params?.readOnly)
     : Boolean(route?.params?.readOnly && viewedUserId && viewedUserId !== auth.currentUser?.uid);
   const shouldPersistState = !isReadOnly && !isSharedGarden;
   const viewedUsername = isSharedGarden ? (route?.params?.gardenName || "Shared Garden") : (route?.params?.username || "User");
+  // Fetch shared garden settings (permissions)
+  useEffect(() => {
+    if (!isSharedGarden || !sharedGardenId) return;
+    const unsub = onSnapshot(doc(db, "sharedGardens", sharedGardenId), (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      setSharedGardenSettings({
+        restrictAddPeople: !!data.restrictAddPeople,
+        restrictCustomize: !!data.restrictCustomize,
+        restrictEditPlants: !!data.restrictEditPlants,
+        ownerId: data.ownerId || null,
+        editModeLock: data.editModeLock || null,
+      });
+    });
+    return () => unsub();
+  }, [isSharedGarden, sharedGardenId]);
 
   const [allPlants, setAllPlants] = useState(shouldPersistState ? (persistedGardenState.allPlants || []) : []);
   const [pages, setPages] = useState([]);
@@ -1120,6 +979,8 @@ export default function GardenScreen({ route, navigation }) {
   const [leavingGardenId, setLeavingGardenId] = useState('');
   const [myUsername, setMyUsername] = useState('User');
   const currentPageRef = useRef(currentPageId);
+  const sharedEditLockAlertShown = useRef(false);
+  const skipNextSharedLockEnsureRef = useRef(false);
 
   const globalPan = useRef(new Animated.ValueXY()).current;
   const globalDragRef = useRef(false);
@@ -1240,32 +1101,7 @@ export default function GardenScreen({ route, navigation }) {
   }, []);
 
   const calculateStreakForLogs = useCallback((goal, newLogs) => {
-    let current = 0;
-    let longest = Number(goal?.longestStreak) || 0;
-    const checkToday = new Date();
-    checkToday.setHours(0, 0, 0, 0);
-    let checkDate = new Date(checkToday);
-
-    for (let idx = 0; idx < 365; idx += 1) {
-      const dateKey = toKey(checkDate);
-      const dayOfWeek = checkDate.getDay();
-      const isScheduled = goal.schedule?.type === "everyday"
-        || (goal.schedule?.type === "weekdays" && dayOfWeek >= 1 && dayOfWeek <= 5)
-        || (goal.schedule?.type === "days" && goal.schedule?.days?.includes(dayOfWeek));
-
-      if (isScheduled) {
-        const isDoneOnDate = goal.type === "completion"
-          ? !!newLogs?.completion?.[dateKey]?.done
-          : (newLogs?.quantity?.[dateKey]?.value ?? 0) >= (goal?.measurable?.target ?? 0);
-
-        if (isDoneOnDate) current += 1;
-        else if (dateKey !== toKey(checkToday)) break;
-      }
-      checkDate.setDate(checkDate.getDate() - 1);
-    }
-
-    if (current > longest) longest = current;
-    return { currentStreak: current, longestStreak: longest };
+    return calculateGoalStreak(goal, newLogs, toKey(new Date()));
   }, []);
 
   const updateOverallAppStreak = useCallback(async () => {
@@ -1306,7 +1142,7 @@ export default function GardenScreen({ route, navigation }) {
       const newlyUnlocked = ACHIEVEMENTS.filter((achievement) => !unlockedIds.includes(achievement.id) && achievement.check(currentStats));
 
       if (newlyUnlocked.length > 0) {
-        const newIds = newlyUnlocked.map((achievement) => achievement.id);
+        const newIds = newlyUnlocked.map(achievement => achievement.id);
         await updateDoc(userRef, { unlockedAchievements: arrayUnion(...newIds) });
       }
     } catch (error) {
@@ -1316,89 +1152,34 @@ export default function GardenScreen({ route, navigation }) {
 
   const markPlantCompletedFromDrop = useCallback(async (plantId) => {
     if (isReadOnly || !auth.currentUser) return;
-
     const goal = allPlants.find((item) => item.id === plantId);
     if (!goal) return;
-
-    const todayKey = toKey(new Date());
-    const currentUserId = auth.currentUser.uid;
-    const isSharedMultiUser = isSharedGarden
-      && goal?.type === "completion"
-      && !!goal?.multiUserWateringEnabled
-      && goal?.gardenType === "shared";
-
-    if (isGoalDoneForDate(goal, todayKey)) return;
-
-    if (isSharedMultiUser && goal?.logs?.completion?.[todayKey]?.users?.[currentUserId]) {
+    const today = new Date();
+    const todayKey = toKey(today);
+    // Block completion if today is not a scheduled day
+    if (!isGoalScheduledOnDate(goal, today)) {
+      Alert.alert(
+        "Not Scheduled Today",
+        "You can't complete this goal today because it is not scheduled for today."
+      );
       return;
     }
-
-    const updatedLogs = JSON.parse(JSON.stringify(goal.logs || {}));
-    const updateData = {};
-    let shouldAwardCompletion = false;
-
-    if (goal.type === "completion") {
-      if (!updatedLogs.completion) updatedLogs.completion = {};
-
-      if (isSharedMultiUser) {
-        const existingEntry = updatedLogs.completion[todayKey] || {};
-        const existingUsers = existingEntry.users || {};
-        const nextUsers = { ...existingUsers, [currentUserId]: true };
-        const uniqueCount = Object.keys(nextUsers).filter((userId) => !!nextUsers[userId]).length;
-        const isNowDone = uniqueCount >= getRequiredContributors(goal);
-
-        updatedLogs.completion[todayKey] = { ...existingEntry, users: nextUsers, done: isNowDone };
-        updateData[`logs.completion.${todayKey}`] = updatedLogs.completion[todayKey];
-        shouldAwardCompletion = isNowDone;
-      } else {
-        updatedLogs.completion[todayKey] = { done: true };
-        updateData[`logs.completion.${todayKey}.done`] = true;
-        shouldAwardCompletion = true;
-      }
-    } else {
-      if (!updatedLogs.quantity) updatedLogs.quantity = {};
-      const targetValue = goal?.measurable?.target || 1;
-      updatedLogs.quantity[todayKey] = { value: targetValue };
-      updateData[`logs.quantity.${todayKey}.value`] = targetValue;
-      shouldAwardCompletion = true;
+    if (isGoalDoneForDate(goal, todayKey)) return;
+    try {
+      await toggleGoalTransaction({
+        goal,
+        selectedDateKey: todayKey,
+        isSharedGoalView: !!sharedGardenId,
+        routeSharedGardenId: sharedGardenId,
+        shelfPosition: goal.shelfPosition,
+        findFirstOpenStorageSlot,
+        findFirstOpenSharedStorageSlot,
+      });
+    } catch (error) {
+      console.error("Error toggling goal status (GardenScreen):", error);
+      Alert.alert("Error", "Could not update goal progress.");
     }
-
-    if (shouldAwardCompletion) {
-      const currentPlantHealth = getPlantHealthState(goal).healthLevel;
-      updateData.totalCompletions = increment(1);
-      updateData.healthLevel = currentPlantHealth <= 1 ? 2 : 3;
-      const { currentStreak, longestStreak } = calculateStreakForLogs(goal, updatedLogs);
-      updateData.currentStreak = currentStreak;
-      updateData.longestStreak = longestStreak;
-    }
-
-    if (isSharedGarden) {
-      const sharedLayoutRef = doc(db, "sharedGardens", sharedGardenId, "layout", plantId);
-      await updateDoc(sharedLayoutRef, updateData);
-
-      const ownerId = goal?.ownerId || null;
-      const sourceGoalId = goal?.sourceGoalId || goal?.id;
-      if (ownerId && sourceGoalId) {
-        try {
-          await updateDoc(doc(db, "users", ownerId, "goals", sourceGoalId), updateData);
-        } catch (error) {
-          if (error?.code !== "permission-denied") {
-            console.error("Failed to sync shared watering to source goal:", error);
-          }
-        }
-      }
-
-      await updateOverallScoresForSharedGardenMembers(sharedGardenId);
-    } else {
-      const goalRef = doc(db, "users", auth.currentUser.uid, "goals", plantId);
-      await updateDoc(goalRef, updateData);
-    }
-
-    if (shouldAwardCompletion) {
-      const newAppStreak = await updateOverallAppStreak();
-      await checkAchievements(newAppStreak);
-    }
-  }, [allPlants, calculateStreakForLogs, checkAchievements, isReadOnly, isSharedGarden, sharedGardenId, updateOverallAppStreak]);
+  }, [allPlants, isReadOnly, sharedGardenId]);
 
   const findCompletionTargetId = useCallback(async (moveX, moveY) => {
     const visiblePlantIds = allPlants
@@ -1767,108 +1548,179 @@ export default function GardenScreen({ route, navigation }) {
     } else wiggleAnim.setValue(0);
   }, [isEditing]);
 
-  const activateEditMode = useCallback(() => {
-    if (isReadOnly) return;
-    if (globalDragRef.current || globalDragging) return;
+  const canEditPlants = !isSharedGarden || isOwner || !sharedGardenSettings.restrictEditPlants;
+  const canCustomize = !isSharedGarden || isOwner || !sharedGardenSettings.restrictCustomize;
+  const canAddPeople = !isSharedGarden || isOwner || !sharedGardenSettings.restrictAddPeople;
+  const canEnterEditMode = canEditPlants || canCustomize;
+
+  const releaseSharedEditLock = useCallback(async () => {
+    if (!isSharedGarden || !sharedGardenId) return;
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    const gardenRef = doc(db, "sharedGardens", sharedGardenId);
+    try {
+      await runTransaction(db, async (transaction) => {
+        const gardenSnap = await transaction.get(gardenRef);
+        if (!gardenSnap.exists()) return;
+        const gardenData = gardenSnap.data() || {};
+        const activeLockUid = gardenData?.editModeLock?.uid;
+        if (activeLockUid && activeLockUid !== uid) return;
+        transaction.set(gardenRef, { editModeLock: deleteField() }, { merge: true });
+      });
+    } catch (error) {
+      console.error("Failed to release shared edit lock", error);
+    }
+  }, [isSharedGarden, sharedGardenId]);
+
+  const acquireSharedEditLock = useCallback(async () => {
+    if (!isSharedGarden || !sharedGardenId) return true;
+    const uid = auth.currentUser?.uid;
+    if (!uid) return false;
+
+    const gardenRef = doc(db, "sharedGardens", sharedGardenId);
+    const now = Date.now();
+    const displayName = myUsername || auth.currentUser?.displayName || "Someone";
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const gardenSnap = await transaction.get(gardenRef);
+        if (!gardenSnap.exists()) {
+          const error = new Error("Shared garden no longer exists.");
+          error.code = "shared-garden-missing";
+          throw error;
+        }
+
+        const gardenData = gardenSnap.data() || {};
+        const activeLock = gardenData?.editModeLock || null;
+        const activeLockUid = activeLock?.uid;
+        const activeLockExpiry = Number(activeLock?.expiresAt) || 0;
+
+        if (activeLockUid && activeLockUid !== uid && activeLockExpiry > now) {
+          const error = new Error("Another member is editing this garden.");
+          error.code = "shared-edit-locked";
+          error.editorName = activeLock?.username || "Someone";
+          throw error;
+        }
+
+        transaction.set(
+          gardenRef,
+          {
+            editModeLock: {
+              uid,
+              username: displayName,
+              acquiredAt: activeLockUid === uid ? (Number(activeLock?.acquiredAt) || now) : now,
+              expiresAt: now + SHARED_EDIT_LOCK_MS,
+            },
+          },
+          { merge: true }
+        );
+      });
+      skipNextSharedLockEnsureRef.current = true;
+      return true;
+    } catch (error) {
+      if (error?.code === "shared-edit-locked") {
+        if (!sharedEditLockAlertShown.current) {
+          sharedEditLockAlertShown.current = true;
+          Alert.alert(
+            "Garden in use",
+            `${error.editorName} is currently editing this garden. Try again in a moment.`,
+            [
+              {
+                text: "OK",
+                onPress: () => { sharedEditLockAlertShown.current = false; },
+              },
+            ]
+          );
+        }
+      } else if (error?.code !== "shared-garden-missing") {
+        console.error("Failed to acquire shared edit lock", error);
+      }
+      return false;
+    }
+  }, [isSharedGarden, sharedGardenId, myUsername]);
+
+  useEffect(() => {
+    if (!isSharedGarden || !sharedGardenId || !auth.currentUser?.uid) return undefined;
+    if (!isEditing) {
+      releaseSharedEditLock();
+      return undefined;
+    }
+
+    let isActive = true;
+    const ensureLock = async () => {
+      const acquired = await acquireSharedEditLock();
+      if (!acquired && isActive) {
+        setIsEditing(false);
+        if (shouldPersistState) persistedGardenState.isEditing = false;
+      }
+    };
+
+    if (skipNextSharedLockEnsureRef.current) {
+      skipNextSharedLockEnsureRef.current = false;
+    } else {
+      ensureLock();
+    }
+    const intervalId = setInterval(() => {
+      ensureLock();
+    }, SHARED_EDIT_LOCK_RENEW_MS);
+
+    return () => {
+      isActive = false;
+      clearInterval(intervalId);
+      releaseSharedEditLock();
+    };
+  }, [acquireSharedEditLock, isEditing, isSharedGarden, sharedGardenId, releaseSharedEditLock, shouldPersistState]);
+
+  const activateEditMode = useCallback(async () => {
+    if (isReadOnly) return false;
+    if (!canEnterEditMode) {
+      if (!editRestrictionAlertShown.current) {
+        editRestrictionAlertShown.current = true;
+        Alert.alert("Restricted", "Only the owner can edit or customize this garden.", [
+          {
+            text: "OK",
+            onPress: () => { editRestrictionAlertShown.current = false; },
+          },
+        ]);
+      }
+      return false;
+    }
+    if (globalDragRef.current || globalDragging) return false;
+
+    if (!isEditing && isSharedGarden) {
+      const lockAcquired = await acquireSharedEditLock();
+      if (!lockAcquired) return false;
+    }
+
     if (!isEditing) {
       setIsEditing(true);
       if (shouldPersistState) persistedGardenState.isEditing = true;
     }
-  }, [globalDragging, isEditing, isReadOnly, shouldPersistState]);
+    return true;
+  }, [acquireSharedEditLock, canEnterEditMode, globalDragging, isEditing, isReadOnly, isSharedGarden, shouldPersistState]);
 
   const handleDragStart = async (plant, touchX, touchY) => {
-    if (isReadOnly) return false;
-    if (globalDragRef.current) return false;
-
-    if (shouldPersistState && !persistedGardenState.isEditing) {
-      persistedGardenState.isEditing = true;
+    if (!canEditPlants) {
+      if (!editRestrictionAlertShown.current) {
+        editRestrictionAlertShown.current = true;
+        Alert.alert("Restricted", "Only the owner can move or edit plants in this garden.", [
+          {
+            text: "OK",
+            onPress: () => { editRestrictionAlertShown.current = false; },
+          },
+        ]);
+      }
+      return false;
     }
-    setIsEditing((prev) => (prev ? prev : true));
+
+    const editModeReady = await activateEditMode();
+    if (!editModeReady || globalDragRef.current) return false;
 
     globalDragRef.current = true;
     setGlobalDragging(true);
     globalPan.setValue({ x: 0, y: 0 });
     setDraggedGhost({ plant, x: touchX - 40, y: touchY - -50 });
-
-    // Shared garden drag lock with auto-refresh/retry
-    if (isSharedGarden) {
-      const uid = auth.currentUser?.uid;
-      if (!uid) {
-        globalDragRef.current = false;
-        setGlobalDragging(false);
-        setDraggedGhost(null);
-        return false;
-      }
-
-      const plantDoc = doc(db, "sharedGardens", sharedGardenId, "layout", plant.id);
-      const expectedStartPos = normalizeShelfPosition(
-        plant?.shelfPosition
-          ? { ...plant.shelfPosition, pageId: plant.shelfPosition.pageId || currentPageId }
-          : null
-      );
-      const lockAcquiredAt = Date.now();
-      const lockExpiresAt = lockAcquiredAt + 20000;
-
-      let retried = false;
-      const tryLock = async () => {
-        try {
-          await runTransaction(db, async (transaction) => {
-            const livePlantSnap = await transaction.get(plantDoc);
-            if (!livePlantSnap.exists()) {
-              const err = new Error("Plant no longer exists.");
-              err.code = "layout-conflict";
-              throw err;
-            }
-
-            const livePlantData = livePlantSnap.data() || {};
-            const livePlantPos = normalizeShelfPosition(livePlantData?.shelfPosition || null);
-            if (!shelfPositionsMatch(livePlantPos, expectedStartPos)) {
-              const err = new Error("Plant moved by another user.");
-              err.code = "layout-conflict";
-              throw err;
-            }
-
-            const activeLock = livePlantData?.moveLock || null;
-            const activeLockUid = activeLock?.uid;
-            const activeLockExpiry = Number(activeLock?.expiresAt) || 0;
-            const now = Date.now();
-            if (activeLockUid && activeLockUid !== uid && activeLockExpiry > now) {
-              const err = new Error("Plant is currently being moved by another member.");
-              err.code = "plant-locked";
-              throw err;
-            }
-
-            transaction.set(
-              plantDoc,
-              { moveLock: { uid, acquiredAt: lockAcquiredAt, expiresAt: lockExpiresAt } },
-              { merge: true }
-            );
-          });
-        } catch (error) {
-          if (error?.code === "plant-locked") {
-            Alert.alert("Plant in use", "Another member is currently moving this plant.");
-          } else if (error?.code === "layout-conflict") {
-            if (!retried) {
-              retried = true;
-              // Auto-refresh layout and retry once
-              await refreshSharedGardenLayout();
-              return await tryLock();
-            }
-            Alert.alert("Garden updated", "This plant moved before your drag started. Your garden will refresh to the latest layout.");
-          } else {
-            console.error("Failed to lock plant for dragging", error);
-          }
-
-          globalDragRef.current = false;
-          setGlobalDragging(false);
-          setDraggedGhost(null);
-          return false;
-        }
-        return true;
-      };
-      return await tryLock();
-    }
-
     return true;
   };
 
@@ -1905,41 +1757,15 @@ export default function GardenScreen({ route, navigation }) {
       && leftNorm.slotIndex === rightNorm.slotIndex;
   };
 
-  const releaseSharedMoveLock = useCallback(async (plantId) => {
-    if (!isSharedGarden || !sharedGardenId || !plantId) return;
-    const uid = auth.currentUser?.uid;
-    if (!uid) return;
-
-    const plantDoc = doc(db, "sharedGardens", sharedGardenId, "layout", plantId);
-    try {
-      await runTransaction(db, async (transaction) => {
-        const livePlantSnap = await transaction.get(plantDoc);
-        if (!livePlantSnap.exists()) return;
-        const liveData = livePlantSnap.data() || {};
-        const liveLockUid = liveData?.moveLock?.uid;
-        if (liveLockUid && liveLockUid !== uid) return;
-        transaction.set(plantDoc, { moveLock: deleteField() }, { merge: true });
-      });
-    } catch (error) {
-      console.error("Failed to release shared move lock", error);
-    }
-  }, [isSharedGarden, sharedGardenId]);
-
   const handleDragEnd = async (plant, moveX, moveY, dragStartShelfPosition, completeLocalDrag) => {
     let didUnlock = false;
-    const releaseMoveLock = () => {
-      if (!isSharedGarden) return;
-      releaseSharedMoveLock(plant.id).catch((error) => {
-        console.error("Failed to clear plant move lock", error);
-      });
-    };
 
     const unlock = () => {
       if (didUnlock) return;
       didUnlock = true;
-      globalDragRef.current = false; 
+      globalDragRef.current = false;
       setGlobalDragging(false);
-      setDraggedGhost(null); 
+      setDraggedGhost(null);
       completeLocalDrag();
     };
 
@@ -1952,6 +1778,7 @@ export default function GardenScreen({ route, navigation }) {
     };
 
     try {
+      const uid = auth.currentUser?.uid;
       const dest = await checkDropZones(moveX, moveY);
       if (dest) {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -1977,9 +1804,9 @@ export default function GardenScreen({ route, navigation }) {
             }
           }
 
-          setAllPlants(prev => {
+          setAllPlants((prev) => {
             const newArr = [...prev];
-            const pIdx = newArr.findIndex(p => p.id === plant.id);
+            const pIdx = newArr.findIndex((p) => p.id === plant.id);
             if (dest === 'drawer') {
               newArr[pIdx] = { ...newArr[pIdx], shelfPosition: null };
             } else {
@@ -1994,7 +1821,7 @@ export default function GardenScreen({ route, navigation }) {
               if (occIdx !== -1 && newArr[occIdx].id !== plant.id) {
                 newArr[occIdx] = { ...newArr[occIdx], shelfPosition: baseOldPos };
               }
-              newArr[pIdx] = { ...newArr[pIdx], shelfPosition: { pageId: currentPageId, shelfName, slotIndex }};
+              newArr[pIdx] = { ...newArr[pIdx], shelfPosition: { pageId: currentPageId, shelfName, slotIndex } };
             }
             if (shouldPersistState) persistedGardenState.allPlants = newArr;
             return newArr;
@@ -2005,35 +1832,22 @@ export default function GardenScreen({ route, navigation }) {
         unlockAfterLocalDrop();
 
         try {
-          const uid = auth.currentUser?.uid;
+          const activeSharedLockUid = sharedGardenSettings?.editModeLock?.uid;
+          const activeSharedLockExpiry = Number(sharedGardenSettings?.editModeLock?.expiresAt) || 0;
+          if (isSharedGarden && activeSharedLockUid && activeSharedLockUid !== uid && activeSharedLockExpiry > Date.now()) {
+            const error = new Error("Another member is editing this garden.");
+            error.code = "shared-edit-locked";
+            error.editorName = sharedGardenSettings?.editModeLock?.username || "Someone";
+            throw error;
+          }
+
           if (dest === 'drawer') {
             const targetDoc = isSharedGarden
               ? doc(db, "sharedGardens", sharedGardenId, "layout", plant.id)
               : doc(db, "users", uid, "gardenLayout", plant.id);
+
             if (isSharedGarden) {
-              const expectedOldPos = normalizeShelfPosition(baseOldPos);
-
-              await runTransaction(db, async (transaction) => {
-                const livePlantSnap = await transaction.get(targetDoc);
-                const livePlantData = livePlantSnap.data() || {};
-                const livePlantPos = normalizeShelfPosition(livePlantData?.shelfPosition || null);
-                if (!shelfPositionsMatch(livePlantPos, expectedOldPos)) {
-                  const conflictError = new Error("Plant moved by another user.");
-                  conflictError.code = "layout-conflict";
-                  throw conflictError;
-                }
-
-                const lockUid = livePlantData?.moveLock?.uid;
-                const lockExpiry = Number(livePlantData?.moveLock?.expiresAt) || 0;
-                const uidNow = auth.currentUser?.uid;
-                if (lockUid && lockUid !== uidNow && lockExpiry > Date.now()) {
-                  const lockError = new Error("Plant is currently being moved by another member.");
-                  lockError.code = "plant-locked";
-                  throw lockError;
-                }
-
-                transaction.set(targetDoc, { shelfPosition: null, moveLock: deleteField() }, { merge: true });
-              });
+              await setDoc(targetDoc, { shelfPosition: null, moveLock: deleteField() }, { merge: true });
             } else {
               await setDoc(targetDoc, { shelfPosition: null }, { merge: true });
             }
@@ -2043,105 +1857,92 @@ export default function GardenScreen({ route, navigation }) {
             const { shelfName, slotIndex } = parsedDest;
             const targetPos = { pageId: currentPageId, shelfName, slotIndex };
             const oldPos = baseOldPos;
+            const occupant = allPlants.find(
+              (p) => p.shelfPosition?.pageId === currentPageId && p.shelfPosition?.shelfName === shelfName && p.shelfPosition?.slotIndex === slotIndex
+            );
 
-            if (isSharedGarden) {
-              const plantDoc = doc(db, "sharedGardens", sharedGardenId, "layout", plant.id);
-              const expectedOldPos = normalizeShelfPosition(oldPos);
-              const candidatePlantIds = allPlants
-                .map((candidatePlant) => candidatePlant?.id)
-                .filter((id) => !!id && id !== plant.id);
-
-              await runTransaction(db, async (transaction) => {
-                const livePlantSnap = await transaction.get(plantDoc);
-                const livePlantData = livePlantSnap.data() || {};
-                const livePlantPos = normalizeShelfPosition(livePlantData?.shelfPosition || null);
-                if (!shelfPositionsMatch(livePlantPos, expectedOldPos)) {
-                  const conflictError = new Error("Plant moved by another user.");
-                  conflictError.code = "layout-conflict";
-                  throw conflictError;
-                }
-
-                const lockUid = livePlantData?.moveLock?.uid;
-                const lockExpiry = Number(livePlantData?.moveLock?.expiresAt) || 0;
-                if (lockUid && lockUid !== uid && lockExpiry > Date.now()) {
-                  const lockError = new Error("Plant is currently being moved by another member.");
-                  lockError.code = "plant-locked";
-                  throw lockError;
-                }
-
-                let occupantId = null;
-                for (const candidateId of candidatePlantIds) {
-                  const candidateDoc = doc(db, "sharedGardens", sharedGardenId, "layout", candidateId);
-                  const candidateSnap = await transaction.get(candidateDoc);
-                  if (!candidateSnap.exists()) continue;
-                  const candidatePos = normalizeShelfPosition(candidateSnap.data()?.shelfPosition || null);
-                  if (shelfPositionsMatch(candidatePos, targetPos)) {
-                    occupantId = candidateId;
-                    break;
-                  }
-                }
-
-                if (occupantId) {
-                  const occupantDoc = doc(db, "sharedGardens", sharedGardenId, "layout", occupantId);
-                  transaction.set(occupantDoc, { shelfPosition: expectedOldPos }, { merge: true });
-                }
-
-                transaction.set(
-                  plantDoc,
-                  { shelfPosition: targetPos, moveLock: deleteField() },
-                  { merge: true }
-                );
-              });
-            } else {
-              const batch = writeBatch(db);
-              const occupant = allPlants.find(
-                (p) => p.shelfPosition?.pageId === currentPageId && p.shelfPosition?.shelfName === shelfName && p.shelfPosition?.slotIndex === slotIndex
-              );
-
-              if (occupant && occupant.id !== plant.id) {
-                const occupantDoc = doc(db, "users", uid, "gardenLayout", occupant.id);
-                batch.set(occupantDoc, { shelfPosition: oldPos }, { merge: true });
-              }
-
-              const plantDoc = doc(db, "users", uid, "gardenLayout", plant.id);
+            const batch = writeBatch(db);
+            if (occupant && occupant.id !== plant.id) {
+              const occupantDoc = isSharedGarden
+                ? doc(db, "sharedGardens", sharedGardenId, "layout", occupant.id)
+                : doc(db, "users", uid, "gardenLayout", occupant.id);
               batch.set(
-                plantDoc,
-                { shelfPosition: targetPos },
+                occupantDoc,
+                isSharedGarden ? { shelfPosition: oldPos, moveLock: deleteField() } : { shelfPosition: oldPos },
                 { merge: true }
               );
-              await batch.commit();
             }
+
+            const plantDoc = isSharedGarden
+              ? doc(db, "sharedGardens", sharedGardenId, "layout", plant.id)
+              : doc(db, "users", uid, "gardenLayout", plant.id);
+
+            // --- PATCH: Copy trophy/progress/health state when moving to shared garden ---
+            let extraFields = {};
+            if (isSharedGarden) {
+              try {
+                // Try to get the user's goal document for this plant
+                const userGoalRef = doc(db, "users", plant.ownerId || uid, "goals", plant.sourceGoalId || plant.id);
+                const userGoalSnap = await getDoc(userGoalRef);
+                if (userGoalSnap.exists()) {
+                  const userGoalData = userGoalSnap.data();
+                  // Copy relevant fields
+                  extraFields = {
+                    healthLevel: userGoalData.healthLevel ?? null,
+                    currentStreak: userGoalData.currentStreak ?? null,
+                    longestStreak: userGoalData.longestStreak ?? null,
+                    logs: userGoalData.logs ?? null,
+                    totalCompletions: userGoalData.totalCompletions ?? null,
+                    trophyAwarded: userGoalData.trophyAwarded ?? null,
+                    // Add more fields as needed
+                  };
+                }
+              } catch (err) {
+                console.error('[TROPHY MIGRATION] Failed to copy goal state to shared garden:', err);
+              }
+            }
+
+            batch.set(
+              plantDoc,
+              isSharedGarden
+                ? { shelfPosition: targetPos, moveLock: deleteField(), ...extraFields }
+                : { shelfPosition: targetPos },
+              { merge: true }
+            );
+            await batch.commit();
           }
         } catch (e) {
           if (isSharedGarden) {
             delete sharedDropOverridesRef.current[plant.id];
           }
-          if (e?.code === "layout-conflict") {
-            Alert.alert("Garden updated", "Another member moved this plant first. Your garden will refresh to the latest layout.");
-          } else if (e?.code === "plant-locked") {
-            Alert.alert("Plant in use", "Another member is currently moving this plant.");
+          if (e?.code === "shared-edit-locked") {
+            const editorName = e?.editorName || "Someone";
+            Alert.alert("Garden in use", `${editorName} is currently editing this garden. Try again in a moment.`);
+            setIsEditing(false);
+            if (shouldPersistState) persistedGardenState.isEditing = false;
           } else {
             console.error(e);
           }
         }
 
-        releaseMoveLock();
         return;
       }
 
-      releaseMoveLock();
       Animated.spring(globalPan, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start(() => {
         unlock();
       });
     } catch (e) {
       console.error('Drag end failed', e);
-      releaseMoveLock();
       unlock();
     }
   };
 
   const handleAddPage = async () => {
     if (isReadOnly || !auth.currentUser) return;
+    if (!canCustomize) {
+      Alert.alert("Restricted", "Only the owner can customize this garden.");
+      return;
+    }
     const uid = auth.currentUser.uid;
     const newPageRef = isSharedGarden
       ? doc(collection(db, "sharedGardens", sharedGardenId, "pages"))
@@ -2152,8 +1953,13 @@ export default function GardenScreen({ route, navigation }) {
     setCurrentPageId(newPageRef.id);
   };
 
-  const handleCustomizeGarden = useCallback(() => {
-    setShowCustomization(true);
+  const [customizerType, setCustomizerType] = useState(null);
+  const handleCustomization = useCallback((type) => {
+    setCustomizerType(type);
+    setShowCustomization((prev) => {
+      if (prev) return true; // already open, don't close
+      return true;
+    });
   }, []);
 
   const handleSaveCustomization = (pageId, values) => {
@@ -2165,6 +1971,10 @@ export default function GardenScreen({ route, navigation }) {
 
   const handleResetPositions = async () => {
     if (isReadOnly || !auth.currentUser) return;
+    if (!canEditPlants) {
+      Alert.alert("Restricted", "Only the owner can reset plant positions in this garden.");
+      return;
+    }
     if (!currentPageId || currentPageId === STORAGE_PAGE_ID) return;
     const uid = auth.currentUser.uid;
     const batch = writeBatch(db);
@@ -2193,6 +2003,10 @@ export default function GardenScreen({ route, navigation }) {
 
   const handleRemoveCurrentPage = async () => {
     if (isReadOnly || !auth.currentUser || !currentPageId) return;
+    if (!canCustomize) {
+      Alert.alert("Restricted", "Only the owner can customize this garden.");
+      return;
+    }
     const realPages = pages.filter((p) => p.id !== STORAGE_PAGE_ID);
     if (realPages.length <= 1) {
       Alert.alert("Can't remove page", "You need at least one garden page.");
@@ -2520,12 +2334,16 @@ export default function GardenScreen({ route, navigation }) {
 
   const clearPlantFromLayout = useCallback((plantId) => {
     if (!plantId || !auth.currentUser) return;
+    if (!canEditPlants) {
+      Alert.alert("Restricted", "Only the owner can remove plants in this garden.");
+      return;
+    }
     if (isSharedGarden) {
       setDoc(doc(db, "sharedGardens", sharedGardenId, "layout", plantId), { shelfPosition: null }, { merge: true });
       return;
     }
     setDoc(doc(db, "users", auth.currentUser.uid, "gardenLayout", plantId), { shelfPosition: null }, { merge: true });
-  }, [isSharedGarden, sharedGardenId]);
+  }, [isSharedGarden, sharedGardenId, canEditPlants]);
 
   const renderStorageShelf = (pageId, shelfIdx, plantsOnPage) => {
     const shelfName = `storageShelf_${shelfIdx}`;
@@ -2734,6 +2552,8 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
     const plantsOnPage = allPlants.filter(p => p.shelfPosition?.pageId === page.id);
 
     // Use customization indices to select assets
+    const previewWidth = width;
+    const previewHeight = height;
     return (
       <TouchableWithoutFeedback
         delayLongPress={350}
@@ -2766,7 +2586,8 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                   resizeMode="cover"
                 />
               )}
-              <View pointerEvents="none" style={[styles.pageDrawerUnderlay, { bottom: drawerBottom }]}>
+              {/* Customization Circles Overlay moved to CustomizationScreen.js */}
+              <View pointerEvents="none" style={[styles.pageDrawerUnderlay, { top: drawerTop, left: 0, right: 0 }]}> 
                 <View style={styles.pageDrawerUnderlayTopBandPrimary} />
                 <View style={styles.pageDrawerUnderlayTopBandSecondary} />
               </View>
@@ -2859,14 +2680,24 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
   const SWITCHER_CREATE_H = 46; // compact create/action button + margin
   const SWITCHER_HINT_H = 28;   // "no gardens" hint text
   const SWITCHER_VPAD = 10;     // panel paddingTop + bottom content padding
+  // Calculate the number of rows/buttons actually rendered
+  let switcherRows = 0;
+  if (isSharedGarden) switcherRows += 1; // Personal
+  switcherRows += otherSharedGardens.length; // Other gardens
+  if (isSharedGarden) switcherRows += 1; // Settings
+  switcherRows += 1; // New Garden
+  // Add invite cards if present
+  const inviteRows = sharedGardenInvites.length;
+  // Add extra invite list if shown
+  const inviteListHeight = showCurrentGardenInviteList ? SWITCHER_INVITE_LIST_H : 0;
+  // If not shared garden and no other gardens, show hint row
+  const hintRows = (!isSharedGarden && otherSharedGardens.length === 0) ? 1 : 0;
   const switcherTargetHeight = Math.min(
     SWITCHER_VPAD +
-      (isSharedGarden ? SWITCHER_ROW_H : 0) +
-      (isSharedGarden ? SWITCHER_SHARED_ACTIONS_H : 0) +
-      (showCurrentGardenInviteList ? SWITCHER_INVITE_LIST_H : 0) +
-      (otherSharedGardens.length > 0 ? otherSharedGardens.length * SWITCHER_ROW_H : (!isSharedGarden ? SWITCHER_HINT_H : 0)) +
-      sharedGardenInvites.length * SWITCHER_INVITE_H +
-      SWITCHER_CREATE_H,
+      switcherRows * SWITCHER_ROW_H +
+      inviteRows * SWITCHER_INVITE_H +
+      inviteListHeight +
+      hintRows * SWITCHER_HINT_H,
     370
   );
   const switcherPanelHeight = switcherOpenAnim.interpolate({
@@ -2920,10 +2751,10 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
               },
             ]}
           >
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.gardenBinContent}>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.gardenBinContent, { flexGrow: 0 }]}> 
                 {isSharedGarden && (
                   <View style={styles.gardenBinGroup}>
-                    <TouchableOpacity style={styles.gardenBinRow} onPress={openPersonalGarden} activeOpacity={0.9}>
+                    <TouchableOpacity style={[styles.gardenBinRow, styles.gardenBinRowCurrent]} onPress={openPersonalGarden} activeOpacity={0.9}>
                       <Text style={styles.gardenBinRowLabel} numberOfLines={1}>Personal</Text>
                     </TouchableOpacity>
                   </View>
@@ -2958,46 +2789,18 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                 {isSharedGarden && (
                   <View style={styles.gardenBinGroup}>
                     <TouchableOpacity
-                      style={[styles.gardenBinCreateButton, styles.gardenBinAddPeopleButton]}
-                      onPress={() => setExpandedInviteGardenId(showCurrentGardenInviteList ? null : sharedGardenId)}
+                      style={[styles.gardenBinCreateButton, { backgroundColor: '#637fa6' }]}
+                      onPress={() => {
+                        setShowSharedGardensModal(false);
+                        navigation.navigate('SharedGardenSettings', {
+                          sharedGardenId,
+                          gardenName: viewedUsername,
+                        });
+                      }}
                       activeOpacity={0.9}
-                      disabled={!currentSharedGarden}
                     >
-                      <Text style={styles.gardenBinCreateText}>Add People</Text>
-                    </TouchableOpacity>
-
-                    {showCurrentGardenInviteList && (
-                      <View style={styles.gardenBinInviteList}>
-                        {currentGardenInvitees.length ? (
-                          currentGardenInvitees.map((user) => {
-                            const targetId = user.id || user.uid;
-                            const inviteKey = `${sharedGardenId}:${targetId}`;
-                            return (
-                              <View key={targetId} style={styles.gardenBinInviteRow}>
-                                <Text style={styles.gardenBinInviteName}>{user.username || 'User'}</Text>
-                                <TouchableOpacity
-                                  style={styles.gardenBinInviteButton}
-                                  onPress={() => handleSendSharedGardenInvite(currentSharedGarden, { ...user, id: targetId })}
-                                  disabled={activeInviteKey === inviteKey}
-                                >
-                                  <Text style={styles.gardenBinInviteButtonText}>{activeInviteKey === inviteKey ? 'Sending...' : 'Invite'}</Text>
-                                </TouchableOpacity>
-                              </View>
-                            );
-                          })
-                        ) : (
-                          <Text style={styles.gardenBinHintText}>No available users to invite.</Text>
-                        )}
-                      </View>
-                    )}
-
-                    <TouchableOpacity
-                      style={[styles.gardenBinCreateButton, styles.gardenBinLeaveButton, leavingGardenId === sharedGardenId && styles.sharedDangerMiniButtonDisabled]}
-                      onPress={() => confirmLeaveSharedGarden(currentSharedGarden || { id: sharedGardenId, name: viewedUsername || 'this shared garden' })}
-                      activeOpacity={0.9}
-                      disabled={!currentSharedGarden || leavingGardenId === sharedGardenId}
-                    >
-                      <Text style={styles.gardenBinCreateText}>{leavingGardenId === sharedGardenId ? 'Leaving...' : 'Leave Garden'}</Text>
+                      <Ionicons name="settings-outline" size={18} color="#fff" style={{ marginRight: 2 }} />
+                      <Text style={styles.gardenBinCreateText}>Settings</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -3011,41 +2814,51 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       </>
     )}
 
-    {!isReadOnly && isEditing && (
-      <TouchableOpacity style={styles.customizeFab} onPress={handleCustomizeGarden}>
+    {/* Customization FAB only in edit mode, but modal is always rendered if showCustomization is true */}
+    {!isReadOnly && isEditing && canCustomize && (
+      <TouchableOpacity style={styles.customizeFab} onPress={handleCustomization}>
         <Ionicons name="color-palette" size={19} color="#fff" />
-
-          {/* Customization Modal */}
-          <CustomizationScreen
-            visible={showCustomization}
-            onClose={() => setShowCustomization(false)}
-            onSave={async (pageId, values) => {
-              setCustomizations(prev => ({ ...prev, [pageId]: values }));
-              if (isSharedGarden && sharedGardenId) {
-                await saveSharedCustomizations(sharedGardenId, pageId, values);
-              } else if (!isSharedGarden && auth.currentUser?.uid) {
-                await savePersonalCustomizations(auth.currentUser.uid, pageId, values);
-              }
-            }}
-            selectedPageId={currentPageId}
-            customizations={customizations}
-          />
+      </TouchableOpacity>
+    )}
+    {showCustomization && (
+      <CustomizationScreen
+        visible={showCustomization}
+        onClose={() => setShowCustomization(false)}
+        onSave={async (pageId, values) => {
+          setCustomizations(prev => ({ ...prev, [pageId]: values }));
+          if (isSharedGarden && sharedGardenId) {
+            await saveSharedCustomizations(sharedGardenId, pageId, values);
+          } else if (!isSharedGarden && auth.currentUser?.uid) {
+            await savePersonalCustomizations(auth.currentUser.uid, pageId, values);
+          }
+        }}
+        selectedPageId={currentPageId}
+        customizations={customizations}
+        customizerType={customizerType}
+        customizerTypeSetter={setCustomizerType}
+        drawerTop={drawerTop}
+        drawerAbsoluteTop={insets.top}
+      />
+    )}
+    {!isReadOnly && isEditing && !canCustomize && (
+      <TouchableOpacity style={styles.customizeFab} onPress={() => Alert.alert("Restricted", "Only the owner can customize this garden.") }>
+        <Ionicons name="color-palette" size={19} color="#fff" />
       </TouchableOpacity>
     )}
 
-    {!isReadOnly && isEditing && (
+    {!isReadOnly && isEditing && canCustomize && (
       <TouchableOpacity style={styles.removePageFab} onPress={handleRemoveCurrentPage}>
         <Ionicons name="trash" size={17} color="#fff" />
       </TouchableOpacity>
     )}
 
-    {!isReadOnly && isEditing && (
+    {!isReadOnly && isEditing && canEditPlants && (
       <TouchableOpacity style={styles.resetFab} onPress={handleResetPositions}>
         <Ionicons name="refresh" size={18} color="#fff" />
       </TouchableOpacity>
     )}
 
-    {!isReadOnly && isEditing && (
+    {!isReadOnly && isEditing && canCustomize && (
       <TouchableOpacity style={styles.addPageSideFab} onPress={handleAddPage}>
         <Ionicons name="add" size={22} color="#fff" />
       </TouchableOpacity>
@@ -3096,7 +2909,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         pointerEvents={drawerShouldShow ? 'auto' : 'none'}
         style={[
           styles.drawer,
-          { bottom: drawerBottom },
+          { top: drawerTop },
           !isReadOnly && isEditing && styles.drawerEditBox,
           !drawerShouldShow && styles.drawerHidden,
         ]}
@@ -3138,19 +2951,30 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       </View>
 
       {!isReadOnly && drawerShouldShow && (
-        // Outer view: handles pan translation (JS driver required for gesture)
-        <Animated.View
-          {...waterPanResponder.panHandlers}
-          style={[
-            styles.waterDropHandle,
-            { transform: waterPan.getTranslateTransform() },
-          ]}
-        >
-          {/* Inner view: handles opacity only — native driver, smooth */}
-          <Animated.View style={{ opacity: waterDropOpacity, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="water" size={22} color="#fff" />
+        <>
+          {/* Water drop button (left) */}
+          <Animated.View
+            {...waterPanResponder.panHandlers}
+            style={[
+              styles.waterDropHandle,
+              styles.waterDropHandleWater,
+              { transform: waterPan.getTranslateTransform(), left: 32, right: undefined },
+            ]}
+          >
+            <Animated.View style={{ opacity: waterDropOpacity, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="water" size={22} color="#fff" />
+            </Animated.View>
           </Animated.View>
-        </Animated.View>
+
+          {/* Plus button (right) */}
+          <TouchableOpacity
+            style={[styles.waterDropHandle, styles.waterDropHandleAddGoal, { right: 32, left: undefined }]}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('AddGoal')}
+          >
+            <Ionicons name="add" size={22} color="#fff" />
+          </TouchableOpacity>
+        </>
       )}
 
       {splashPos && (
@@ -3295,7 +3119,7 @@ const styles = StyleSheet.create({
     right: 16,
     width: 156,
     maxWidth: '52%',
-    borderRadius: 30,
+    borderRadius: 23,
     backgroundColor: 'rgba(66, 66, 66, 0.96)',
     zIndex: 60,
     overflow: 'hidden',
@@ -3306,6 +3130,7 @@ const styles = StyleSheet.create({
     width: 156,
     maxWidth: '52%',
     maxHeight: '66%',
+    borderRadius: 23,
   },
   gardenSwitcherButton: {
     width: '100%',
@@ -3314,6 +3139,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    borderRadius: 23, // Consistent corner roundness
   },
   gardenSwitcherButtonExpanded: {
   },
@@ -3329,14 +3155,12 @@ const styles = StyleSheet.create({
   },
   gardenSwitcherPanel: {
     backgroundColor: 'transparent',
-    borderBottomLeftRadius: 18,
-    borderBottomRightRadius: 18,
     paddingTop: 2,
     overflow: 'hidden',
   },
   gardenBinContent: {
     paddingHorizontal: 7,
-    paddingBottom: 6,
+    paddingBottom: 0,
     gap: 6,
   },
   gardenBinGroup: {
@@ -3346,17 +3170,22 @@ const styles = StyleSheet.create({
     minHeight: 40,
     borderRadius: 20,
     backgroundColor: '#666666',
-    paddingHorizontal: 10,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    gap: 10,
+  },
+  gardenBinRowCurrent: {
   },
   gardenBinRowLabel: {
-    flex: 1,
-    fontSize: 14,
+    fontSize: 15,
     color: '#fff',
     fontWeight: '700',
-    marginRight: 10,
+    marginRight: 0,
+    marginLeft: 0,
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
   gardenBinRowActions: {
     flexDirection: 'row',
@@ -3445,7 +3274,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#B8B8B8',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+    gap: 10,
   },
   gardenBinAddPeopleButton: {
     backgroundColor: '#8F4ED8',
@@ -3456,7 +3288,9 @@ const styles = StyleSheet.create({
   gardenBinCreateText: {
     color: '#f1f1f1',
     fontWeight: '700',
-    fontSize: 14,
+    fontSize: 15,
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
   resetFab: { 
     position: 'absolute', 
@@ -3681,7 +3515,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 20,
   },
-  pageDotsContainer: { position: 'absolute', bottom:10, left: 0, right: 0, alignItems: 'center', zIndex: 999999 },
+  pageDotsContainer: { position: 'absolute', bottom:100, left: 0, right: 0, alignItems: 'center', zIndex: 999999 },
   resetBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#B22222', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, marginRight: 10 },
   addPageText: { color: '#fff', marginLeft: 6, fontWeight: '700' },
   editBtn: { backgroundColor: '#eee', paddingHorizontal: 15, paddingVertical: 6, borderRadius: 20 },
@@ -3751,7 +3585,7 @@ const styles = StyleSheet.create({
     width: '46%',
     height: 14,
     borderRadius: 12,
-    backgroundColor: '#FF9F45',
+    backgroundColor: '#FF9F4A',
     opacity: 0.95,
   },
   shelfHighlightRight: {
@@ -3761,8 +3595,8 @@ const styles = StyleSheet.create({
     width: '38%',
     height: 16,
     borderRadius: 14,
-    backgroundColor: '#FF9A3E',
-    opacity: 0.94,
+    backgroundColor: '#FF9742',
+    opacity: 0.9,
   },
   shelfCornerShade: {
     position: 'absolute',
@@ -3872,10 +3706,7 @@ const styles = StyleSheet.create({
   },
   pageDrawerUnderlay: {
     position: 'absolute',
-    bottom: 38,
-    left: 0,
-    right: 0,
-    height: 170,
+    height: 300,
     backgroundColor: '#242347',
     zIndex: 1,
     overflow: 'hidden',
@@ -3941,6 +3772,52 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     bottom: 30,
   },
+  plantProgressWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    bottom: 28,
+  },
+  plantProgressTrack: {
+    width: 58,
+    height: 7,
+    borderRadius: 99,
+    backgroundColor: 'rgba(96, 109, 124, 0.45)',
+    borderWidth: 0,
+    borderColor: 'rgba(96, 109, 124, 0.72)',
+    overflow: 'hidden',
+  },
+  plantProgressFill: {
+    height: '100%',
+    borderRadius: 99,
+  },
+  plantProgressFillPending: {
+    backgroundColor: 'rgba(167, 152, 125, 0.72)',
+  },
+  plantProgressFillSelf: {
+    backgroundColor: 'rgba(130, 110, 80, 0.9)',
+  },
+  plantProgressFillShared: {
+    backgroundColor: '#00b0d7',
+  },
+  plantProgressFillSharedSelf: {
+    backgroundColor: '#00b0d7',
+  },
+  plantProgressFillQuantity: {
+    backgroundColor: '#00b0d7',
+  },
+  plantProgressFillDone: {
+    backgroundColor: '#00b0d7',
+  },
+  sharedProgressLabel: {
+    marginTop: 2,
+    fontSize: 7,
+    fontWeight: '900',
+    color: '#e8f6ff',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+    letterSpacing: 0.2,
+  },
   trophyEffectsUnderPot: { position: 'absolute', width: 108, height: 140, bottom: 8, zIndex: 0, overflow: 'visible' },
   potBackground: { width: 80, height: 80, alignItems: 'center', justifyContent: 'flex-end', position: 'relative', bottom: 10, zIndex: 1 },
   particleLayer: { position: 'absolute', left: -6, right: -6, bottom: 21, height: 124, zIndex: 1 },
@@ -3952,15 +3829,14 @@ const styles = StyleSheet.create({
   plantImage: { width: 65, height: 85, position: 'absolute', bottom: 68, zIndex: 1 },
   contributorPotBadge: {
     position: 'absolute',
-    bottom: 26,
-    right: 2,
-    minWidth: 22,
-    height: 16,
-    borderRadius: 8,
+    bottom: 24,
+    right: 0,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: 'rgba(167, 152, 125, 0.52)',
     borderWidth: 1.5,
     borderColor: 'rgba(167, 152, 125, 0.8)',
-    paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 6,
@@ -3969,32 +3845,82 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(130, 110, 80, 0.75)',
     borderColor: 'rgba(130, 110, 80, 0.9)',
   },
+  completionPotBadgePending: {
+    backgroundColor: 'rgba(96, 109, 124, 0.82)',
+    borderColor: 'rgba(96, 109, 124, 0.95)',
+  },
+  quantityPotBadgeProgress: {
+    backgroundColor: 'rgba(238, 246, 232, 0.95)',
+    borderColor: 'rgba(198, 214, 185, 0.98)',
+  },
+  quantityPotBadge: {
+    width: 'auto',
+    minWidth: 28,
+    height: 22,
+    paddingHorizontal: 5,
+    borderRadius: 11,
+  },
+  completionPotBadgeDone: {
+    backgroundColor: '#59d700',
+    borderColor: '#4aa93a',
+  },
+  completionPotBadgeInactive: {
+    opacity: 0.4,
+  },
   contributorPotBadgeText: {
-    fontSize: 8,
+    fontSize: 7,
     fontWeight: '900',
     color: '#FFF',
   },
-  reviveHeartBadge: {
+  quantityPotSegmentRow: {
+    flexDirection: 'row',
+    width: 'auto',
+    gap: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quantityPotSegment: {
+    flex: 1,
+    height: 6,
+    borderRadius: 99,
+    minWidth: 3,
+  },
+  quantityPotSegmentFilled: {
+    backgroundColor: '#58cc02',
+  },
+  quantityPotSegmentDone: {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+  },
+  quantityPotSegmentEmpty: {
+    backgroundColor: 'rgba(122,154,93,0.24)',
+  },
+
+  potLabel: { position: 'absolute', bottom: 30, minWidth: 24, minHeight: 24, justifyContent: 'center', alignItems: 'center', zIndex: 4 },
+  trophyTierBadge: {
     position: 'absolute',
-    left: 10,
-    top: 0,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#ff426b',
+    right: 3,
+    top: -2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: '#fe9898',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 4,
+    zIndex: 7,
   },
-  
-  potLabel: { position: 'absolute', bottom: 30, minWidth: 24, minHeight: 24, justifyContent: 'center', alignItems: 'center', zIndex: 4 },
+  trophyTierBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    lineHeight: 10,
+  },
+  trophyTierBadgeIcon: {
+    position: 'absolute',
+    right: -4,
+    bottom: 20,
+    width: 42,
+    height: 42,
+    zIndex: 7,
+  },
 
   gardenBackground: { flex: 1, width: '100%', height: '100%', bottom: 0 },
   backgroundImageTexture: { top: -80 },
@@ -4021,21 +3947,30 @@ const styles = StyleSheet.create({
   waterDropHandle: {
     position: 'absolute',
     right: 16,
-    bottom: 15,
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    bottom: 100,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: '#2D8CFF',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 12000,
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
     elevation: 12000,
+  },
+  waterDropHandleWater: {
+    shadowColor: '#1467bb',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+  },
+  waterDropHandleAddGoal: {
+    backgroundColor: 'rgb(82, 153, 61)',
+    shadowColor: '#2c6e28',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
   },
 
   // The container stays fullscreen
