@@ -192,7 +192,7 @@ export default function GoalsScreen({ navigation }) {
     }, 1800);
   };
 
-  const startTapCooldown = (goalId, sharedGardenId, duration = 180) => {
+  const startTapCooldown = (goalId, sharedGardenId, duration = 210) => {
     const key = getOptimisticGoalKey(goalId, sharedGardenId);
     const existingTimer = tapCooldownTimersRef.current[key];
     if (existingTimer) clearTimeout(existingTimer);
@@ -589,7 +589,12 @@ export default function GoalsScreen({ navigation }) {
             onPressIn={() => {
               if (isForSelectedDay) triggerGoalButtonHaptic();
             }}
-            onPress={() => isForSelectedDay && !isTapCoolingDown && handleToggleComplete(item, layout[item.id] || item.shelfPosition, item.sharedGardenId)}
+            onPress={() => {
+              if (isForSelectedDay && !isTapCoolingDown) {
+                startTapCooldown(item.id, item.sharedGardenId, 600); // 600ms cooldown
+                handleToggleComplete(item, layout[item.id] || item.shelfPosition, item.sharedGardenId);
+              }
+            }}
             disabled={!isForSelectedDay || isTapCoolingDown}
             style={({ pressed }) => [
               styles.goalStatusButtonFace,

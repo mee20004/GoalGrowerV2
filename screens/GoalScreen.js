@@ -796,7 +796,7 @@ export default function GoalScreen({ route, navigation }) {
     setOptimisticProgress(null);
   };
 
-  const startTapCooldown = (duration = 110) => {
+  const startTapCooldown = (duration = 210) => {
     if (tapCooldownTimerRef.current) {
       clearTimeout(tapCooldownTimerRef.current);
       tapCooldownTimerRef.current = null;

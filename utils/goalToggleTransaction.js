@@ -100,10 +100,13 @@ export async function toggleGoalTransaction({
         const todayQuantityLog = updatedLogs.quantity[selectedDateKey] || {};
         const existingUsers = todayQuantityLog.users || {};
         let prevValue = Number(existingUsers[currentUserId]) || 0;
-        let nextValue = Math.min(prevValue + 1, targetValue);
-        // Only increment if not already at target
+        let nextValue;
         if (prevValue >= targetValue) {
-          nextValue = targetValue; // Already done, do not increment further
+          // If already at target, reset to 0 (toggle off)
+          nextValue = 0;
+        } else {
+          // Otherwise, increment by 1
+          nextValue = Math.min(prevValue + 1, targetValue);
         }
         const nextUsers = { ...existingUsers, [currentUserId]: nextValue };
         const allContributors = Array.isArray(latestGoal.contributors)
