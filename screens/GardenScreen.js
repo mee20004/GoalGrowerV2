@@ -2958,7 +2958,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
             style={[
               styles.waterDropHandle,
               styles.waterDropHandleWater,
-              { transform: waterPan.getTranslateTransform(), left: 32, right: undefined },
+              { transform: waterPan.getTranslateTransform(), left: 32, right: undefined, bottom: insets.bottom + 85 },
             ]}
           >
             <Animated.View style={{ opacity: waterDropOpacity, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
@@ -2968,7 +2968,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
 
           {/* Plus button (right) */}
           <TouchableOpacity
-            style={[styles.waterDropHandle, styles.waterDropHandleAddGoal, { right: 32, left: undefined }]}
+            style={[styles.waterDropHandle, styles.waterDropHandleAddGoal, { right: 32, left: undefined, bottom: insets.bottom + 85 }]}
             activeOpacity={0.8}
             onPress={() => navigation.navigate('AddGoal')}
           >
@@ -3947,7 +3947,6 @@ const styles = StyleSheet.create({
   waterDropHandle: {
     position: 'absolute',
     right: 16,
-    bottom: 100,
     width: 50,
     height: 50,
     borderRadius: 25,

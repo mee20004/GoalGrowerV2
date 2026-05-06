@@ -36,8 +36,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "b940e33f-d2af-4190-9506-e48b260525cd"
+        "projectId": "16ddaa2a-f90c-4a59-9342-874b03e16819"
       }
-    }
+    },
+    "owner": "devaaj"
   }
 }

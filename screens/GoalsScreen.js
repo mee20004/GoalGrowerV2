@@ -2,6 +2,7 @@
 // screens/GoalsScreen.js
 import React, { useState, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Pressable, FlatList, ActivityIndicator, Image, Animated, Easing } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
 import { getFirestore, collection, onSnapshot, query, where, getDocs, doc, updateDoc, runTransaction, setDoc, increment, arrayUnion, getDoc } from "firebase/firestore";
@@ -149,6 +150,7 @@ export default function GoalsScreen({ navigation }) {
   const tapCooldownRef = useRef({});
   const tapCooldownTimersRef = useRef({});
   const inFlightToggleRef = useRef({});
+  const insets = useSafeAreaInsets();
   const { isDoneForDay, selectedDateKey } = useGoals();
 
   const getOptimisticGoalKey = (goalId, sharedGardenId) => `${sharedGardenId ? `shared-${sharedGardenId}` : 'personal'}-${goalId}`;
@@ -777,7 +779,7 @@ export default function GoalsScreen({ navigation }) {
 
       {/* Floating Add Button */}
       <Pressable
-        style={styles.fab}
+        style={[styles.fab, { bottom: insets.bottom + 85 }]}
         onPress={() => navigation.navigate('AddGoal')}
         android_ripple={{ color: '#fff' }}
       >
@@ -1065,7 +1067,6 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 16,
-    bottom: 100,
     width: 50,
     height: 50,
     borderRadius: 25,

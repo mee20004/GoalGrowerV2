@@ -6,6 +6,7 @@ import { updateEmail, updatePassword, signOut } from "firebase/auth";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { theme } from "../theme";
+import { sendGoalReminderNotification } from "../utils/notifications";
 
 export default function SettingsScreen({ navigation }) {
   const [username, setUsername] = useState("");
@@ -155,7 +156,7 @@ export default function SettingsScreen({ navigation }) {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 120 }]} showsVerticalScrollIndicator={false}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
           <View style={styles.card}>
@@ -233,6 +234,19 @@ export default function SettingsScreen({ navigation }) {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Session</Text>
+          <View style={styles.actionButtonWrap}>
+  <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
+  <Pressable
+    onPress={() => sendGoalReminderNotification("Test Notification")}
+    style={({ pressed }) => [
+      styles.actionButtonFace,
+      styles.saveButton,
+      pressed && styles.actionButtonPressed,
+    ]}
+  >
+    <Text style={styles.saveButtonText}>Send Test Notification</Text>
+  </Pressable>
+</View>
           <View style={styles.actionButtonWrap}>
             <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowDanger]} />
             <Pressable
