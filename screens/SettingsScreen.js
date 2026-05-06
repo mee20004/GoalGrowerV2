@@ -35,27 +35,33 @@ export default function SettingsScreen({ navigation }) {
     };
     fetchUserData();
   }, []);
-  const handlePrivateToggle = async (value) => {
-    if (!auth.currentUser) return;
+  const handlePrivateToggle = (value) => {
     setPrivateAccount(value);
-    setSavingPrivate(true);
-    try {
-      await updateDoc(doc(db, "users", auth.currentUser.uid), { privateAccount: value });
-    } catch (e) {
-      setPrivateAccount(!value);
-      Alert.alert("Error", "Could not update privacy setting.");
-    } finally {
-      setSavingPrivate(false);
-    }
   };
 
   const handleSaveChanges = async () => {
     if (!auth.currentUser) return;
-    
     // Prevent empty username or email fields
     if (!username.trim() || !email.trim()) {
       Alert.alert("Error", "Username and Email cannot be empty.");
       return;
+    }
+
+    // Debugging logs
+    let currentPrivate = false;
+    try {
+      const userRef = doc(db, "users", auth.currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      const currentUsername = userSnap.exists() ? userSnap.data().username : "";
+      currentPrivate = userSnap.exists() ? !!userSnap.data().privateAccount : false;
+      console.log("[DEBUG] username (state):", username);
+      console.log("[DEBUG] currentUsername (db):", currentUsername);
+      console.log("[DEBUG] email (state):", email);
+      console.log("[DEBUG] auth.currentUser.email:", auth.currentUser.email);
+      console.log("[DEBUG] privateAccount (state):", privateAccount);
+      console.log("[DEBUG] currentPrivate (db):", currentPrivate);
+    } catch (e) {
+      console.log("[DEBUG] Error fetching user for debug:", e);
     }
 
     setLoading(true);
@@ -65,32 +71,27 @@ export default function SettingsScreen({ navigation }) {
       const userRef = doc(db, "users", auth.currentUser.uid);
       const userSnap = await getDoc(userRef);
       const currentUsername = userSnap.exists() ? userSnap.data().username : "";
-
       // --- 1. CHECK IF USERNAME IS TAKEN ---
       if (username !== currentUsername) {
         // Search the users collection for this exact username
         const usersRef = collection(db, "users");
         const q = query(usersRef, where("username", "==", username));
         const querySnapshot = await getDocs(q);
-
         if (!querySnapshot.empty) {
           // Uh oh, someone else has it!
           Alert.alert("Username Taken", "Sorry, that username is already in use. Please pick another one.");
           setLoading(false);
           return; // Stop the save process completely
         }
-
         // If we get here, the username is available! Save it.
         await updateDoc(userRef, { username: username });
         changesMade = true;
       }
-
       // --- 2. Update Email in Firebase Auth ---
       if (email !== auth.currentUser.email) {
         await updateEmail(auth.currentUser, email);
         changesMade = true;
       }
-
       // --- 3. Update Password in Firebase Auth ---
       if (newPassword.length > 0) {
         if (newPassword.length < 6) {
@@ -102,7 +103,11 @@ export default function SettingsScreen({ navigation }) {
         setNewPassword(""); // Clear the field after success
         changesMade = true;
       }
-
+      // --- 4. Check Private Account Change ---
+      if (privateAccount !== currentPrivate) {
+        await updateDoc(userRef, { privateAccount });
+        changesMade = true;
+      }
       if (changesMade) {
         Alert.alert("Success!", "Your profile has been updated.");
       } else {
@@ -311,7 +316,7 @@ const styles = StyleSheet.create({
   content: { paddingBottom: 52 },
 
   section: { marginBottom: 18 },
-  sectionTitle: { fontSize: 12, fontWeight: "900", color: '#ffffff', marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 },
+  sectionTitle: { fontSize: 12, fontWeight: "900", color: '#000000', marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 },
   card: {
     backgroundColor: '#ffffff',
     borderRadius: 24,

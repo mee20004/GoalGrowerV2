@@ -36,9 +36,9 @@ import {
   Image,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
+import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import * as Haptics from "expo-haptics";
-import * as LucideIcons from "lucide-react-native/icons";
 import Page from "../components/Page";
 import { theme } from "../theme";
 import { useGoals, fromKey } from "../components/GoalsStore";
@@ -49,92 +49,22 @@ import { POT_ASSETS } from "../constants/PotAssets";
 import { collection, addDoc, serverTimestamp, onSnapshot, query, where, doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 
-// --- 1. ICON CONSTANTS & HELPER ---
-const RESERVED_LUCIDE_EXPORTS = new Set(["default", "Icon", "createLucideIcon"]);
-
-const pascalToKebab = (value) =>
-  value
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
-    .toLowerCase();
-
-const toPascalCase = (value) =>
-  String(value || "")
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join("");
-
-const allIconNames = Object.keys(LucideIcons)
-  .filter((key) => !RESERVED_LUCIDE_EXPORTS.has(key) && /^[A-Z]/.test(key))
-  .map(pascalToKebab)
-  .sort();
-
-const CUSTOM_PACK_ICONS = ["mci:run-fast"];
-const pickerIconNames = [...new Set([...CUSTOM_PACK_ICONS, ...allIconNames])];
-
-const SUPPORTED_MCI_ICONS = new Set(["run-fast"]);
-const isMciIconName = (name) => typeof name === "string" && name.startsWith("mci:");
-const getMciName = (name) => String(name || "").slice(4);
-
+// --- 1. FONT AWESOME ICONS ---
+// Dynamically get all free solid icons
+const FONT_AWESOME_ICONS = Object.entries(solidIcons)
+  .filter(([key, value]) => key.startsWith('fa') && value.iconName)
+  .reduce((acc, [key, value]) => {
+    acc[value.iconName] = value;
+    return acc;
+  }, {});
+const pickerIconNames = Object.keys(FONT_AWESOME_ICONS);
 const ICON_NAME_SET = new Set(pickerIconNames);
 const dedupeIcons = (icons) => [...new Set(icons)];
-
-const FEATURED_ICON_CANDIDATES = [
-  "target",
-  "user",
-  "person-standing",
-  "footprints",
-  "activity",
-  "dumbbell",
-  "utensils",
-  "apple",
-  "pizza",
-  "sandwich",
-  "chef-hat",
-  "briefcase",
-  "book-open",
-  "brain",
-  "heart-pulse",
-  "sprout",
-  "bike",
-  "clock-3",
-];
-
-const FEATURED_ICONS = FEATURED_ICON_CANDIDATES.filter((name) => ICON_NAME_SET.has(name));
-
-const ICON_SEARCH_SYNONYMS = {
-  food: ["utensils", "apple", "pizza", "sandwich", "chef-hat"],
-  eat: ["utensils", "apple", "sandwich"],
-  meal: ["utensils", "pizza", "sandwich"],
-  man: ["user", "person-standing"],
-  person: ["user", "person-standing", "accessibility"],
-  running: ["mci:run-fast", "footprints", "activity", "dumbbell", "bike"],
-  run: ["mci:run-fast", "footprints", "activity"],
-  workout: ["dumbbell", "activity", "bike"],
-  exercise: ["dumbbell", "activity", "footprints"],
-};
-
-const LEGACY_ICON_TO_LUCIDE = {
-  leaf: "sprout",
-  "leaf-outline": "sprout",
-  "code-slash": "code",
-};
-
-function normalizeGoalIconName(name, fallback = "target") {
-  if (!name || typeof name !== "string") return fallback;
-  if (isMciIconName(name) && SUPPORTED_MCI_ICONS.has(getMciName(name))) return name;
-  const mapped = LEGACY_ICON_TO_LUCIDE[name] || name;
-  return LucideIcons[toPascalCase(mapped)] ? mapped : fallback;
-}
+const FEATURED_ICONS = pickerIconNames.slice(0, 10);
 
 function GoalIcon({ name, size, color }) {
-  const normalizedName = normalizeGoalIconName(name);
-  if (isMciIconName(normalizedName)) {
-    return <MaterialCommunityIcons name={getMciName(normalizedName)} size={size} color={color} />;
-  }
-  const IconComponent = LucideIcons[toPascalCase(normalizedName)] || LucideIcons.Target;
-  return <IconComponent size={size} color={color} strokeWidth={2.2} />;
+  const iconDef = FONT_AWESOME_ICONS[name] || FONT_AWESOME_ICONS['star'];
+  return <FontAwesomeIcon icon={iconDef} size={size} color={color} />;
 }
 
 const triggerSelectionHaptic = () => {
@@ -650,10 +580,11 @@ export default function AddGoalScreen({ navigation }) {
   }, [navigation, selectedDay]);
 
   // Filtered Icons Logic
-  const allSelectableIcons = useMemo(
-    () => dedupeIcons([...FEATURED_ICONS, ...pickerIconNames]),
-    []
-  );
+  // Ensure FEATURED_ICONS are not repeated if already in pickerIconNames
+  const allSelectableIcons = useMemo(() => {
+    const uniqueFeatured = FEATURED_ICONS.filter((icon) => !pickerIconNames.includes(icon));
+    return dedupeIcons([...uniqueFeatured, ...pickerIconNames]);
+  }, []);
 
   const filteredIcons = useMemo(() => {
     const cleanSearch = searchTerm.toLowerCase().trim();
@@ -662,12 +593,7 @@ export default function AddGoalScreen({ navigation }) {
     }
 
     const directMatches = pickerIconNames.filter((name) => name.includes(cleanSearch));
-    const synonymMatches = Object.entries(ICON_SEARCH_SYNONYMS)
-      .filter(([keyword]) => cleanSearch.includes(keyword))
-      .flatMap(([, icons]) => icons)
-      .filter((name) => ICON_NAME_SET.has(name));
-
-    return dedupeIcons([...synonymMatches, ...directMatches]).slice(0, 180);
+    return dedupeIcons(directMatches).slice(0, 180);
   }, [allSelectableIcons, searchTerm, visibleIconCount]);
 
   const hasMoreIcons = !searchTerm.trim() && filteredIcons.length < allSelectableIcons.length;

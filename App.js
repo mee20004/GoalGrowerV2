@@ -6,7 +6,7 @@ import { Text, View, Image } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { createStackNavigator } from "@react-navigation/stack";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import CenteredTabBar from './components/CenteredTabBar';
@@ -58,14 +58,14 @@ function Placeholder({ title }) {
 }
 
 const Tab = createBottomTabNavigator();
-const Stack = createNativeStackNavigator();
-const RootStack = createNativeStackNavigator();
+const Stack = createStackNavigator();
+const RootStack = createStackNavigator();
 
 // --- STACK NAVIGATORS ---
 
 function GoalsStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator screenOptions={{ headerShown: false, gestureEnabled: false }}>
       <Stack.Screen name="GoalsHome" component={GoalsScreen} />
       <Stack.Screen
         name="Goal"
@@ -82,7 +82,7 @@ function GoalsStack() {
 
 function AddStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator screenOptions={{ headerShown: false, gestureEnabled: false }}>
       <Stack.Screen name="AddGoal" component={AddGoalScreen} />
     </Stack.Navigator>
   );
@@ -91,12 +91,12 @@ function AddStack() {
 import FollowersListScreen from './screens/FollowersListScreen';
 function ProfileStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator screenOptions={{ headerShown: false, gestureEnabled: false }}>
       <Stack.Screen name="ProfileHome" component={ProfileScreen} />
       <Stack.Screen name="AddFriends" component={AddFriendsScreen} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} />
       <Stack.Screen name="UserGarden" component={UserGardenScreen} />
-      <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="Settings" component={SettingsScreen} options={{ gestureEnabled: false }} />
       <Stack.Screen name="FollowingListScreen" component={FollowingListScreen} />
       <Stack.Screen name="FollowersListScreen" component={FollowersListScreen} />
     </Stack.Navigator>
@@ -105,7 +105,7 @@ function ProfileStack() {
 
 function RankStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator screenOptions={{ headerShown: false, gestureEnabled: false }}>
       <Stack.Screen name="RankHome" component={RankScreen} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} />
       <Stack.Screen name="UserGarden" component={UserGardenScreen} />
@@ -115,7 +115,7 @@ function RankStack() {
 
 function JourneyStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator screenOptions={{ headerShown: false, gestureEnabled: false }}>
       <Stack.Screen name="JourneyHome" component={JourneyScreen} />
     </Stack.Navigator>
   );
@@ -124,7 +124,7 @@ function JourneyStack() {
 // <-- 2. CREATE THE GARDEN STACK
 function GardenStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator screenOptions={{ headerShown: false, gestureEnabled: false }}>
       <Stack.Screen name="GardenHome" component={GardenScreen} />
       <Stack.Screen name="SharedGarden" component={SharedGardenScreen} />
       <Stack.Screen

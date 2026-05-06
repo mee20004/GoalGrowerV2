@@ -79,8 +79,8 @@ import { collection, doc, onSnapshot, setDoc, writeBatch, increment, updateDoc, 
 import { auth, db } from "../firebaseConfig";
 import { theme } from "../theme";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import * as LucideIcons from "lucide-react-native/icons";
+import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
+import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import { LinearGradient } from "expo-linear-gradient";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
@@ -111,37 +111,18 @@ const SHARED_GARDEN_DEFAULT_PAGE_ID = 'default';
 const MULTI_USER_MIN_WATERERS = 2;
 const SHARED_EDIT_LOCK_MS = 45000;
 const SHARED_EDIT_LOCK_RENEW_MS = 15000;
-const toPascalCase = (value) =>
-  String(value || '')
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join('');
 
-const SUPPORTED_MCI_ICONS = new Set(['run-fast']);
-const isMciIconName = (name) => typeof name === 'string' && name.startsWith('mci:');
-const getMciName = (name) => String(name || '').slice(4);
-
-const LEGACY_ICON_TO_LUCIDE = {
-  leaf: 'sprout',
-  'leaf-outline': 'sprout',
-  'code-slash': 'code',
-};
-
-function normalizeGoalIconName(name, fallback = 'target') {
-  if (!name || typeof name !== 'string') return fallback;
-  if (isMciIconName(name) && SUPPORTED_MCI_ICONS.has(getMciName(name))) return name;
-  const mapped = LEGACY_ICON_TO_LUCIDE[name] || name;
-  return LucideIcons[toPascalCase(mapped)] ? mapped : fallback;
-}
+// --- FONT AWESOME ICONS ---
+const FONT_AWESOME_ICONS = Object.entries(solidIcons)
+  .filter(([key, value]) => key.startsWith('fa') && value.iconName)
+  .reduce((acc, [key, value]) => {
+    acc[value.iconName] = value;
+    return acc;
+  }, {});
 
 function GoalIcon({ name, size, color }) {
-  const normalizedName = normalizeGoalIconName(name);
-  if (isMciIconName(normalizedName)) {
-    return <MaterialCommunityIcons name={getMciName(normalizedName)} size={size} color={color} />;
-  }
-  const IconComponent = LucideIcons[toPascalCase(normalizedName)] || LucideIcons.Target;
-  return <IconComponent size={size} color={color} strokeWidth={2.2} />;
+  const iconDef = FONT_AWESOME_ICONS[name] || FONT_AWESOME_ICONS['star'];
+  return <FontAwesomeIcon icon={iconDef} size={size} color={color} />;
 }
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -605,8 +586,8 @@ const PlantVisual = ({ plant, isDraggingHighlight }) => {
   }, [plantSource, swapScaleAnim]);
 
   const getPotIcon = () => {
-    if (plant.icon) return normalizeGoalIconName(plant.icon, plant.type === 'coding' ? 'code' : 'target');
-    if (plant.goalIcon) return normalizeGoalIconName(plant.goalIcon, plant.type === 'coding' ? 'code' : 'target');
+    if (plant.icon) return plant.icon;
+    if (plant.goalIcon) return plant.goalIcon;
     return plant.type === 'coding' ? 'code' : 'target';
   };
 

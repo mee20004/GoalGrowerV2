@@ -20,8 +20,8 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import * as LucideIcons from "lucide-react-native/icons";
+import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
+import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import Page from "../components/Page";
 import EditButtonRestriction from "./EditButtonRestriction";
 import { theme } from "../theme";
@@ -51,76 +51,23 @@ import { getBadgeImageForTrophyKey } from "./badgeImages";
 // Consistent frozen day blue color for streak and health bar
 const FROZEN_DAY_BLUE = '#a6e6ff';
 
-const RESERVED_LUCIDE_EXPORTS = new Set(["default", "Icon", "createLucideIcon"]);
 
-const pascalToKebab = (value) =>
-  value
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
-    .toLowerCase();
+// --- FONT AWESOME ICONS ---
 
-const toPascalCase = (value) =>
-  String(value || "")
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join("");
-
-const allIconNames = Object.keys(LucideIcons)
-  .filter((key) => !RESERVED_LUCIDE_EXPORTS.has(key) && /^[A-Z]/.test(key))
-  .map(pascalToKebab)
-  .sort();
-
-const CUSTOM_PACK_ICONS = ["mci:run-fast"];
-const pickerIconNames = [...new Set([...CUSTOM_PACK_ICONS, ...allIconNames])];
-
-const ICON_NAME_SET = new Set(pickerIconNames);
+// --- FONT AWESOME ICON PICKER LOGIC (from AddGoalScreen) ---
+const FONT_AWESOME_ICONS = Object.entries(solidIcons)
+  .filter(([key, value]) => key.startsWith('fa') && value.iconName)
+  .reduce((acc, [key, value]) => {
+    acc[value.iconName] = value;
+    return acc;
+  }, {});
+const pickerIconNames = Object.keys(FONT_AWESOME_ICONS);
 const dedupeIcons = (icons) => [...new Set(icons)];
-
-const FEATURED_ICON_CANDIDATES = [
-  "target", "user", "person-standing", "footprints", "activity",
-  "dumbbell", "utensils", "apple", "pizza", "sandwich", "chef-hat",
-  "briefcase", "book-open", "brain", "heart-pulse", "sprout",
-  "bike", "clock-3",
-];
-const FEATURED_ICONS = FEATURED_ICON_CANDIDATES.filter((n) => ICON_NAME_SET.has(n));
-
-const ICON_SEARCH_SYNONYMS = {
-  food: ["utensils", "apple", "pizza", "sandwich", "chef-hat"],
-  eat: ["utensils", "apple", "sandwich"],
-  meal: ["utensils", "pizza", "sandwich"],
-  man: ["user", "person-standing"],
-  person: ["user", "person-standing", "accessibility"],
-  running: ["mci:run-fast", "footprints", "activity", "dumbbell", "bike"],
-  run: ["mci:run-fast", "footprints", "activity"],
-  workout: ["dumbbell", "activity", "bike"],
-  exercise: ["dumbbell", "activity", "footprints"],
-};
-
-const SUPPORTED_MCI_ICONS = new Set(["run-fast"]);
-const isMciIconName = (name) => typeof name === "string" && name.startsWith("mci:");
-const getMciName = (name) => String(name || "").slice(4);
-
-const LEGACY_ICON_TO_LUCIDE = {
-  leaf: "sprout",
-  "leaf-outline": "sprout",
-  "code-slash": "code",
-};
-
-function normalizeGoalIconName(name, fallback = "target") {
-  if (!name || typeof name !== "string") return fallback;
-  if (isMciIconName(name) && SUPPORTED_MCI_ICONS.has(getMciName(name))) return name;
-  const mapped = LEGACY_ICON_TO_LUCIDE[name] || name;
-  return LucideIcons[toPascalCase(mapped)] ? mapped : fallback;
-}
+const FEATURED_ICONS = pickerIconNames.slice(0, 10);
 
 function GoalIcon({ name, size, color }) {
-  const normalizedName = normalizeGoalIconName(name);
-  if (isMciIconName(normalizedName)) {
-    return <MaterialCommunityIcons name={getMciName(normalizedName)} size={size} color={color} />;
-  }
-  const IconComponent = LucideIcons[toPascalCase(normalizedName)] || LucideIcons.Target;
-  return <IconComponent size={size} color={color} strokeWidth={2.2} />;
+  const iconDef = FONT_AWESOME_ICONS[name] || FONT_AWESOME_ICONS['star'];
+  return <FontAwesomeIcon icon={iconDef} size={size} color={color} />;
 }
 
 const FIRE_STREAK_ICON = require("../assets/Icons/icons8-fire-64.png");
@@ -619,7 +566,13 @@ function DetailRow({ label, value }) {
 }
 
 const IconItem = memo(({ iconName, isActive, onSelect }) => (
-  <Pressable onPress={() => onSelect(iconName)} style={[styles.iconBox, isActive && styles.iconBoxActive]}>
+  <Pressable
+    onPress={() => {
+      Haptics.selectionAsync?.().catch(() => {});
+      onSelect(iconName);
+    }}
+    style={[styles.iconBox, isActive && styles.iconBoxActive]}
+  >
     {isActive && (
       <View style={styles.iconSelectedBadge}>
         <Ionicons name="checkmark" size={12} color="#FFFFFF" />
@@ -718,6 +671,23 @@ function SwipeCalendar({ month, setMonth, selectedDate, onSelectDate }) {
 }
 
 export default function GoalScreen({ route, navigation }) {
+  // --- ICON PICKER STATE (ported from AddGoalScreen) ---
+  const [iconSearch, setIconSearch] = useState("");
+  const [visibleIconCount, setVisibleIconCount] = useState(120);
+  // Filtered Icons Logic
+  const allSelectableIcons = useMemo(() => {
+    const uniqueFeatured = FEATURED_ICONS.filter((icon) => !pickerIconNames.includes(icon));
+    return dedupeIcons([...uniqueFeatured, ...pickerIconNames]);
+  }, []);
+  const filteredIcons = useMemo(() => {
+    const cleanSearch = (iconSearch || "").toLowerCase().trim();
+    if (!cleanSearch) {
+      return allSelectableIcons.slice(0, visibleIconCount);
+    }
+    const directMatches = pickerIconNames.filter((name) => name.includes(cleanSearch));
+    return dedupeIcons(directMatches).slice(0, 180);
+  }, [allSelectableIcons, iconSearch, visibleIconCount]);
+  const hasMoreIcons = !(iconSearch || "").trim() && filteredIcons.length < allSelectableIcons.length;
   const MODAL_SWAP_DELAY = 180;
   const { goalId, source, sharedGardenId: routeSharedGardenId, ownerId: paramOwnerId, sourceGoalId: paramSourceGoalId } = route.params || {};
   const isSharedGoalView = Boolean(routeSharedGardenId);
@@ -728,7 +698,6 @@ export default function GoalScreen({ route, navigation }) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showIconModal, setShowIconModal] = useState(false);
   const [editView, setEditView] = useState("form"); // "form" | "icons"
-  const [iconSearch, setIconSearch] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isCompletingToTrophy, setIsCompletingToTrophy] = useState(false);
   const [isTapCoolingDown, setIsTapCoolingDown] = useState(false);
@@ -981,7 +950,7 @@ export default function GoalScreen({ route, navigation }) {
     setName(goal.name || "");
     setCategory(goal.category || "Custom");
     setIsPrivate(!!goal.isPrivate);
-    setSelectedIcon(normalizeGoalIconName(goal.icon, "target"));
+    setSelectedIcon(goal.icon || "target");
     setType(goal.type || "completion");
     setTarget(String(clampNum(goal?.measurable?.target ?? 1, 1, MAX_QUANTITY_TARGET)));
     setUnit(goal?.measurable?.unit || "times");
@@ -1105,18 +1074,7 @@ export default function GoalScreen({ route, navigation }) {
     return { type: "none" };
   }, [completionEndAmount, completionEndDate, completionEndUnit, completionMode]);
 
-  const filteredIcons = useMemo(() => {
-    const cleanSearch = iconSearch.toLowerCase().trim();
-    if (!cleanSearch) {
-      return dedupeIcons([...FEATURED_ICONS, ...pickerIconNames]).slice(0, 120);
-    }
-    const directMatches = pickerIconNames.filter((n) => n.includes(cleanSearch));
-    const synonymMatches = Object.entries(ICON_SEARCH_SYNONYMS)
-      .filter(([key]) => key.includes(cleanSearch) || cleanSearch.includes(key))
-      .flatMap(([, icons]) => icons)
-      .filter((n) => ICON_NAME_SET.has(n));
-    return dedupeIcons([...synonymMatches, ...directMatches]).slice(0, 180);
-  }, [iconSearch]);
+
 
   const formError = useMemo(() => {
     if (name.trim().length < 3) return "Give it a short name (at least 3 characters).";
@@ -2215,7 +2173,7 @@ export default function GoalScreen({ route, navigation }) {
                           entry.isToday && styles.duolingoBubbleToday,
                         ]}
                       >
-                        <LucideIcons.Check size={20} color="#ffffff" strokeWidth={3.5} />
+                        <FontAwesomeIcon icon={FONT_AWESOME_ICONS["check"]} size={20} color="#ffffff" />
                       </View>
                     ) : (
                       <View
@@ -2526,7 +2484,7 @@ export default function GoalScreen({ route, navigation }) {
             </Pressable>
             <View style={styles.iconModalHeaderCenter}>
               <Text style={styles.iconModalTitle}>Choose an icon</Text>
-              <Text style={styles.iconModalSubTitle}>{filteredIcons.length} icons</Text>
+              <Text style={styles.iconModalCount}>{filteredIcons.length} icons</Text>
             </View>
             <Pressable onPress={closeIconModal} style={styles.iconModalDoneBtn}>
               <Text style={styles.iconModalDoneText}>Done</Text>
@@ -2570,12 +2528,24 @@ export default function GoalScreen({ route, navigation }) {
                   key={item}
                   iconName={item}
                   isActive={selectedIcon === item}
-                  onSelect={(icon) => {
-                    setSelectedIcon(icon);
-                  }}
+                  onSelect={setSelectedIcon}
                 />
               ))}
             </View>
+            {!iconSearch.trim() && (
+              <Text style={styles.iconLoadHint}>Showing popular icons first for faster loading.</Text>
+            )}
+            {hasMoreIcons && (
+              <Pressable
+                style={styles.loadMoreIconsBtn}
+                onPress={() => {
+                  Haptics.selectionAsync?.().catch(() => {});
+                  setVisibleIconCount((prev) => prev + 120);
+                }}
+              >
+                <Text style={styles.loadMoreIconsText}>Show more icons</Text>
+              </Pressable>
+            )}
           </ScrollView>
         </View>
       </Modal>
