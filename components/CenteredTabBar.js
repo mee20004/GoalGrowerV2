@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { View, TouchableOpacity, StyleSheet, Platform, Image, Animated } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 const TASKBAR_ICON_MAP = {
@@ -13,6 +14,7 @@ const TASKBAR_ICON_MAP = {
 export default function CenteredTabBar({ state, descriptors, navigation }) {
   const width = '90%'; // Set your desired width
   const tapScalesRef = useRef({});
+  const insets = useSafeAreaInsets();
 
   const getTapScale = (routeKey) => {
     if (!tapScalesRef.current[routeKey]) {
@@ -40,7 +42,7 @@ export default function CenteredTabBar({ state, descriptors, navigation }) {
   };
 
   return (
-    <View style={[styles.outer, { width, left: '5%', marginLeft: -width / 2 }]}> 
+    <View style={[styles.outer, { width, left: '5%', marginLeft: -width / 2, bottom: insets.bottom + 8 }]}> 
       <View style={styles.inner}>
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
@@ -121,7 +123,6 @@ export default function CenteredTabBar({ state, descriptors, navigation }) {
 const styles = StyleSheet.create({
   outer: {
     position: 'absolute',
-    bottom: 24,
     height: 64,
     borderRadius: 32,
     backgroundColor: '#fff', // You can use your theme here
