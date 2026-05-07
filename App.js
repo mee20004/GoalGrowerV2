@@ -24,6 +24,7 @@ import { PLANT_ASSETS } from "./constants/PlantAssets";
 import { FAR_BG_ASSETS } from "./constants/FarBGAssets";
 import { FRAME_ASSETS } from "./constants/FrameAssets";
 import { WALLPAPER_ASSETS } from "./constants/WallpaperAssets";
+import { initializeNotifications } from "./utils/notifications";
 
 // Screens
 import GoalsScreen from "./screens/GoalsScreen";
@@ -35,6 +36,7 @@ import UserProfileScreen from './screens/UserProfileScreen';
 import UserGardenScreen from './screens/UserGardenScreen';
 import SharedGardenScreen from './screens/SharedGardenScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import NotificationSettingsScreen from './screens/NotificationSettingsScreen';
 import FollowingListScreen from './screens/FollowingListScreen';
 import RankScreen from './screens/RankScreen';
 import GardenScreen from './screens/GardenScreen'; // <-- 1. IMPORT GARDEN SCREEN
@@ -97,6 +99,7 @@ function ProfileStack() {
       <Stack.Screen name="UserProfile" component={UserProfileScreen} />
       <Stack.Screen name="UserGarden" component={UserGardenScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ gestureEnabled: false }} />
+      <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
       <Stack.Screen name="FollowingListScreen" component={FollowingListScreen} />
       <Stack.Screen name="FollowersListScreen" component={FollowersListScreen} />
     </Stack.Navigator>
@@ -282,6 +285,9 @@ export default function App() {
       setUser(firebaseUser);
 
       if (firebaseUser) {
+        // Initialize notifications when user logs in
+        initializeNotifications(null);
+
         unsubFirestore = onSnapshot(
           doc(db, "users", firebaseUser.uid),
           (docSnap) => {

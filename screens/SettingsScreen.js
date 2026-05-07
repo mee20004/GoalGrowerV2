@@ -1,12 +1,20 @@
 // screens/SettingsScreen.js
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Pressable, TextInput, ScrollView, Alert, ActivityIndicator, Switch } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Pressable, TextInput, ScrollView, Alert, ActivityIndicator, Switch, Modal } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { updateEmail, updatePassword, signOut } from "firebase/auth";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { theme } from "../theme";
-import { sendGoalReminderNotification } from "../utils/notifications";
+import { 
+  sendGoalReminderNotification,
+  sendTestNotification,
+  toggleNotificationsGlobally,
+  getNotificationSettings,
+  updateGlobalNotificationTime,
+  requestNotificationPermissions,
+  initializeNotifications,
+} from "../utils/notifications";
 
 export default function SettingsScreen({ navigation }) {
   const [username, setUsername] = useState("");
@@ -16,8 +24,14 @@ export default function SettingsScreen({ navigation }) {
   const [savingPrivate, setSavingPrivate] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [dailyReminderEnabled, setDailyReminderEnabled] = useState(true);
+  const [notificationHour, setNotificationHour] = useState(9);
+  const [notificationMinute, setNotificationMinute] = useState(0);
+  const [sendingTest, setSendingTest] = useState(false);
+  const [showTimeModal, setShowTimeModal] = useState(false);
 
-  // Fetch current user info when screen loads
+  // Fetch current user info and notification settings when screen loads
   useEffect(() => {
     const fetchUserData = async () => {
       if (auth.currentUser) {
@@ -28,6 +42,13 @@ export default function SettingsScreen({ navigation }) {
             setUsername(userDoc.data().username || "");
             setPrivateAccount(!!userDoc.data().privateAccount);
           }
+
+          // Fetch notification settings
+          const settings = await getNotificationSettings();
+          setNotificationsEnabled(settings.notificationsEnabled);
+          setDailyReminderEnabled(settings.dailyReminderEnabled);
+          setNotificationHour(settings.globalTime);
+          setNotificationMinute(settings.globalTimeMinute);
         } catch (error) {
           console.error("Error fetching user data:", error);
         }
@@ -38,6 +59,65 @@ export default function SettingsScreen({ navigation }) {
   }, []);
   const handlePrivateToggle = (value) => {
     setPrivateAccount(value);
+  };
+
+  const handleNotificationsToggle = async (value) => {
+    setNotificationsEnabled(value);
+    const success = await toggleNotificationsGlobally(value);
+    if (!success) {
+      setNotificationsEnabled(!value);
+      Alert.alert("Error", "Failed to update notification settings");
+    }
+  };
+
+  const handleDailyReminderToggle = async (value) => {
+    setDailyReminderEnabled(value);
+    try {
+      const settings = await getNotificationSettings();
+      settings.dailyReminderEnabled = value;
+      
+      if (!await updateGlobalNotificationTime(notificationHour, notificationMinute)) {
+        setDailyReminderEnabled(!value);
+        Alert.alert("Error", "Failed to update daily reminder settings");
+      }
+    } catch (error) {
+      setDailyReminderEnabled(!value);
+      Alert.alert("Error", "Failed to update daily reminder settings");
+    }
+  };
+
+  const handleTimeUpdate = async (hour, minute) => {
+    setNotificationHour(hour);
+    setNotificationMinute(minute);
+    setShowTimeModal(false);
+    
+    const success = await updateGlobalNotificationTime(hour, minute);
+    if (!success) {
+      Alert.alert("Error", "Failed to update notification time");
+    }
+  };
+
+  const handleSendTestNotification = async () => {
+    setSendingTest(true);
+    try {
+      // Request permissions if needed
+      const hasPermission = await requestNotificationPermissions();
+      if (!hasPermission) {
+        Alert.alert("Permission Required", "Notification permissions are required to send test notifications.");
+      } else {
+        const id = await sendTestNotification("🌱 Goal Grower Test", "This is a test notification!");
+        if (id) {
+          Alert.alert("Success!", "Test notification sent!");
+        } else {
+          Alert.alert("Error", "Failed to send test notification");
+        }
+      }
+    } catch (error) {
+      console.error("Error sending test notification:", error);
+      Alert.alert("Error", "Failed to send test notification");
+    } finally {
+      setSendingTest(false);
+    }
   };
 
   const handleSaveChanges = async () => {
@@ -238,20 +318,82 @@ export default function SettingsScreen({ navigation }) {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Notifications</Text>
+          <View style={styles.card}>
+            <View style={styles.switchRow}>
+              <View style={styles.switchTextWrap}>
+                <Text style={styles.labelNoMargin}>Enable Notifications</Text>
+                <Text style={styles.switchHint}>Receive reminders about your goals.</Text>
+              </View>
+              <Switch
+                value={notificationsEnabled}
+                onValueChange={handleNotificationsToggle}
+                trackColor={{ true: theme.accent, false: '#d2dae2' }}
+                thumbColor={notificationsEnabled ? '#ffffff' : '#f4f3f4'}
+              />
+            </View>
+
+            {notificationsEnabled && (
+              <>
+                <View style={[styles.switchRow, { marginTop: 14 }]}>
+                  <View style={styles.switchTextWrap}>
+                    <Text style={styles.labelNoMargin}>Daily Reminder</Text>
+                    <Text style={styles.switchHint}>Get a daily reminder at your chosen time.</Text>
+                  </View>
+                  <Switch
+                    value={dailyReminderEnabled}
+                    onValueChange={handleDailyReminderToggle}
+                    trackColor={{ true: theme.accent, false: '#d2dae2' }}
+                    thumbColor={dailyReminderEnabled ? '#ffffff' : '#f4f3f4'}
+                  />
+                </View>
+
+                {dailyReminderEnabled && (
+                  <Pressable onPress={() => setShowTimeModal(true)} style={styles.timePickerButton}>
+                    <Text style={styles.timePickerLabel}>Daily reminder time</Text>
+                    <View style={styles.timeDisplay}>
+                      <Text style={styles.timeText}>
+                        {String(notificationHour).padStart(2, '0')}:{String(notificationMinute).padStart(2, '0')}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={18} color={theme.accent} />
+                    </View>
+                  </Pressable>
+                )}
+
+                <Pressable 
+                  onPress={() => navigation.navigate('NotificationSettings')} 
+                  style={styles.goalNotificationsButton}
+                >
+                  <Text style={styles.goalNotificationsButtonText}>Customize Goal Notifications</Text>
+                  <Ionicons name="chevron-forward" size={18} color={theme.accent} />
+                </Pressable>
+              </>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.actionButtonWrap}>
+          <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
+          <Pressable
+            onPress={handleSendTestNotification}
+            disabled={sendingTest}
+            style={({ pressed }) => [
+              styles.actionButtonFace,
+              styles.saveButton,
+              pressed && !sendingTest && styles.actionButtonPressed,
+              sendingTest && styles.actionButtonDisabled,
+            ]}
+          >
+            {sendingTest ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.saveButtonText}>Send Test Notification</Text>
+            )}
+          </Pressable>
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Session</Text>
-          <View style={styles.actionButtonWrap}>
-  <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
-  <Pressable
-    onPress={() => sendGoalReminderNotification("Test Notification")}
-    style={({ pressed }) => [
-      styles.actionButtonFace,
-      styles.saveButton,
-      pressed && styles.actionButtonPressed,
-    ]}
-  >
-    <Text style={styles.saveButtonText}>Send Test Notification</Text>
-  </Pressable>
-</View>
           <View style={styles.actionButtonWrap}>
             <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowDanger]} />
             <Pressable
@@ -267,6 +409,92 @@ export default function SettingsScreen({ navigation }) {
           </View>
         </View>
       </ScrollView>
+
+      {/* Time Picker Modal */}
+      <Modal
+        visible={showTimeModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTimeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Set Daily Reminder Time</Text>
+              <Pressable onPress={() => setShowTimeModal(false)}>
+                <Ionicons name="close" size={28} color={theme.text} />
+              </Pressable>
+            </View>
+
+            <View style={styles.timePickerContainer}>
+              <View style={styles.timeColumn}>
+                <Text style={styles.timeLabel}>Hour</Text>
+                <ScrollView style={styles.hourScroll} scrollEventThrottle={16}>
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <Pressable
+                      key={i}
+                      onPress={() => setNotificationHour(i)}
+                      style={[
+                        styles.hourOption,
+                        notificationHour === i && styles.selectedHour,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.hourOptionText,
+                          notificationHour === i && styles.selectedHourText,
+                        ]}
+                      >
+                        {String(i).padStart(2, '0')}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.timeColumn}>
+                <Text style={styles.timeLabel}>Minute</Text>
+                <ScrollView style={styles.minuteScroll} scrollEventThrottle={16}>
+                  {Array.from({ length: 60 }, (_, i) => (
+                    <Pressable
+                      key={i}
+                      onPress={() => setNotificationMinute(i)}
+                      style={[
+                        styles.minuteOption,
+                        notificationMinute === i && styles.selectedMinute,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.minuteOptionText,
+                          notificationMinute === i && styles.selectedMinuteText,
+                        ]}
+                      >
+                        {String(i).padStart(2, '0')}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+
+            <View style={styles.modalButtons}>
+              <Pressable
+                onPress={() => setShowTimeModal(false)}
+                style={[styles.modalButton, styles.cancelButton]}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => handleTimeUpdate(notificationHour, notificationMinute)}
+                style={[styles.modalButton, styles.confirmButton]}
+              >
+                <Text style={styles.confirmButtonText}>Set Time</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -418,5 +646,170 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: 'center',
   },
-  logoutButtonText: { color: "#fff", fontSize: 16, fontWeight: "800" }
+  logoutButtonText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+
+  // Time Picker Styles
+  timePickerButton: {
+    marginTop: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingTop: 14,
+  },
+  timePickerLabel: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: theme.text2,
+  },
+  timeDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#f7fafc',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  timeText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: theme.accent,
+  },
+  goalNotificationsButton: {
+    marginTop: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingTop: 14,
+  },
+  goalNotificationsButtonText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: theme.accent,
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 24,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: theme.text,
+  },
+  timePickerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 20,
+    height: 200,
+  },
+  timeColumn: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  timeLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: theme.text2,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  hourScroll: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: '#f7fafc',
+    paddingVertical: 8,
+  },
+  minuteScroll: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: '#f7fafc',
+    paddingVertical: 8,
+  },
+  hourOption: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  minuteOption: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  selectedHour: {
+    backgroundColor: theme.accent,
+    borderRadius: 8,
+  },
+  selectedMinute: {
+    backgroundColor: theme.accent,
+    borderRadius: 8,
+  },
+  hourOptionText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.text2,
+  },
+  minuteOptionText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.text2,
+  },
+  selectedHourText: {
+    color: '#fff',
+    fontWeight: '900',
+  },
+  selectedMinuteText: {
+    color: '#fff',
+    fontWeight: '900',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#f0f0f0',
+  },
+  confirmButton: {
+    backgroundColor: theme.accent,
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: theme.text,
+  },
+  confirmButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#fff',
+  },
 });
