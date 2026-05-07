@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "goal-grower",
-    "slug": "goal-grower",
+    "name": "garden-your-goals",
+    "slug": "garden-your-goals",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -14,13 +14,13 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.goalgrower",
+      "bundleIdentifier": "com.anonymous.garden-your-goals",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.anonymous.goalgrower",
+      "package": "com.anonymous.gardenyourgoals",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
