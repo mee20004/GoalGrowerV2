@@ -36,7 +36,6 @@ import UserProfileScreen from './screens/UserProfileScreen';
 import UserGardenScreen from './screens/UserGardenScreen';
 import SharedGardenScreen from './screens/SharedGardenScreen';
 import SettingsScreen from './screens/SettingsScreen';
-import NotificationSettingsScreen from './screens/NotificationSettingsScreen';
 import FollowingListScreen from './screens/FollowingListScreen';
 import RankScreen from './screens/RankScreen';
 import GardenScreen from './screens/GardenScreen'; // <-- 1. IMPORT GARDEN SCREEN
