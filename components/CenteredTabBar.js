@@ -2,7 +2,6 @@ import React, { useRef } from 'react';
 import { View, TouchableOpacity, StyleSheet, Platform, Image, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Platform } from 'react-native';
 
 const TASKBAR_ICON_MAP = {
   Rank: require('../assets/Icons/Taskbar/TrophyIcon.png'),
