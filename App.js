@@ -98,7 +98,6 @@ function ProfileStack() {
       <Stack.Screen name="UserProfile" component={UserProfileScreen} />
       <Stack.Screen name="UserGarden" component={UserGardenScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ gestureEnabled: false }} />
-      <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
       <Stack.Screen name="FollowingListScreen" component={FollowingListScreen} />
       <Stack.Screen name="FollowersListScreen" component={FollowersListScreen} />
     </Stack.Navigator>

@@ -1098,7 +1098,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.12)",
     marginRight: 10,
   },
-  readOnlyHeaderTitle: { flex: 1, color: "#fff", fontSize: 16, fontWeight: "800" },
+  readOnlyHeaderTitle: { flex: 1, color: "#fff", fontSize: 16, fontWeight: "800", fontFamily: 'CeraRoundProDEMO-Black' },
   emptyGardenState: {
     flex: 1,
     justifyContent: "center",
@@ -1110,6 +1110,7 @@ const styles = StyleSheet.create({
     color: "#2D5A27",
     fontSize: 22,
     fontWeight: "800",
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   emptyGardenText: {
     marginTop: 8,
@@ -1117,6 +1118,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     textAlign: "center",
     lineHeight: 22,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   pageDotsContainer: { position: "absolute", bottom: 95, left: 0, right: 0, alignItems: "center", zIndex: 999999 },
   pageDots: { flexDirection: "row", justifyContent: "center", alignItems: "center", paddingVertical: 6 },
@@ -1148,6 +1150,7 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(255, 200, 0, 0.45)",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 8,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   storageHeaderIcon: { opacity: 0.9 },
   storageScroll: { flex: 1 },
@@ -1210,6 +1213,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
     letterSpacing: 0.2,
     bottom: 30,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   trophyEffectsUnderPot: { position: "absolute", width: 108, height: 140, bottom: 8, zIndex: 0, overflow: "visible" },
   potBackground: { width: 80, height: 80, alignItems: "center", justifyContent: "flex-end", position: "relative", bottom: 10, zIndex: 1 },
@@ -1258,6 +1262,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: "900",
     lineHeight: 10,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   trophyTierBadgeIcon: {
     position: "absolute",

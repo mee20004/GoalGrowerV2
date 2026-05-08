@@ -800,6 +800,8 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "900",
     color: theme.text,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   headerButtons: {
     flexDirection: "row",
@@ -875,6 +877,8 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: "#ffffff",
     fontSize: 14,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   filterBtnTextActive: {
     color: "#ffffff",
@@ -1017,12 +1021,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "900",
     color: theme.text,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   goalMeta: {
     fontSize: 11,
     fontWeight: "800",
     color: theme.muted,
     marginTop: 2,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   emptyContainer: {
     flex: 1,
@@ -1035,6 +1043,8 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: theme.text,
     marginBottom: 8,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   emptySubtext: {
     fontSize: 14,
@@ -1042,6 +1052,8 @@ const styles = StyleSheet.create({
     color: theme.muted,
     marginBottom: 24,
     textAlign: "center",
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   addBtn: {
     backgroundColor: theme.accent,
@@ -1053,6 +1065,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "900",
     color: theme.bg,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   goalCardDimmed: {
     opacity: 0.5,
@@ -1086,8 +1100,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 13,
     fontWeight: '700',
-    letterSpacing: 0,
+    letterSpacing: 0.1,
     includeFontPadding: false,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   // statusButtonContainer removed: not needed, handled by AnimatedButton props
 

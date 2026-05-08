@@ -553,12 +553,13 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: theme.text,
     flexShrink: 1,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
 
   content: { paddingBottom: 52 },
 
   section: { marginBottom: 18 },
-  sectionTitle: { fontSize: 12, fontWeight: "900", color: '#000000', marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 },
+  sectionTitle: { fontSize: 12, fontWeight: "900", color: '#000000', marginBottom: 8, textTransform: "uppercase", letterSpacing: 1, fontFamily: 'CeraRoundProDEMO-Black' },
   card: {
     backgroundColor: '#ffffff',
     borderRadius: 24,
@@ -569,8 +570,8 @@ const styles = StyleSheet.create({
     shadowRadius: 0,
     elevation: 2,
   },
-  label: { fontSize: 13, fontWeight: "900", color: theme.text2, marginBottom: 8 },
-  labelNoMargin: { fontSize: 13, fontWeight: "900", color: theme.text2 },
+  label: { fontSize: 13, fontWeight: "900", color: theme.text2, marginBottom: 8, fontFamily: 'CeraRoundProDEMO-Black' },
+  labelNoMargin: { fontSize: 13, fontWeight: "900", color: theme.text2, fontFamily: 'CeraRoundProDEMO-Black' },
   inputTopGap: { marginTop: 14 },
   input: {
     backgroundColor: '#f7fafc',
@@ -581,7 +582,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: 15,
     color: theme.text,
-    fontWeight: "700"
+    fontWeight: "700",
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   switchRow: {
     flexDirection: 'row',
@@ -596,9 +598,10 @@ const styles = StyleSheet.create({
   switchHint: {
     marginTop: 4,
     fontSize: 12,
-    color: theme.text2,
+    color: '#A0A4AA', // more greyed out
     fontWeight: '700',
     lineHeight: 17,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   actionButtonWrap: {
     marginBottom: 12,
@@ -638,7 +641,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: 'center',
   },
-  saveButtonText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  saveButtonText: { color: "#fff", fontSize: 16, fontWeight: "800", fontFamily: 'CeraRoundProDEMO-Black' },
 
   logoutButton: {
     backgroundColor: '#ef6b6b',
@@ -646,7 +649,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: 'center',
   },
-  logoutButtonText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  logoutButtonText: { color: "#fff", fontSize: 16, fontWeight: "800", fontFamily: 'CeraRoundProDEMO-Black' },
 
   // Time Picker Styles
   timePickerButton: {
@@ -663,6 +666,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
     color: theme.text2,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   timeDisplay: {
     flexDirection: 'row',
@@ -677,6 +681,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
     color: theme.accent,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   goalNotificationsButton: {
     marginTop: 14,
@@ -692,6 +697,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
     color: theme.accent,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
 
   // Modal Styles
@@ -719,6 +725,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     color: theme.text,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   timePickerContainer: {
     flexDirection: 'row',
@@ -736,6 +743,7 @@ const styles = StyleSheet.create({
     color: theme.text2,
     marginBottom: 8,
     textTransform: 'uppercase',
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   hourScroll: {
     flex: 1,
@@ -771,19 +779,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: theme.text2,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   minuteOptionText: {
     fontSize: 16,
     fontWeight: '700',
     color: theme.text2,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   selectedHourText: {
     color: '#fff',
     fontWeight: '900',
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   selectedMinuteText: {
     color: '#fff',
     fontWeight: '900',
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   modalButtons: {
     flexDirection: 'row',
@@ -806,10 +818,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: theme.text,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   confirmButtonText: {
     fontSize: 14,
     fontWeight: '800',
     color: '#fff',
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
 });

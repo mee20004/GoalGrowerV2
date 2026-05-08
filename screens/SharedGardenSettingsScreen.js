@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Switch } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Switch, Pressable } from "react-native";
+import * as Haptics from "expo-haptics";
+// Haptic feedback for switch toggles (copied from AddGoalScreen)
+const triggerSelectionHaptic = () => {
+  Haptics.selectionAsync().catch(() => {});
+};
 import { theme } from "../theme";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { db, auth } from "../firebaseConfig";
@@ -134,55 +139,56 @@ export default function SharedGardenSettingsScreen({ navigation, route }) {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 64 }}>
-      <View style={styles.header}>
-        <Ionicons name="settings-outline" size={28} color={theme.accent} style={{ marginRight: 10 }} />
-        <Text style={styles.headerText}>Shared Garden Settings</Text>
+    <View style={styles.container}>
+      <View style={styles.headerTopSpacer} />
+      <View style={styles.headerWrapper}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={26} color={theme.accent} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Shared Settings</Text>
+          <View style={styles.headerBtnPlaceholder} />
+        </View>
       </View>
+      <ScrollView contentContainerStyle={{ paddingBottom: 64 }}>
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Garden Permissions</Text>
         {/* ...existing code for switches... */}
-        <View style={styles.settingRow}>
-          <Text style={styles.settingLabel}>Restrict others adding people</Text>
-          <View style={styles.switchWrap}>
-            <Switch
-              value={settings.restrictAddPeople}
-              onValueChange={v => handleSettingToggle('restrictAddPeople', v)}
-              disabled={!isOwner || savingSettings}
-              trackColor={{ true: 'rgb(231, 231, 231)', false: theme.outline }}
-              thumbColor={settings.restrictAddPeople ? theme.accent : '#f4f3f4'}
-              ios_backgroundColor={theme.outline}
-              style={styles.switch}
-            />
-          </View>
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Restrict others adding people</Text>
+          <Switch
+            value={settings.restrictAddPeople}
+            onValueChange={v => {
+              triggerSelectionHaptic();
+              handleSettingToggle('restrictAddPeople', v);
+            }}
+            disabled={!isOwner || savingSettings}
+            trackColor={{ false: theme.outline, true: theme.accent }}
+          />
         </View>
-        <View style={styles.settingRow}>
-          <Text style={styles.settingLabel}>Restrict others customizing</Text>
-          <View style={styles.switchWrap}>
-            <Switch
-              value={settings.restrictCustomize}
-              onValueChange={v => handleSettingToggle('restrictCustomize', v)}
-              disabled={!isOwner || savingSettings}
-              trackColor={{ true: 'rgb(231, 231, 231)', false: theme.outline }}
-              thumbColor={settings.restrictCustomize ? theme.accent : '#f4f3f4'}
-              ios_backgroundColor={theme.outline}
-              style={styles.switch}
-            />
-          </View>
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Restrict others customizing</Text>
+          <Switch
+            value={settings.restrictCustomize}
+            onValueChange={v => {
+              triggerSelectionHaptic();
+              handleSettingToggle('restrictCustomize', v);
+            }}
+            disabled={!isOwner || savingSettings}
+            trackColor={{ false: theme.outline, true: theme.accent }}
+          />
         </View>
-        <View style={styles.settingRow}>
-          <Text style={styles.settingLabel}>Restrict others adding/editing plants</Text>
-          <View style={styles.switchWrap}>
-            <Switch
-              value={settings.restrictEditPlants}
-              onValueChange={v => handleSettingToggle('restrictEditPlants', v)}
-              disabled={!isOwner || savingSettings}
-              trackColor={{ true: 'rgb(231, 231, 231)', false: theme.outline }}
-              thumbColor={settings.restrictEditPlants ? theme.accent : '#f4f3f4'}
-              ios_backgroundColor={theme.outline}
-              style={styles.switch}
-            />
-          </View>
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Restrict others adding/editing plants</Text>
+          <Switch
+            value={settings.restrictEditPlants}
+            onValueChange={v => {
+              triggerSelectionHaptic();
+              handleSettingToggle('restrictEditPlants', v);
+            }}
+            disabled={!isOwner || savingSettings}
+            trackColor={{ false: theme.outline, true: theme.accent }}
+          />
         </View>
         {!isOwner && <Text style={styles.permissionNote}>Only the garden owner can change these settings.</Text>}
       </View>
@@ -232,66 +238,68 @@ export default function SharedGardenSettingsScreen({ navigation, route }) {
         )}
       </View>
       {/* Leave/Delete Garden Button */}
-      <TouchableOpacity
-        style={{
-          backgroundColor: theme.dangerBg,
-          borderRadius: theme.radius,
-          paddingVertical: 16,
-          alignItems: 'center',
-          marginTop: 8,
-          marginBottom: 12,
-        }}
-        onPress={async () => {
-          if (isOwner) {
-            Alert.alert(
-              "Delete Garden",
-              "Are you sure you want to delete this shared garden? This cannot be undone.",
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Delete",
-                  style: "destructive",
-                  onPress: async () => {
-                    try {
-                      await updateDoc(doc(db, "sharedGardens", sharedGardenId), { memberIds: [] });
-                      await setTimeout(() => {}, 200); // Small delay to ensure update
-                      await updateDoc(doc(db, "sharedGardens", sharedGardenId), { deleted: true });
-                      await setTimeout(() => {}, 200); // Small delay
-                      await updateDoc(doc(db, "sharedGardens", sharedGardenId), { name: "[Deleted]" });
-                      // Optionally, you could use deleteDoc here if you want to fully remove the document
-                      // await deleteDoc(doc(db, "sharedGardens", sharedGardenId));
-                      Alert.alert("Deleted", "The shared garden has been deleted.");
-                      navigation.goBack();
-                    } catch (e) {
-                      Alert.alert("Error", "Could not delete the garden.");
-                    }
+      <View style={[styles.actionButtonWrap, { marginTop: 8 }]}> 
+        <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowDanger]} />
+        <Pressable
+          onPress={async () => {
+            if (isOwner) {
+              Alert.alert(
+                "Delete Garden",
+                "Are you sure you want to delete this shared garden? This cannot be undone.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                      try {
+                        await updateDoc(doc(db, "sharedGardens", sharedGardenId), { memberIds: [] });
+                        await setTimeout(() => {}, 200); // Small delay to ensure update
+                        await updateDoc(doc(db, "sharedGardens", sharedGardenId), { deleted: true });
+                        await setTimeout(() => {}, 200); // Small delay
+                        await updateDoc(doc(db, "sharedGardens", sharedGardenId), { name: "[Deleted]" });
+                        Alert.alert("Deleted", "The shared garden has been deleted.");
+                        navigation.goBack();
+                      } catch (e) {
+                        Alert.alert("Error", "Could not delete the garden.");
+                      }
+                    },
                   },
-                },
-              ]
-            );
-          } else {
-            try {
-              await updateDoc(doc(db, "sharedGardens", sharedGardenId), {
-                memberIds: arrayRemove(auth.currentUser.uid)
-              });
-              Alert.alert("Left Garden", "You have left the shared garden.");
-              navigation.goBack();
-            } catch (e) {
-              Alert.alert("Error", "Could not leave the garden.");
+                ]
+              );
+            } else {
+              try {
+                await updateDoc(doc(db, "sharedGardens", sharedGardenId), {
+                  memberIds: arrayRemove(auth.currentUser.uid)
+                });
+                Alert.alert("Left Garden", "You have left the shared garden.");
+                navigation.goBack();
+              } catch (e) {
+                Alert.alert("Error", "Could not leave the garden.");
+              }
             }
-          }
-        }}
-      >
-        <Text style={{ color: theme.dangerText, fontWeight: 'bold', fontSize: 16 }}>
-          {isOwner ? 'Delete Garden' : 'Leave Garden'}
-        </Text>
-      </TouchableOpacity>
+          }}
+          style={({ pressed }) => [
+            styles.actionButtonFace,
+            styles.logoutButton,
+            pressed && styles.actionButtonPressed,
+          ]}
+        >
+          <Text style={styles.logoutButtonText}>{isOwner ? 'Delete Garden' : 'Leave Garden'}</Text>
+        </Pressable>
+      </View>
       {/* Bottom Spacer for extra margin */}
       <View style={{ height: 48 }} />
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 const styles = StyleSheet.create({
+    actionButtonWrap: {
+      marginBottom: 12,
+      height: 56,
+      position: 'relative',
+    },
   switchWrap: {
     borderRadius: 20,
     backgroundColor: "#fff",
@@ -307,11 +315,14 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   container: { flex: 1, backgroundColor: theme.bg, padding: theme.pad },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  headerTopSpacer: {
+    height: 65,
+  },
+  headerWrapper: {
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderRadius: 24,
+    borderWidth: 0,
+    borderColor: '#d9e6f4',
     shadowColor: '#4c6782',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.16,
@@ -319,25 +330,53 @@ const styles = StyleSheet.create({
     elevation: 3,
     marginTop: 8,
     marginBottom: 12,
-    paddingLeft: 16,
-    paddingRight: 10,
-    minHeight: 44,
   },
-  headerText: { fontSize: 22, fontWeight: 'bold', color: theme.text },
+  headerRow: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    justifyContent: "space-between", 
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 10,
+  },
+  headerBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: '#e7edf5',
+    shadowColor: '#c3cfdb',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 1,
+  },
+  headerBtnPlaceholder: {
+    width: 42,
+    height: 42,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: theme.text,
+    flexShrink: 1,
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
   card: {
-    backgroundColor: theme.surface,
-    borderRadius: theme.radius,
-    padding: theme.pad,
-    marginBottom: theme.pad,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#cdcdcd',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
     elevation: 2,
   },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: theme.accent, marginBottom: 8 },
+  sectionTitle: { fontSize: 12, fontWeight: '900', color: '#000000', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1, fontFamily: 'CeraRoundProDEMO-Black' },
   memberRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderColor: theme.outline },
-  memberName: { fontSize: 15, color: theme.text2, fontWeight: '600' },
+  memberName: { fontSize: 15, color: theme.text2, fontWeight: '900', fontFamily: 'CeraRoundProDEMO-Black' },
   removeBtn: {
     marginLeft: 10,
     flexDirection: 'row',
@@ -350,14 +389,42 @@ const styles = StyleSheet.create({
   },
   removeBtnText: {
     color: theme.dangerText,
-    fontWeight: 'bold',
+    fontWeight: '800',
     fontSize: 15,
     marginLeft: 8,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   inviteBtn: { backgroundColor: theme.accent, borderRadius: theme.radiusSm, padding: 10 },
   inviteBtnDisabled: { backgroundColor: theme.outline },
-  settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
-  settingLabel: { color: theme.text2, fontSize: 15, fontWeight: '600', flex: 1, marginRight: 10 },
-  permissionNote: { color: theme.muted2, fontSize: 13, marginTop: 8, fontStyle: 'italic' },
-  placeholder: { color: theme.muted2, fontSize: 16, marginTop: 20 },
+  switchRow: { marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  switchLabel: { fontSize: 13, color: theme.text, fontFamily: 'CeraRoundProDEMO-Black' },
+  permissionNote: { color: '#A0A4AA', fontSize: 12, marginTop: 8, fontStyle: 'italic', fontFamily: 'CeraRoundProDEMO-Black' },
+  placeholder: { color: theme.muted2, fontSize: 16, marginTop: 20, fontFamily: 'CeraRoundProDEMO-Black' },
+  actionButtonShadow: {
+    position: 'absolute',
+    top: 4,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 20,
+  },
+  actionButtonShadowDanger: {
+    backgroundColor: '#d35656',
+  },
+  actionButtonFace: {
+    height: 52,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionButtonPressed: {
+    transform: [{ translateY: 4 }],
+  },
+  logoutButton: {
+    backgroundColor: '#ef6b6b',
+    height: 52,
+    alignItems: "center",
+    justifyContent: 'center',
+  },
+  logoutButtonText: { color: "#fff", fontSize: 16, fontWeight: "800", fontFamily: 'CeraRoundProDEMO-Black' }
 });

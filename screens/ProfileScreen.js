@@ -178,6 +178,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: theme.text,
     flexShrink: 1,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   headerBtn: {
     width: 42,
@@ -216,6 +217,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: theme.text,
     margin: 10,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   profileSub: {
     marginTop: 4,
@@ -223,6 +225,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: theme.text2,
     marginBottom: 14,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   statsCard: {
     flexDirection: "row",
@@ -240,14 +243,16 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: 21,
     fontWeight: "900",
-    color: "#2D5A27",
+    color: "#000000",
     marginBottom: 2,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   statLabel: {
     fontSize: 11,
     color: "#6b7987",
     fontWeight: "900",
     letterSpacing: 0.8,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   statDivider: {
     width: 1,
@@ -261,10 +266,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 12,
     fontWeight: "900",
-    color: '#ffffff',
+    color: '#000000',
     marginBottom: 8,
     textTransform: "uppercase",
     letterSpacing: 1,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   infoCard: {
     backgroundColor: '#ffffff',
@@ -288,14 +294,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
     color: theme.text,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   infoValue: {
     fontSize: 14,
     fontWeight: "900",
     color: theme.text2,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   scoreValue: {
-    color: "#2D5A27",
+    color: "#000000",
   },
   achievementsList: {
     flexDirection: "column",
@@ -330,12 +338,14 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: theme.text,
     marginBottom: 3,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   achievementDesc: {
     fontSize: 13,
     color: "#677786",
     fontWeight: "700",
     lineHeight: 18,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   completedText: {
     marginTop: 6,
@@ -343,6 +353,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: "#FF9600",
     letterSpacing: 1,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   emptyCard: {
     backgroundColor: '#ffffff',
@@ -358,5 +369,6 @@ const styles = StyleSheet.create({
     color: theme.muted,
     fontStyle: 'italic',
     textAlign: "center",
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
 });

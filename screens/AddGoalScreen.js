@@ -14,6 +14,7 @@ const normalizeQuantityTargetInput = (value) => {
 };
 // screens/AddGoalScreen.js
 import React, { useEffect, useMemo, useRef, useState, memo } from "react";
+import { useFonts } from 'expo-font';
 import {
   View,
   Text,
@@ -389,7 +390,7 @@ function Pill({ label, active, onPress }) {
       }}
       style={[styles.pill, active && styles.pillActive]}
     >
-      <Text style={[styles.pillText, active && styles.pillTextActive]}>{label}</Text>
+     <Text style={[styles.pillText, active && styles.pillTextActive, { fontFamily: 'CeraRoundProDEMO-Black' }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -412,7 +413,7 @@ function PrimaryButton({ label, onPress, disabled, style }) {
           disabled && styles.actionButtonPrimaryDisabled,
         ]}
       >
-        <Text style={[styles.actionButtonText, styles.actionButtonTextPrimary, disabled && styles.actionButtonTextDisabled]}>{label}</Text>
+       <Text style={[styles.actionButtonText, styles.actionButtonTextPrimary, disabled && styles.actionButtonTextDisabled, { fontFamily: 'CeraRoundProDEMO-Black' }]}>{label}</Text>
       </Pressable>
     </View>
   );
@@ -458,7 +459,7 @@ function CoachMark({ visible, title, body, onClose }) {
           <Text style={styles.coachTitle}>{title}</Text>
           <Text style={styles.coachBody}>{body}</Text>
           <Pressable style={styles.coachCloseBtn} onPress={onClose}>
-            <Text style={styles.coachCloseText}>Close</Text>
+           <Text style={[styles.coachCloseText, { fontFamily: 'CeraRoundProDEMO-Black' }]}>Close</Text>
           </Pressable>
         </View>
       </Pressable>
@@ -490,15 +491,23 @@ function StepProgressBar({ total = 1, index = 0 }) {
       accessibilityRole="progressbar"
       accessibilityValue={{ min: 0, max: total, now: index + 1 }}
     >
-      <Animated.View style={[styles.progressBarFill, { width: animatedWidth }]} />
+       <Animated.View style={[styles.progressBarFill, { width: animatedWidth, fontFamily: 'CeraRoundProDEMO-Black' }]} />
     </View>
   );
 }
 
 export default function AddGoalScreen({ navigation }) {
+  // Load the Cera Round Pro DEMO font only for this screen
+  const [fontsLoaded] = useFonts({
+    'CeraRoundProDEMO-Black': require('../assets/fonts/CeraRoundProDEMOBlack.otf'),
+  });
 
   // Step state for multi-step form
   const [step, setStep] = useState(0);
+  // Early return after all hooks
+  if (!fontsLoaded) {
+    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" /></View>;
+  }
 
   const [sharedGardenSettings, setSharedGardenSettings] = useState({
     restrictAddPeople: false,
@@ -1352,10 +1361,10 @@ const styles = StyleSheet.create({
   actionButtonPrimaryDisabled: { backgroundColor: "#97cd71"},
   actionButtonSecondaryDisabled: { backgroundColor: "#dde3ea" },
   actionButtonPressed: { transform: [{ translateY: 4 }] },
-  actionButtonText: { fontSize: 15, fontWeight: "900" },
-  actionButtonTextPrimary: { color: "#FFFFFF" },
-  actionButtonTextSecondary: { color: theme.accent },
-  actionButtonTextDisabled: { color: "#f7fbf3" },
+  actionButtonText: { fontSize: 15, fontFamily: 'CeraRoundProDEMO-Black' },
+  actionButtonTextPrimary: { color: "#FFFFFF", fontFamily: 'CeraRoundProDEMO-Black' },
+  actionButtonTextSecondary: { color: theme.accent, fontFamily: 'CeraRoundProDEMO-Black' },
+  actionButtonTextDisabled: { color: "#f7fbf3", fontFamily: 'CeraRoundProDEMO-Black' },
   headerWrapper: {
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderRadius: 24,
@@ -1380,7 +1389,7 @@ const styles = StyleSheet.create({
     gap: 10,
     minHeight: 44,
   },
-  headerTitle: { fontSize: 22, fontWeight: "900", color: theme.text },
+  headerTitle: { fontSize: 22, color: theme.text, fontFamily: 'CeraRoundProDEMO-Black' },
   progressBarTrack: {
     height: 10,
     borderRadius: 999,
@@ -1447,7 +1456,7 @@ const styles = StyleSheet.create({
     marginBottom: 100,
   },
   stepButton: { flex: 1 },
-  sectionLabel: { fontSize: 13, fontWeight: "900", color: theme.text, marginBottom: 8 },
+  sectionLabel: { fontSize: 13, color: theme.text, marginBottom: 8, fontFamily: 'CeraRoundProDEMO-Black' },
   nameInlineRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1455,12 +1464,13 @@ const styles = StyleSheet.create({
   },
   nameInlineLabel: {
     fontSize: 14,
-    fontWeight: "900",
     color: theme.text,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   nameInlineInput: {
     flex: 1,
     marginBottom: 0,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   nameHeaderCard: {
     backgroundColor: 'rgba(255,255,255,0.98)',
@@ -1493,8 +1503,8 @@ const styles = StyleSheet.create({
   },
   switchRow: { marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   contributorRow: { marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  switchLabel: { fontSize: 13, fontWeight: "700", color: theme.text },
-  helperText: { fontSize: 12, color: theme.muted, marginBottom: 8 },
+  switchLabel: { fontSize: 13, color: theme.text, fontFamily: 'CeraRoundProDEMO-Black' },
+  helperText: { fontSize: 12, color: theme.muted, marginBottom: 8, fontFamily: 'CeraRoundProDEMO-Black' },
   completionModeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4, marginBottom: 10 },
   calendarCard: {
     backgroundColor: "#ffffff",
@@ -1549,13 +1559,14 @@ const styles = StyleSheet.create({
     color: theme.text,
     borderWidth: 1,
     borderColor: "#d9e6f4",
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   contributorInput: { width: 82, textAlign: "center", paddingHorizontal: 8 },
-  textArea: { height: 96, paddingTop: 12, textAlignVertical: "top" },
+  textArea: { height: 96, paddingTop: 12, textAlignVertical: "top", fontFamily: 'CeraRoundProDEMO-Black' },
   gap16: { height: 16 },
   sectionGap: { height: 8 },
   chipWrap: { flexDirection: "row", flexWrap: "wrap", marginTop: 4, gap: 8 },
-  gardenChipWrap: { gap: 4 },
+  gardenChipWrap: { gap: 4 }, 
   chip: {
     minHeight: 34,
     paddingHorizontal: 12,
@@ -1577,14 +1588,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#28b900',
     borderColor: theme.accent,
   },
-  chipText: { fontSize: 12, fontWeight: "800", color: "#4c5f75" },
+  chipText: { fontSize: 12, color: "#4c5f75", fontFamily: 'CeraRoundProDEMO-Black' },
   filterStyleChipText: {
     fontSize: 14,
-    fontWeight: '900',
     color: '#ffffff',
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
-  chipTextActive: { color: theme.bg },
-  filterStyleChipTextActive: { color: '#ffffff' },
+  chipTextActive: { color: theme.bg, fontFamily: 'CeraRoundProDEMO-Black' },
+  filterStyleChipTextActive: { color: '#ffffff', fontFamily: 'CeraRoundProDEMO-Black' },
   segmentWrap: {
     flexDirection: "row",
     alignItems: "center",
@@ -1605,8 +1616,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   segmentActive: { backgroundColor: '#28b900', borderColor: theme.accent },
-  segmentText: { fontSize: 14, fontWeight: '900', color: '#ffffff' },
-  segmentTextActive: { color: '#ffffff' },
+  segmentText: { fontSize: 14, fontWeight: '900', color: '#ffffff', fontFamily: 'CeraRoundProDEMO-Black' },
+  segmentTextActive: { color: '#ffffff', fontFamily: 'CeraRoundProDEMO-Black' },
   row: { flexDirection: "row", marginTop: 10, gap: 10 },
   daysGrid: { flexDirection: "row", flexWrap: "wrap", marginTop: 10, gap: 8 },
   dayPill: {
@@ -1620,8 +1631,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   dayPillActive: { backgroundColor: '#28b900', borderColor: theme.accent },
-  dayText: { fontSize: 14, fontWeight: '900', color: '#ffffff' },
-  dayTextActive: { color: '#ffffff' },
+  dayText: { fontSize: 14, fontWeight: '900', color: '#ffffff', fontFamily: 'CeraRoundProDEMO-Black' },
+  dayTextActive: { color: '#ffffff', fontFamily: 'CeraRoundProDEMO-Black' },
   iconPickerButton: {
     marginTop: 6,
     minHeight: 68,
@@ -1704,8 +1715,8 @@ const styles = StyleSheet.create({
   },
   iconModalHeaderBtn: { minWidth: 40, height: 36, alignItems: 'center', justifyContent: 'center' },
   iconModalHeaderCenter: { flex: 1, alignItems: 'center' },
-  iconModalTitle: { fontSize: 18, fontWeight: "900", color: theme.text },
-  iconModalSubTitle: { marginTop: 2, fontSize: 12, fontWeight: '600', color: theme.muted },
+  iconModalTitle: { fontSize: 18, color: theme.text, fontFamily: 'CeraRoundProDEMO-Black' },
+  iconModalSubTitle: { marginTop: 2, fontSize: 12, color: theme.muted, fontFamily: 'CeraRoundProDEMO-Black' },
   iconModalDoneBtn: {
     minWidth: 56,
     height: 34,
@@ -1714,7 +1725,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconModalDoneText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  iconModalDoneText: { color: '#FFFFFF', fontSize: 13, fontFamily: 'CeraRoundProDEMO-Black' },
   iconModalSearchWrap: { paddingHorizontal: 0, paddingTop: 0 },
   iconModalSearchBar: {
     backgroundColor: '#FFFFFF',
@@ -1723,7 +1734,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   iconSelectedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  iconSelectedRowLabel: { fontSize: 12, fontWeight: '700', color: theme.muted },
+  iconSelectedRowLabel: { fontSize: 12, color: theme.muted, fontFamily: 'CeraRoundProDEMO-Black' },
   iconSelectedPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1733,9 +1744,9 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     gap: 6,
   },
-  iconSelectedPillText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
+  iconSelectedPillText: { color: '#FFFFFF', fontSize: 11, fontFamily: 'CeraRoundProDEMO-Black' },
   iconModalList: { flex: 1, paddingHorizontal: 12, paddingTop: 4 },
-  iconLoadHint: { marginTop: 4, marginBottom: 12, fontSize: 12, fontWeight: '700', color: theme.muted, textAlign: 'center' },
+  iconLoadHint: { marginTop: 4, marginBottom: 12, fontSize: 12, color: theme.muted, textAlign: 'center', fontFamily: 'CeraRoundProDEMO-Black' },
   livePreviewCard: {
     marginTop: 2,
     marginBottom: 4,
@@ -1758,10 +1769,10 @@ const styles = StyleSheet.create({
   },
   assetCarouselTitle: {
     fontSize: 12,
-    fontWeight: "900",
     color: theme.muted,
     marginBottom: 6,
     textAlign: "center",
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   assetCarouselWrap: {
     height: 86,
@@ -1919,8 +1930,8 @@ const styles = StyleSheet.create({
   selectionSubLabel: {
     marginTop: 2,
     fontSize: 13,
-    fontWeight: "800",
     color: theme.muted,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   selectorPagerWrap: {
     marginTop: 4,
@@ -2097,8 +2108,8 @@ const styles = StyleSheet.create({
   },
   loadMoreIconsText: { fontSize: 12, fontWeight: '900', color: theme.accent },
   reviewRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#edf2f6' },
-  reviewLabel: { fontSize: 13, fontWeight: "700", color: theme.text2 },
-  reviewValue: { fontSize: 13, fontWeight: "800", color: theme.text },
+  reviewLabel: { fontSize: 13, fontWeight: "700", color: theme.text2, fontFamily: 'CeraRoundProDEMO-Black' },
+  reviewValue: { fontSize: 13, fontWeight: "800", color: theme.text, fontFamily: 'CeraRoundProDEMO-Black' },
   skipRow: { flexDirection: "row", marginTop: 12, gap: 10 },
   skipToggle: { flex: 1, height: 36, borderRadius: theme.radius, backgroundColor: theme.surface2, alignItems: "center", justifyContent: "center" },
   skipToggleOn: { backgroundColor: theme.accent },
@@ -2107,7 +2118,7 @@ const styles = StyleSheet.create({
   inlineLink: { marginTop: 8, alignSelf: "flex-start" },
   inlineLinkText: { fontSize: 12, fontWeight: "700", color: theme.muted, textDecorationLine: "underline" },
   errorInline: { marginTop: 10, backgroundColor: theme.dangerBg, borderRadius: theme.radius, padding: 12 },
-  errorInlineText: { color: theme.dangerText, fontSize: 12, fontWeight: "700" },
+  errorInlineText: { color: theme.dangerText, fontSize: 12, fontWeight: "700", fontFamily: 'CeraRoundProDEMO-Black' },
   coachOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "center", alignItems: "center", padding: 20 },
   coachBox: { width: "100%", maxWidth: 400, backgroundColor: theme.surface, borderRadius: theme.radius, padding: 18, shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 6 },
   coachTitle: { fontSize: 16, fontWeight: "800", marginBottom: 8, color: theme.text },

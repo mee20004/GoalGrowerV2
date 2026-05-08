@@ -72,11 +72,15 @@ export default function FollowersListScreen({ route, navigation }) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Followers</Text>
+      <View style={styles.headerTopSpacer} />
+      <View style={styles.headerWrapper}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={26} color={theme.accent} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Followers</Text>
+          <View style={styles.headerBtnPlaceholder} />
+        </View>
       </View>
       {loading ? (
         <ActivityIndicator size="large" color="#A88F6F" style={{ marginTop: 50 }} />
@@ -87,29 +91,29 @@ export default function FollowersListScreen({ route, navigation }) {
           {followers.map((user, index) => {
             const isFollowing = followingIds.includes(user.id);
             return (
-              <View key={user.id || index} style={styles.userRow}>
-                <View style={styles.userAvatar}>
-                  <Ionicons name="person" size={20} color={theme.muted} />
+              <View key={user.id || index} style={styles.userCard}>
+                <View style={styles.userRow}>
+                  {/* Avatar removed for cleaner look */}
+                  <View style={styles.userInfo}>
+                    <Text style={styles.username}>{user.username || user.id}</Text>
+                  </View>
+                  <View style={styles.buttonGroup}>
+                    <TouchableOpacity
+                      style={styles.viewButton}
+                      onPress={() => navigation.navigate("UserProfile", { userId: user.id || user.uid })}
+                    >
+                      <Text style={styles.viewButtonText}>View Profile</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleFollowAction(user.id, isFollowing)}
+                      disabled={actionLoading[user.id]}
+                      style={[styles.actionButton, isFollowing ? styles.unfollowButton : styles.followBackButton, actionLoading[user.id] && styles.disabledButton]}
+                      accessibilityLabel={isFollowing ? "Unfollow" : "Follow back"}
+                    >
+                      <Text style={styles.actionButtonText}>{isFollowing ? "Unfollow" : "Follow back"}</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <Text style={styles.listUserName}>{user.username || user.id}</Text>
-                <TouchableOpacity
-                  style={styles.viewButton}
-                  onPress={() => navigation.navigate("UserProfile", { userId: user.id || user.uid })}
-                >
-                  <Text style={styles.viewButtonText}>View Profile</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => handleFollowAction(user.id, isFollowing)}
-                  disabled={actionLoading[user.id]}
-                  style={[styles.actionButton, isFollowing ? styles.unfollowButton : styles.followBackButton, { marginLeft: 10, opacity: actionLoading[user.id] ? 0.5 : 1 }]}
-                  accessibilityLabel={isFollowing ? "Unfollow" : "Follow back"}
-                >
-                  <Ionicons
-                    name={isFollowing ? "person-remove" : "person-add"}
-                    size={18}
-                    color={isFollowing ? "#fff" : "#fff"}
-                  />
-                </TouchableOpacity>
               </View>
             );
           })}
@@ -121,12 +125,12 @@ export default function FollowersListScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.bg, padding: 16 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  headerTopSpacer: { height: 40 },
+  headerWrapper: {
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderRadius: 24,
+    borderWidth: 0,
+    borderColor: '#d9e6f4',
     shadowColor: '#4c6782',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.16,
@@ -134,19 +138,134 @@ const styles = StyleSheet.create({
     elevation: 3,
     marginTop: 8,
     marginBottom: 12,
-    paddingLeft: 16,
-    paddingRight: 10,
-    minHeight: 44,
   },
-  backBtn: { marginRight: 12, padding: 4 },
-  headerTitle: { fontSize: 22, fontWeight: "900", color: theme.text },
-  userRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#E0F7D4", borderRadius: 8, padding: 12, marginBottom: 8 },
-  userAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.surface, alignItems: "center", justifyContent: "center", marginRight: 12 },
-  listUserName: { flex: 1, fontSize: 16, fontWeight: "700", color: theme.text },
-  viewButton: { backgroundColor: "#2D5A27", paddingHorizontal: 16, paddingVertical: 6, borderRadius: 8 },
-  actionButton: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  followBackButton: { backgroundColor: '#4B9CD3' },
-  unfollowButton: { backgroundColor: '#E57373' },
-  viewButtonText: { color: "#fff", fontWeight: "800", fontSize: 13 },
+  headerRow: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    justifyContent: "space-between", 
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 10,
+  },
+  headerBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: '#e7edf5',
+    shadowColor: '#c3cfdb',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 1,
+  },
+  headerBtnPlaceholder: {
+    width: 42,
+    height: 42,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: theme.text,
+    flexShrink: 1,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
+  },
+  userCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    shadowColor: '#4c6782',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 0,
+    elevation: 3,
+    marginBottom: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  userRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    gap: 8,
+  },
+  // userAvatar removed
+  userInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  username: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: theme.text,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
+    paddingVertical: 8,
+  },
+  buttonGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 'auto',
+  },
+  viewButton: {
+    backgroundColor: '#28b900',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    shadowColor: '#28b900',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 2,
+    marginRight: 4,
+    minWidth: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewButtonText: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 15,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.2,
+    marginLeft: 2,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    shadowColor: '#4B9CD3',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.10,
+    shadowRadius: 4,
+    elevation: 2,
+    marginLeft: 4,
+    minWidth: 80,
+    justifyContent: 'center',
+  },
+  followBackButton: {
+    backgroundColor: '#4B9CD3',
+  },
+  unfollowButton: {
+    backgroundColor: '#E57373',
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 14,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.2,
+    marginLeft: 0,
+    textAlign: 'center',
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
   emptyText: { color: theme.muted, fontStyle: 'italic', marginTop: 40, textAlign: "center", fontSize: 16 },
 });

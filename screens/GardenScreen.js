@@ -2780,7 +2780,6 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                       }}
                       activeOpacity={0.9}
                     >
-                      <Ionicons name="settings-outline" size={18} color="#fff" style={{ marginRight: 2 }} />
                       <Text style={styles.gardenBinCreateText}>Settings</Text>
                     </TouchableOpacity>
                   </View>
@@ -3026,6 +3025,8 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '800',
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   sharedGardenBackBtn: {
     position: 'absolute',
@@ -3129,6 +3130,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 14,
     marginRight: 6,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   gardenSwitcherDismissZone: {
     ...StyleSheet.absoluteFillObject,
@@ -3167,6 +3170,8 @@ const styles = StyleSheet.create({
     marginLeft: 0,
     textAlignVertical: 'center',
     includeFontPadding: false,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   gardenBinRowActions: {
     flexDirection: 'row',
@@ -3254,7 +3259,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: '#B8B8B8',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignSelf: 'stretch',
@@ -3272,6 +3277,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     textAlignVertical: 'center',
     includeFontPadding: false,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   resetFab: { 
     position: 'absolute', 
@@ -3526,6 +3533,7 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(255, 200, 0, 0.45)',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 8,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   storageHeaderIcon: {
     opacity: 0.9,
@@ -3752,6 +3760,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
     letterSpacing: 0.2,
     bottom: 30,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   plantProgressWrap: {
     alignItems: 'center',
@@ -3798,6 +3807,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
     letterSpacing: 0.2,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   trophyEffectsUnderPot: { position: 'absolute', width: 108, height: 140, bottom: 8, zIndex: 0, overflow: 'visible' },
   potBackground: { width: 80, height: 80, alignItems: 'center', justifyContent: 'flex-end', position: 'relative', bottom: 10, zIndex: 1 },

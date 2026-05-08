@@ -1,6 +1,7 @@
 // screens/RankScreen.js
 import React, { useState, useCallback } from "react";
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Image } from "react-native";
+import { useFonts } from 'expo-font';
 import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "@react-navigation/native";
 import { collection, query, orderBy, limit, getDocs, doc, getDoc } from "firebase/firestore";
@@ -16,17 +17,19 @@ const FILTERS = [
   { key: "following", label: "Following" },
 ];
 
+
+
+
 export default function RankScreen({ navigation }) {
+  // Load the Cera Round Pro DEMO font only for this screen
+  const [fontsLoaded] = useFonts({
+    'CeraRoundProDEMO-Black': require('../assets/fonts/CeraRoundProDEMOBlack.otf'),
+  });
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("global");
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchLeaderboard(activeFilter);
-    }, [activeFilter])
-  );
-
+  // Move fetchLeaderboard above useFocusEffect
   const fetchLeaderboard = async (filter = "global") => {
     setLoading(true);
     try {
@@ -99,6 +102,17 @@ export default function RankScreen({ navigation }) {
     }
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      fetchLeaderboard(activeFilter);
+    }, [activeFilter])
+  );
+
+  // Early return after all hooks
+  if (!fontsLoaded) {
+    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" /></View>;
+  }
+
   const leaderboardTitle =
     activeFilter === "global"
       ? "Global Leaderboard"
@@ -167,49 +181,48 @@ export default function RankScreen({ navigation }) {
   return (
     <Page>
       <View style={styles.container}>
-      <View style={styles.headerWrapper}>
-        <View style={styles.headerContent}>
-          <View style={styles.headerRow}>
-            <Text style={styles.headerTitle}>Rank</Text>
-
-            <View style={styles.filterRow}>
-              {FILTERS.map((filter) => {
-                const isActive = activeFilter === filter.key;
-                return (
-                  <TouchableOpacity
-                    key={filter.key}
-                    style={[styles.filterChip, isActive && styles.filterChipActive]}
-                    onPress={() => {
-                      triggerFilterHaptic();
-                      setActiveFilter(filter.key);
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>{filter.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
+        <View style={styles.headerWrapper}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerRow}>
+              <Text style={styles.headerTitle}>Rank</Text>
+              <View style={styles.filterRow}>
+                {FILTERS.map((filter) => {
+                  const isActive = activeFilter === filter.key;
+                  return (
+                    <TouchableOpacity
+                      key={filter.key}
+                      style={[styles.filterChip, isActive && styles.filterChipActive]}
+                      onPress={() => {
+                        triggerFilterHaptic();
+                        setActiveFilter(filter.key);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>{filter.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
           </View>
         </View>
-      </View>
 
-      {loading ? (
-        <View style={styles.centerContent}>
-          <ActivityIndicator size="large" color="#2D5A27" />
-        </View>
-      ) : (
-        <FlatList
-          data={leaderboard}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>{emptyMessage}</Text>
-          }
-        />
-      )}
+        {loading ? (
+          <View style={styles.centerContent}>
+            <ActivityIndicator size="large" color="#2D5A27" />
+          </View>
+        ) : (
+          <FlatList
+            data={leaderboard}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>{emptyMessage}</Text>
+            }
+          />
+        )}
       </View>
     </Page>
   );
@@ -249,6 +262,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
     color: theme.text,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   filterRow: {
     marginTop: 0,
@@ -278,9 +292,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "900",
     color: "#ffffff",
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   filterChipTextActive: {
     color: "#fff",
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
 
   listContent: { paddingTop: 4, paddingBottom: 100, gap: 10 },
@@ -308,19 +324,19 @@ const styles = StyleSheet.create({
   },
 
   rankContainer: { width: 40, alignItems: "center", justifyContent: "center", marginRight: 8 },
-  medal: { fontSize: 28 },
-  rankNumber: { fontSize: 18, fontWeight: "900", color: theme.muted },
+  medal: { fontSize: 28, fontFamily: 'CeraRoundProDEMO-Black' },
+  rankNumber: { fontSize: 18, fontWeight: "900", color: theme.muted, fontFamily: 'CeraRoundProDEMO-Black' },
 
   // avatar removed
 
   userInfo: { flex: 1 },
-  username: { fontSize: 16, fontWeight: "900", color: theme.text, marginBottom: 4 },
-  currentUsername: { color: '#28b900' },
-  streakText: { fontSize: 12, fontWeight: "800", color: "#FF9600" },
+  username: { fontSize: 16, fontWeight: "900", color: theme.text, marginBottom: 4, fontFamily: 'CeraRoundProDEMO-Black' },
+  currentUsername: { color: '#28b900', fontFamily: 'CeraRoundProDEMO-Black' },
+  streakText: { fontSize: 12, fontWeight: "800", color: "#FF9600", fontFamily: 'CeraRoundProDEMO-Black' },
 
   scoreContainer: { alignItems: "flex-end", justifyContent: "center" },
-  scoreNumber: { fontSize: 20, fontWeight: "900", color: '#28b900' },
-  scoreLabel: { fontSize: 10, fontWeight: "800", color: theme.muted, marginTop: -2 },
+  scoreNumber: { fontSize: 20, fontWeight: "900", color: '#28b900', fontFamily: 'CeraRoundProDEMO-Black' },
+  scoreLabel: { fontSize: 10, fontWeight: "800", color: theme.muted, marginTop: -2, fontFamily: 'CeraRoundProDEMO-Black' },
 
-  emptyText: { textAlign: "center", color: theme.muted, marginTop: 40, fontStyle: "italic", fontWeight: '900', fontSize: 16 },
+  emptyText: { textAlign: "center", color: theme.muted, marginTop: 40, fontStyle: "italic", fontWeight: '900', fontSize: 16, fontFamily: 'CeraRoundProDEMO-Black' },
 });

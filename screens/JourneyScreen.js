@@ -532,7 +532,7 @@ const styles = StyleSheet.create({
     // backgroundColor, shadow, and zIndex removed to let GoalActionButton handle them
   },
   completeGoalButtonDisabled: { opacity: 0.6 },
-  completeGoalButtonText: { color: "#FFF", fontSize: 15, fontWeight: "900" },
+  completeGoalButtonText: { color: "#FFF", fontSize: 15, fontWeight: "900", fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1 },
   container: {
     flex: 1,
     backgroundColor: "#226B4B",
@@ -565,6 +565,8 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "900",
     color: theme.text,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   nextGoalCardWrap: {
     backgroundColor: "#f5f5f5",
@@ -613,6 +615,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textTransform: "uppercase",
     letterSpacing: 1,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   progressCard: {
     backgroundColor: "#ffffff",
@@ -630,6 +633,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "900",
     color: "#7d8a97",
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   growthHeaderRow: {
     flexDirection: "row",
@@ -644,6 +649,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.6,
     marginBottom: 2,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   stageChip: {
     flexDirection: "row",
@@ -658,12 +664,16 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "900",
     color: "#3d6f46",
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   progressHint: {
     marginTop: 6,
     fontSize: 11,
     fontWeight: "800",
     color: "#7d8a97",
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   nextGoalsWrap: {
     marginTop: 10,
@@ -677,6 +687,8 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: theme.text,
     marginBottom: 2,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   nextGoalRow: {
     flexDirection: "row",
@@ -704,6 +716,8 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: "#000000",
     paddingBottom: 6,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   nextGoalValue: {
     fontSize: 10,
@@ -711,6 +725,8 @@ const styles = StyleSheet.create({
     color: "#000000",
     paddingRight: 10,
     paddingBottom: 6,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   nextGoalMiniTrack: {
     width: "100%",
@@ -739,6 +755,8 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#7d8a97",
     marginBottom: 4,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   trackRow: {
     flexDirection: "row",
@@ -778,6 +796,8 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: theme.text,
     flex: 1,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   trackStatusPill: {
     backgroundColor: "#eaf0f7",
@@ -792,6 +812,8 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "900",
     color: "#6b7f93",
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   trackStatusTextUnlocked: {
     color: "#2f8f3a",
@@ -801,6 +823,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     color: theme.text2,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   progressTrack: {
     marginTop: 8,
@@ -819,6 +843,8 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "800",
     color: theme.muted,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   trackMetaRow: {
     marginTop: 6,
@@ -833,6 +859,8 @@ const styles = StyleSheet.create({
     color: "#3b5176",
     flex: 1,
     textAlign: "right",
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   summaryGrid: {
     flexDirection: "row",
@@ -850,6 +878,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "900",
     color: theme.text,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   summaryLabel: {
     marginTop: 2,
@@ -858,6 +888,7 @@ const styles = StyleSheet.create({
     color: "#7d8a97",
     textTransform: "uppercase",
     letterSpacing: 0.5,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   summaryScoreRow: {
     marginTop: 10,
@@ -875,10 +906,13 @@ const styles = StyleSheet.create({
     color: "#56708a",
     textTransform: "uppercase",
     letterSpacing: 0.6,
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   summaryScoreValue: {
     fontSize: 18,
     fontWeight: "900",
     color: theme.text,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   }
 });
