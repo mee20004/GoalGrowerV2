@@ -215,7 +215,20 @@ export function updateTrophyFreezeState(goal) {
   } else if (shouldUnfreezeTrophyState(goal)) {
     // Unfreeze now
     const { isFrozenTrophyState, frozenHealthLevel, frozenCurrentStreak, frozenLongestStreak, ...rest } = goal;
-    return rest;
+    // Set resumeFromTrophyDate to the day after trophy was frozen, and resumeFromTrophyHealth to frozenHealthLevel - 1
+    let resumeFromTrophyDate = null;
+    if (goal?.trophyDate) {
+      // trophyDate is the day the goal became a trophy (should be a dateKey string)
+      const trophyDateObj = fromKey(goal.trophyDate);
+      trophyDateObj.setDate(trophyDateObj.getDate() + 1);
+      resumeFromTrophyDate = toKey(trophyDateObj);
+    }
+    const resumeFromTrophyHealth = (typeof frozenHealthLevel === 'number') ? clampHealthLevel(frozenHealthLevel - 1) : undefined;
+    return {
+      ...rest,
+      ...(resumeFromTrophyDate ? { resumeFromTrophyDate } : {}),
+      ...(resumeFromTrophyHealth !== undefined ? { resumeFromTrophyHealth } : {}),
+    };
   }
   return goal;
 }

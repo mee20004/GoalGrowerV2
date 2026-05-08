@@ -1865,7 +1865,8 @@ export default function GoalScreen({ route, navigation }) {
   const isTrophy = shelfPosition?.pageId === STORAGE_PAGE_ID;
   // If goal is a trophy or was a trophy and frozen, use frozen values for streak, health, rewards
   const isFrozenTrophy = goal?.isFrozenTrophyState;
-  const displayHealthState = getPlantHealthState(goalForDerivedState, fromKey(selectedDateKey));
+  // Always use real current date for health bar, not selected date
+  const displayHealthState = getPlantHealthState(goalForDerivedState, new Date());
 
   // Find the date the plant became a trophy
   const trophyDate = goal?.trophyDate || null;
@@ -1900,13 +1901,15 @@ export default function GoalScreen({ route, navigation }) {
       isFrozenDay = true;
     }
 
+
     let healthLevel;
     if (isFrozenDay) {
       healthLevel = Number(goal?.frozenHealthLevel) || 5;
+    } else if (typeof goal?.logs?.healthHistory?.[dateKey] === 'number') {
+      healthLevel = goal.logs.healthHistory[dateKey];
     } else {
-      healthLevel = typeof goal?.logs?.healthHistory?.[dateKey] === 'number'
-        ? goal.logs.healthHistory[dateKey]
-        : null;
+      // Fallback: simulate health for this day if not present in healthHistory
+      healthLevel = getPlantHealthState(goalForDerivedState, date).healthLevel;
     }
 
     recentHistory.push({
@@ -1921,6 +1924,10 @@ export default function GoalScreen({ route, navigation }) {
       healthLevel,
       isFrozenDay,
     });
+  }
+  // DEBUG: Print recentHistory for weekly bars
+  if (goal?.name === "Grumble") {
+    console.log("[DEBUG][GoalScreen][Grumble] recentHistory:", recentHistory);
   }
   const progressStatusText = isSharedMultiUserCompletion
     ? `${contributorProgressLabel} contributors`
@@ -1968,6 +1975,13 @@ export default function GoalScreen({ route, navigation }) {
   const healthLevelValue = (isTrophy || isFrozenTrophy)
     ? Number(goal?.frozenHealthLevel) || 5
     : Math.max(1, Math.min(5, Number(displayHealthState.healthLevel) || 1));
+
+  // DEBUG: Print health bar calculation for this goal
+  if (goal?.name === "Grumble") {
+    console.log("[DEBUG][GoalScreen][Grumble] goalForDerivedState:", goalForDerivedState);
+    console.log("[DEBUG][GoalScreen][Grumble] displayHealthState:", displayHealthState);
+    console.log("[DEBUG][GoalScreen][Grumble] healthLevelValue:", healthLevelValue);
+  }
   const HEALTH_BLUE_BY_LEVEL = {
     1: "#8ea5bf",
     2: "#789fc6",

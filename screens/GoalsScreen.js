@@ -35,6 +35,19 @@ const DEFAULT_PLANT_PREVIEW_COLOR = '#EEF6FF';
 function GoalPlantPreview({ goal, getPlantHealthState, backdropColor = DEFAULT_PLANT_PREVIEW_COLOR }) {
   const stage = getGrowthStage(goal?.totalCompletions);
 
+  // DEBUG: Print health simulation details for this goal
+  if (goal?.name === "Grumble") {
+    const now = new Date();
+    const healthState = getPlantHealthState(goal, now);
+    const createdAt = goal?.createdAt ? new Date(goal.createdAt.seconds ? goal.createdAt.seconds * 1000 : goal.createdAt) : null;
+    console.log("[DEBUG][Grumble] Health simulation:");
+    console.log("  createdAt:", createdAt);
+    console.log("  today:", now);
+    console.log("  healthState:", healthState);
+    if (goal?.logs) {
+      console.log("  logs:", goal.logs);
+    }
+  }
   const { status } = getPlantHealthState(goal);
   const species = goal?.plantSpecies || ((goal?.type !== "completion" && goal?.type !== "quantity") ? goal?.type : "fern");
   const speciesAssets = PLANT_ASSETS[species] || PLANT_ASSETS.fern;
