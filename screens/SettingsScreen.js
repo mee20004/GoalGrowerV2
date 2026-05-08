@@ -14,6 +14,8 @@ import {
   updateGlobalNotificationTime,
   requestNotificationPermissions,
   initializeNotifications,
+  getNotificationMode,
+  setNotificationMode,
 } from "../utils/notifications";
 
 export default function SettingsScreen({ navigation }) {
@@ -25,6 +27,7 @@ export default function SettingsScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [notificationMode, setNotificationModeState] = useState("global");
   const [dailyReminderEnabled, setDailyReminderEnabled] = useState(true);
   const [notificationHour, setNotificationHour] = useState(9);
   const [notificationMinute, setNotificationMinute] = useState(0);
@@ -46,6 +49,7 @@ export default function SettingsScreen({ navigation }) {
           // Fetch notification settings
           const settings = await getNotificationSettings();
           setNotificationsEnabled(settings.notificationsEnabled);
+          setNotificationModeState(settings.notificationMode || "global");
           setDailyReminderEnabled(settings.dailyReminderEnabled);
           setNotificationHour(settings.globalTime);
           setNotificationMinute(settings.globalTimeMinute);
@@ -59,6 +63,15 @@ export default function SettingsScreen({ navigation }) {
   }, []);
   const handlePrivateToggle = (value) => {
     setPrivateAccount(value);
+  };
+
+  const handleNotificationModeChange = async (mode) => {
+    setNotificationModeState(mode);
+    const success = await setNotificationMode(mode);
+    if (!success) {
+      setNotificationModeState(notificationMode);
+      Alert.alert("Error", "Failed to update notification mode");
+    }
   };
 
   const handleNotificationsToggle = async (value) => {
@@ -337,6 +350,44 @@ export default function SettingsScreen({ navigation }) {
               <>
                 <View style={[styles.switchRow, { marginTop: 14 }]}>
                   <View style={styles.switchTextWrap}>
+                    <Text style={styles.labelNoMargin}>Notification Mode</Text>
+                    <Text style={styles.switchHint}>Choose how you want to receive notifications.</Text>
+                  </View>
+                </View>
+
+                <View style={styles.modeSelectionWrap}>
+                  <Pressable 
+                    onPress={() => handleNotificationModeChange("global")}
+                    style={[
+                      styles.modeButton,
+                      notificationMode === "global" && styles.modeButtonActive
+                    ]}
+                  >
+                    <Text style={[
+                      styles.modeButtonText,
+                      notificationMode === "global" && styles.modeButtonTextActive
+                    ]}>
+                      All Goals
+                    </Text>
+                  </Pressable>
+                  <Pressable 
+                    onPress={() => handleNotificationModeChange("individual")}
+                    style={[
+                      styles.modeButton,
+                      notificationMode === "individual" && styles.modeButtonActive
+                    ]}
+                  >
+                    <Text style={[
+                      styles.modeButtonText,
+                      notificationMode === "individual" && styles.modeButtonTextActive
+                    ]}>
+                      Individual Goals
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <View style={[styles.switchRow, { marginTop: 14 }]}>
+                  <View style={styles.switchTextWrap}>
                     <Text style={styles.labelNoMargin}>Daily Reminder</Text>
                     <Text style={styles.switchHint}>Get a daily reminder at your chosen time.</Text>
                   </View>
@@ -348,7 +399,7 @@ export default function SettingsScreen({ navigation }) {
                   />
                 </View>
 
-                {dailyReminderEnabled && (
+                {dailyReminderEnabled && notificationMode === "global" && (
                   <Pressable onPress={() => setShowTimeModal(true)} style={styles.timePickerButton}>
                     <Text style={styles.timePickerLabel}>Daily reminder time</Text>
                     <View style={styles.timeDisplay}>
@@ -359,14 +410,6 @@ export default function SettingsScreen({ navigation }) {
                     </View>
                   </Pressable>
                 )}
-
-                <Pressable 
-                  onPress={() => navigation.navigate('NotificationSettings')} 
-                  style={styles.goalNotificationsButton}
-                >
-                  <Text style={styles.goalNotificationsButtonText}>Customize Goal Notifications</Text>
-                  <Ionicons name="chevron-forward" size={18} color={theme.accent} />
-                </Pressable>
               </>
             )}
           </View>
@@ -825,5 +868,36 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#fff',
     fontFamily: 'CeraRoundProDEMO-Black',
+  },
+
+  // Mode Selection Styles
+  modeSelectionWrap: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  modeButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: '#f7fafc',
+    borderWidth: 2,
+    borderColor: '#d9e6f4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeButtonActive: {
+    backgroundColor: theme.accent,
+    borderColor: theme.accent,
+  },
+  modeButtonText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: theme.text2,
+  },
+  modeButtonTextActive: {
+    color: '#ffffff',
   },
 });
