@@ -36,6 +36,11 @@ import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
 import { auth, db } from "../firebaseConfig";
 import { updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
 import {
+  getNotificationSettings,
+  getGoalNotificationSettings,
+  saveGoalNotificationSettings,
+} from "../utils/notifications";
+import {
   calculateGoalStreak,
   countCompletedDates,
   getGrowthStage,
@@ -738,6 +743,13 @@ export default function GoalScreen({ route, navigation }) {
   const [multiUserWateringEnabled, setMultiUserWateringEnabled] = useState(false);
   const [requiredContributors, setRequiredContributors] = useState("2");
   const [editCalendarMonth, setEditCalendarMonth] = useState(toStartOfDay(new Date()));
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [goalNotificationEnabled, setGoalNotificationEnabled] = useState(false);
+  const [originalGoalNotificationEnabled, setOriginalGoalNotificationEnabled] = useState(false);
+  const [goalNotificationTime, setGoalNotificationTime] = useState(9);
+  const [goalNotificationTimeMinute, setGoalNotificationTimeMinute] = useState(0);
+  const [showGoalTimeModal, setShowGoalTimeModal] = useState(false);
+  const [hasUnsavedNotificationChanges, setHasUnsavedNotificationChanges] = useState(false);
   const uid = auth.currentUser?.uid;
 
   const setLocalOptimisticProgress = (nextStateOrUpdater) => {
@@ -792,6 +804,46 @@ export default function GoalScreen({ route, navigation }) {
       setIsTapCoolingDown(false);
     };
   }, []);
+
+  // Load notification settings when edit modal opens
+  useEffect(() => {
+    if (!showEditModal) return;
+
+    const loadNotificationSettings = async () => {
+      try {
+        // Check if notifications are globally enabled
+        const settings = await getNotificationSettings();
+        setNotificationsEnabled(settings.notificationsEnabled);
+
+        // Load goal-specific notification settings
+        if (goal?.id) {
+          const goalSettings = await getGoalNotificationSettings(goal.id);
+          setGoalNotificationEnabled(goalSettings.enabled);
+          setOriginalGoalNotificationEnabled(goalSettings.enabled);
+          setGoalNotificationTime(goalSettings.time || 9);
+          setGoalNotificationTimeMinute(goalSettings.timeMinute || 0);
+          setHasUnsavedNotificationChanges(false);
+        }
+      } catch (error) {
+        console.error('Error loading notification settings:', error);
+      }
+    };
+
+    loadNotificationSettings();
+  }, [showEditModal, goal?.id]);
+
+  // Track unsaved notification changes
+  useEffect(() => {
+    if (!showEditModal) return;
+
+    const hasChanges =
+      goalNotificationEnabled !== originalGoalNotificationEnabled ||
+      (goalNotificationEnabled &&
+        (goalNotificationTime !== (goal?.notificationTime || 9) ||
+          goalNotificationTimeMinute !== (goal?.notificationTimeMinute || 0)));
+
+    setHasUnsavedNotificationChanges(hasChanges);
+  }, [goalNotificationEnabled, goalNotificationTime, goalNotificationTimeMinute, originalGoalNotificationEnabled, showEditModal, goal]);
 
   useEffect(() => {
     if (!goalId) {
@@ -1116,6 +1168,7 @@ export default function GoalScreen({ route, navigation }) {
     setShowIconModal(false);
     setEditView("form");
     setIconSearch("");
+    setHasUnsavedNotificationChanges(false);
     setShowEditModal(true);
   };
 
@@ -1123,6 +1176,34 @@ export default function GoalScreen({ route, navigation }) {
     setShowEditModal(false);
     setEditView("icons");
     queueModalSwap(() => setShowIconModal(true));
+  };
+
+  const handleCancelEdit = () => {
+    if (hasUnsavedNotificationChanges) {
+      Alert.alert(
+        "Unsaved Changes",
+        "You have unsaved notification changes. Are you sure you want to cancel without saving?",
+        [
+          { text: "Keep Editing", onPress: () => {} },
+          {
+            text: "Discard Changes",
+            onPress: () => {
+              setShowIconModal(false);
+              setShowEditModal(false);
+              setEditView("form");
+              setIconSearch("");
+              setHasUnsavedNotificationChanges(false);
+            },
+            style: "destructive",
+          },
+        ]
+      );
+    } else {
+      setShowIconModal(false);
+      setShowEditModal(false);
+      setEditView("form");
+      setIconSearch("");
+    }
   };
 
   const closeIconModal = () => {
@@ -1246,7 +1327,21 @@ export default function GoalScreen({ route, navigation }) {
         await deleteDoc(doc(db, "sharedGardens", wasSharedGardenId, "layout", goal.id));
       }
 
+      // Save notification settings for this goal
+      if (goalNotificationEnabled) {
+        await saveGoalNotificationSettings(goal.id, {
+          enabled: true,
+          time: goalNotificationTime,
+          timeMinute: goalNotificationTimeMinute,
+        });
+      } else {
+        await saveGoalNotificationSettings(goal.id, {
+          enabled: false,
+        });
+      }
+
       setShowEditModal(false);
+      setHasUnsavedNotificationChanges(false);
     } catch (error) {
       console.log('[DEBUG] updateGoal error:', error);
       Alert.alert("Error", "Could not update goal.");
@@ -2300,7 +2395,7 @@ export default function GoalScreen({ route, navigation }) {
               <View style={styles.modalHeader}>
                 <View style={styles.modalHeaderSide}>
                   <Pressable
-                    onPress={() => { setShowIconModal(false); setShowEditModal(false); setEditView("form"); setIconSearch(""); }}
+                    onPress={handleCancelEdit}
                     onPressIn={() => triggerDetailHaptic(Haptics.ImpactFeedbackStyle.Light)}
                     style={({ pressed }) => [
                       styles.modalHeaderButton,
@@ -2463,6 +2558,61 @@ export default function GoalScreen({ route, navigation }) {
                   )}
                 </View>
 
+                <View style={styles.editCard}>
+                  <Text style={styles.editLabel}>Notifications</Text>
+                  
+                  {!notificationsEnabled && (
+                    <View style={styles.notificationWarning}>
+                      <Ionicons name="warning" size={18} color="#EF6B6B" />
+                      <Text style={styles.notificationWarningText}>
+                        Notifications are disabled in settings. Enable them first.
+                      </Text>
+                    </View>
+                  )}
+
+                  <View style={[styles.switchRow, { marginTop: notificationsEnabled ? 0 : 12 }]}>
+                    <View style={styles.switchTextWrap}>
+                      <Text style={styles.switchLabel}>Goal Notification</Text>
+                      <Text style={styles.switchHint}>Get a reminder for this goal</Text>
+                    </View>
+                    <Switch
+                      value={goalNotificationEnabled}
+                      onValueChange={(value) => {
+                        setGoalNotificationEnabled(value);
+                        if (value) {
+                          setHasUnsavedNotificationChanges(true);
+                        }
+                      }}
+                      disabled={!notificationsEnabled}
+                      trackColor={{ false: theme.outline, true: theme.accent }}
+                    />
+                  </View>
+
+                  {goalNotificationEnabled && notificationsEnabled && (
+                    <>
+                      <Pressable 
+                        onPress={() => setShowGoalTimeModal(true)} 
+                        style={styles.goalTimePickerButton}
+                      >
+                        <Text style={styles.timePickerLabel}>Reminder time</Text>
+                        <View style={styles.timeDisplay}>
+                          <Text style={styles.timeText}>
+                            {String(goalNotificationTime).padStart(2, '0')}:{String(goalNotificationTimeMinute).padStart(2, '0')}
+                          </Text>
+                          <Ionicons name="chevron-forward" size={16} color={theme.accent} />
+                        </View>
+                      </Pressable>
+
+                      {hasUnsavedNotificationChanges && (
+                        <View style={styles.unsavedIndicator}>
+                          <Ionicons name="alert-circle" size={16} color="#F39C12" />
+                          <Text style={styles.unsavedText}>Press Save to apply changes</Text>
+                        </View>
+                      )}
+                    </>
+                  )}
+                </View>
+
                 {!!formError && <View style={styles.errorInline}><Text style={styles.errorInlineText}>{formError}</Text></View>}
               </ScrollView>
             </View>
@@ -2590,6 +2740,97 @@ export default function GoalScreen({ route, navigation }) {
               </Pressable>
               <Pressable onPress={submitPostponedEndDate} style={styles.returnDateBtnPrimary}>
                 <Text style={styles.returnDateBtnPrimaryText}>Save & Check Off</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showGoalTimeModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowGoalTimeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.goalTimeModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Set Goal Reminder Time</Text>
+              <Pressable onPress={() => setShowGoalTimeModal(false)}>
+                <Ionicons name="close" size={28} color={theme.text} />
+              </Pressable>
+            </View>
+
+            <View style={styles.timePickerContainer}>
+              <View style={styles.timeColumn}>
+                <Text style={styles.timeLabel}>Hour</Text>
+                <ScrollView style={styles.hourScroll} scrollEventThrottle={16}>
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <Pressable
+                      key={i}
+                      onPress={() => {
+                        setGoalNotificationTime(i);
+                        setHasUnsavedNotificationChanges(true);
+                      }}
+                      style={[
+                        styles.hourOption,
+                        goalNotificationTime === i && styles.selectedHour,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.hourOptionText,
+                          goalNotificationTime === i && styles.selectedHourText,
+                        ]}
+                      >
+                        {String(i).padStart(2, '0')}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.timeColumn}>
+                <Text style={styles.timeLabel}>Minute</Text>
+                <ScrollView style={styles.minuteScroll} scrollEventThrottle={16}>
+                  {Array.from({ length: 60 }, (_, i) => (
+                    <Pressable
+                      key={i}
+                      onPress={() => {
+                        setGoalNotificationTimeMinute(i);
+                        setHasUnsavedNotificationChanges(true);
+                      }}
+                      style={[
+                        styles.minuteOption,
+                        goalNotificationTimeMinute === i && styles.selectedMinute,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.minuteOptionText,
+                          goalNotificationTimeMinute === i && styles.selectedMinuteText,
+                        ]}
+                      >
+                        {String(i).padStart(2, '0')}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+
+            <View style={styles.modalButtons}>
+              <Pressable
+                onPress={() => setShowGoalTimeModal(false)}
+                style={[styles.modalButton, styles.cancelButton]}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setShowGoalTimeModal(false)}
+                style={[styles.modalButton, styles.confirmButton]}
+              >
+                <Text style={styles.confirmButtonText}>Done</Text>
               </Pressable>
             </View>
           </View>
@@ -3320,4 +3561,204 @@ const styles = StyleSheet.create({
   iconModalList: { flex: 1, paddingHorizontal: 12, paddingTop: 4 },
   errorInline: { backgroundColor: theme.dangerBg, borderRadius: theme.radius, padding: 12 },
   errorInlineText: { color: theme.dangerText, fontSize: 12, fontWeight: "800" },
+
+  // Notification Styles
+  notificationWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FDE6E3',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  notificationWarningText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#EF6B6B',
+    flex: 1,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+  },
+  switchLabel: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: theme.text2,
+    marginBottom: 2,
+  },
+  switchHint: {
+    fontSize: 12,
+    color: theme.muted,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  switchTextWrap: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  goalTimePickerButton: {
+    marginTop: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingTop: 14,
+  },
+  timePickerLabel: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: theme.text2,
+  },
+  timeDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#f7fafc',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  timeText: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: theme.accent,
+  },
+  unsavedIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFF3E0',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+  },
+  unsavedText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#F39C12',
+    flex: 1,
+  },
+  goalTimeModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 24,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: theme.text,
+  },
+  timePickerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 20,
+    height: 200,
+  },
+  timeColumn: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  timeLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: theme.text2,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  hourScroll: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: '#f7fafc',
+    paddingVertical: 8,
+  },
+  minuteScroll: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: '#f7fafc',
+    paddingVertical: 8,
+  },
+  hourOption: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  minuteOption: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  selectedHour: {
+    backgroundColor: theme.accent,
+    borderRadius: 8,
+  },
+  selectedMinute: {
+    backgroundColor: theme.accent,
+    borderRadius: 8,
+  },
+  hourOptionText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.text2,
+  },
+  minuteOptionText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.text2,
+  },
+  selectedHourText: {
+    color: '#fff',
+    fontWeight: '900',
+  },
+  selectedMinuteText: {
+    color: '#fff',
+    fontWeight: '900',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#f0f0f0',
+  },
+  confirmButton: {
+    backgroundColor: theme.accent,
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: theme.text,
+  },
+  confirmButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
 });
