@@ -17,6 +17,7 @@ Notifications.setNotificationHandler({
  */
 export const DEFAULT_NOTIFICATION_SETTINGS = {
   notificationsEnabled: true,
+  notificationMode: 'global', // 'global' or 'individual'
   globalTime: 9, // 9 AM
   globalTimeMinute: 0,
   dailyReminderEnabled: true,
@@ -192,9 +193,9 @@ export async function scheduleDailyGoalNotification() {
         badge: 1,
       },
       trigger: {
+        type: 'daily',
         hour: settings.globalTime,
         minute: settings.globalTimeMinute,
-        repeats: true,
       },
     });
 
@@ -245,9 +246,9 @@ export async function scheduleGoalNotification(goalId, goalName, hour = 9, minut
         sound: true,
       },
       trigger: {
+        type: 'daily',
         hour,
         minute,
-        repeats: true,
       },
     });
 
@@ -440,6 +441,123 @@ export async function getScheduledNotifications() {
   } catch (error) {
     console.error('Error getting scheduled notifications:', error);
     return [];
+  }
+}
+
+/**
+ * Get notification mode (global or individual)
+ */
+export async function getNotificationMode() {
+  try {
+    const settings = await getNotificationSettings();
+    return settings.notificationMode || 'global';
+  } catch (error) {
+    console.error('Error getting notification mode:', error);
+    return 'global';
+  }
+}
+
+/**
+ * Set notification mode (global or individual)
+ */
+export async function setNotificationMode(mode) {
+  try {
+    if (!auth.currentUser) return false;
+    
+    const settings = await getNotificationSettings();
+    settings.notificationMode = mode;
+    
+    await saveNotificationSettings(settings);
+    
+    // Reschedule notifications based on new mode
+    await cancelAllScheduledNotifications();
+    if (settings.notificationsEnabled) {
+      if (mode === 'global' && settings.dailyReminderEnabled) {
+        await scheduleDailyGoalNotification();
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error setting notification mode:', error);
+    return false;
+  }
+}
+
+/**
+ * Get notification settings for a specific goal
+ */
+export async function getGoalNotificationSettings(goalId) {
+  try {
+    const settings = await getNotificationSettings();
+    return settings.perGoalNotifications?.[goalId] || {
+      enabled: false,
+      time: 9,
+      timeMinute: 0,
+    };
+  } catch (error) {
+    console.error('Error getting goal notification settings:', error);
+    return {
+      enabled: false,
+      time: 9,
+      timeMinute: 0,
+    };
+  }
+}
+
+/**
+ * Save notification settings for a specific goal
+ */
+export async function saveGoalNotificationSettings(goalId, notificationSettings) {
+  try {
+    if (!auth.currentUser) return false;
+    
+    const settings = await getNotificationSettings();
+    if (!settings.perGoalNotifications) {
+      settings.perGoalNotifications = {};
+    }
+    
+    settings.perGoalNotifications[goalId] = notificationSettings;
+    
+    await saveNotificationSettings(settings);
+    
+    // Reschedule this goal's notification
+    if (notificationSettings.enabled && settings.notificationsEnabled) {
+      await scheduleGoalNotification(
+        goalId,
+        '', // goalName will be passed separately
+        notificationSettings.time,
+        notificationSettings.timeMinute
+      );
+    } else {
+      // Cancel this goal's notification
+      await cancelGoalNotification(goalId);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error saving goal notification settings:', error);
+    return false;
+  }
+}
+
+/**
+ * Cancel notification for a specific goal
+ */
+export async function cancelGoalNotification(goalId) {
+  try {
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    const goalNotifications = scheduled.filter(
+      (notif) => notif.content.data?.goalId === goalId
+    );
+    
+    for (const notif of goalNotifications) {
+      await Notifications.cancelNotificationAsync(notif.identifier);
+    }
+    
+    console.log(`Notifications cancelled for goal: ${goalId}`);
+  } catch (error) {
+    console.error('Error cancelling goal notification:', error);
   }
 }
 
