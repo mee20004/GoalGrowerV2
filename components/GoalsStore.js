@@ -1,3 +1,5 @@
+import { auth, db } from '../firebaseConfig';
+import { collection, onSnapshot } from 'firebase/firestore';
 // components/GoalsStore.js
 import React, { createContext, useContext, useMemo, useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -153,6 +155,20 @@ function normalizeDraftForGoal(goalDraft) {
 }
 
 export function GoalsProvider({ children }) {
+  // Subscribe to Firestore goals for the current user
+  useEffect(() => {
+      if (!auth.currentUser) {
+        setGoals([]);
+        return;
+      }
+      const goalsRef = collection(db, 'users', auth.currentUser.uid, 'goals');
+      const unsub = onSnapshot(goalsRef, (snapshot) => {
+        const goalsData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setGoals(goalsData);
+      });
+      return () => unsub();
+    }, [auth.currentUser]);
+
   const todayKey = useMemo(() => toKey(new Date()), []);
   const [selectedDateKey, setSelectedDateKey] = useState(todayKey);
 

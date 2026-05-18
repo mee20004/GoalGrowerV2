@@ -19,6 +19,8 @@ import Login from "./login";
 
 // Stores & Theme
 import { GoalsProvider } from "./components/GoalsStore";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import EnterScreen from './screens/EnterScreen';
 import { theme } from "./theme";
 import { PLANT_ASSETS } from "./constants/PlantAssets";
 import { FAR_BG_ASSETS } from "./constants/FarBGAssets";
@@ -270,9 +272,22 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [hasUsername, setHasUsername] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [showEnterScreen, setShowEnterScreen] = useState(false);
 
   useEffect(() => {
     let unsubFirestore = null;
+
+    const checkEnterScreen = async (uid) => {
+      if (!uid) { setShowEnterScreen(false); return; }
+      const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      const key = `lastEnterScreenDate_${uid}`;
+      const lastShown = await AsyncStorage.getItem(key);
+      if (lastShown !== today) {
+        setShowEnterScreen(true);
+      } else {
+        setShowEnterScreen(false);
+      }
+    };
 
     const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (unsubFirestore) {
@@ -295,6 +310,7 @@ export default function App() {
               setHasUsername(false);
             }
             setInitializing(false);
+            checkEnterScreen(firebaseUser.uid);
           },
           (error) => {
             if (error?.code !== "permission-denied" || auth.currentUser) {
@@ -302,11 +318,13 @@ export default function App() {
             }
             setHasUsername(false);
             setInitializing(false);
+            checkEnterScreen(firebaseUser.uid);
           }
         );
       } else {
         setHasUsername(false);
         setInitializing(false);
+        setShowEnterScreen(false);
       }
     });
 
@@ -318,6 +336,16 @@ export default function App() {
 
   if (initializing) return null;
 
+  const handleEnterScreenDone = async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const uid = auth.currentUser?.uid;
+    if (uid) {
+      const key = `lastEnterScreenDate_${uid}`;
+      await AsyncStorage.setItem(key, today);
+    }
+    setShowEnterScreen(false);
+  };
+
   return (
     <SafeAreaProvider>
       <GoalsProvider>
@@ -325,7 +353,13 @@ export default function App() {
           <StatusBar style="dark" />
           <RootStack.Navigator screenOptions={{ headerShown: false }}>
             {user && hasUsername ? (
-              <RootStack.Screen name="Tabs" component={MainTabs} />
+              showEnterScreen ? (
+                <RootStack.Screen name="Enter" options={{ headerShown: false }}>
+                  {props => <EnterScreen {...props} onDone={handleEnterScreenDone} />}
+                </RootStack.Screen>
+              ) : (
+                <RootStack.Screen name="Tabs" component={MainTabs} />
+              )
             ) : (
               <RootStack.Screen name="Login" component={Login} />
             )}

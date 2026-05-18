@@ -591,7 +591,7 @@ const PlantVisual = ({ plant }) => {
 
   const species = plant.plantSpecies || (plant.type !== "completion" && plant.type !== "quantity" ? plant.type : "fern");
   const speciesAssets = PLANT_ASSETS[species] || PLANT_ASSETS.fern;
-  const healthStatus = getPlantHealthState(plant).status;
+  const healthStatus = getPlantHealthState(plant, new Date(), auth.currentUser?.uid).status;
   // Use the correct image for the health status, fallback to 'alive' if missing
   const plantSource = speciesAssets?.[stage]?.[healthStatus] || speciesAssets?.[stage]?.alive || PLANT_ASSETS.fern?.[stage]?.alive || PLANT_ASSETS.fern.stage1.alive;
   const potSource = POT_IMAGE;

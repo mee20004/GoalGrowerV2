@@ -1235,6 +1235,15 @@ export default function AddGoalScreen({ navigation }) {
       const userGoalsRef = collection(db, "users", auth.currentUser.uid, "goals");
       const docRef = await addDoc(userGoalsRef, goalData);
 
+      // Initialize health log for today (like EnterScreen)
+      try {
+        const { logHealthForDay } = require('../utils/logHealthForDay');
+        const todayKey = require('../components/GoalsStore').toKey(new Date());
+        await logHealthForDay(auth.currentUser.uid, docRef.id, todayKey, 4, false, false);
+      } catch (err) {
+        console.warn('[AddGoalScreen] Failed to initialize health log for new goal:', err);
+      }
+
       if (selectedGardenId !== "personal") {
         await setDoc(
           doc(db, "sharedGardens", selectedGardenId, "layout", docRef.id),

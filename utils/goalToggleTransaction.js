@@ -33,6 +33,11 @@ export async function toggleGoalTransaction({
   clearLocalOptimisticProgress = null,
 }) {
   if (!auth.currentUser || !goal || (shelfPosition?.pageId === STORAGE_PAGE_ID)) return;
+  // Defensive check: selectedDateKey must be a valid YYYY-MM-DD string
+  if (typeof selectedDateKey !== 'string' || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(selectedDateKey)) {
+    console.error('toggleGoalTransaction: Invalid selectedDateKey, aborting:', selectedDateKey, typeof selectedDateKey);
+    return;
+  }
   const currentUserId = auth.currentUser.uid;
   let transactionUpdate = null;
   let ownerIdForSync = null;
@@ -176,12 +181,46 @@ export async function toggleGoalTransaction({
       updateData.healthLevel = safeHealthLevel2;
       updateData[`logs.healthHistory.${selectedDateKey}`] = updatedLogs.healthHistory[selectedDateKey];
       updateData[`logs.frozenDays`] = updatedLogs.frozenDays;
+      // Unified health log: logs/health/{dateKey} with health, frozen, done, timestamp
+      // Store health log as a map under logs.health.{dateKey} in the goal document
+      if (typeof selectedDateKey === 'string' && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(selectedDateKey)) {
+        updateData[`logs.health.${selectedDateKey}`] = {
+          health: safeHealthLevel2,
+          frozen: !!latestGoal.isFrozenTrophyState,
+          done: !!isNowDone,
+          timestamp: new Date(),
+        };
+      } else {
+        console.error('Invalid selectedDateKey for Firestore field path:', selectedDateKey);
+      }
+      // Debug: print all updateData keys and their types before updating Firestore
+      Object.keys(updateData).forEach(k => {
+        if (typeof k !== 'string' || k === '[object Object]') {
+          console.error('toggleGoalTransaction: Invalid updateData key:', k, typeof k);
+        }
+      });
+      try {
+        console.log('toggleGoalTransaction: updateData payload:', JSON.stringify(updateData));
+      } catch (e) {
+        console.log('toggleGoalTransaction: updateData payload (non-serializable)', updateData);
+      }
       tx.update(goalRef, updateData);
       transactionUpdate = updateData;
       latestIsNowDone = isNowDone;
     });
     if (!transactionUpdate) return;
     if (isSharedGoalView && goal?.ownerId && goal?.sourceGoalId && transactionUpdate) {
+      // Debug: print all transactionUpdate keys and their types before updating Firestore
+      Object.keys(transactionUpdate).forEach(k => {
+        if (typeof k !== 'string' || k === '[object Object]') {
+          console.error('toggleGoalTransaction: Invalid transactionUpdate key:', k, typeof k);
+        }
+      });
+      try {
+        console.log('toggleGoalTransaction: transactionUpdate payload:', JSON.stringify(transactionUpdate));
+      } catch (e) {
+        console.log('toggleGoalTransaction: transactionUpdate payload (non-serializable)', transactionUpdate);
+      }
       try {
         await updateDoc(doc(db, "users", goal.ownerId, "goals", goal.sourceGoalId), transactionUpdate);
       } catch (syncError) {

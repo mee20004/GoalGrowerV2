@@ -443,7 +443,7 @@ const PlantVisual = ({ plant, isDraggingHighlight }) => {
 
   // Always use calculated healthLevel for today for ALL plants (matches GoalScreen)
   const today = new Date();
-  const displayHealthState = getPlantHealthState(plant, today);
+  const displayHealthState = getPlantHealthState(plant, today, auth.currentUser?.uid);
   const healthLevel = displayHealthState.healthLevel;
 
   const swayAnim = useRef(new Animated.Value(0)).current;
@@ -462,7 +462,7 @@ const PlantVisual = ({ plant, isDraggingHighlight }) => {
 
   // --- Use the exact same logic as GoalPlantPreview for plant image selection ---
   const stage = getGrowthStage(plant?.totalCompletions);
-  const { status } = getPlantHealthState(plant);
+  const { status } = getPlantHealthState(plant, new Date(), auth.currentUser?.uid);
   const species = plant?.plantSpecies || ((plant?.type !== "completion" && plant?.type !== "quantity") ? plant?.type : "fern");
   const speciesAssets = PLANT_ASSETS[species] || PLANT_ASSETS.fern;
   const plantSource =
@@ -857,8 +857,9 @@ export default function GardenScreen({ route, navigation }) {
     async function updateGoalWithHealth(goal, updatedFields) {
       const today = new Date();
       const updatedGoal = { ...goal, ...updatedFields };
-      const updatedHealthLevel = getPlantHealthState(updatedGoal, today).healthLevel;
+      const updatedHealthLevel = getPlantHealthState(updatedGoal, today, auth.currentUser?.uid).healthLevel;
       const updateData = { ...updatedFields, healthLevel: updatedHealthLevel };
+      console.log('[updateGoalWithHealth] updateData:', JSON.stringify(updateData));
       await updateDoc(doc(db, "users", auth.currentUser.uid, "goals", goal.id), updateData);
     }
   // --- Drawer and shelf positioning state/logic ---
@@ -1101,7 +1102,9 @@ export default function GardenScreen({ route, navigation }) {
         let currentAppStreak = userData.streakCount || 0;
         if (userData.lastActiveDate === todayStr) return currentAppStreak;
         currentAppStreak = (userData.lastActiveDate === yesterdayStr) ? currentAppStreak + 1 : 1;
-        await updateDoc(userRef, { streakCount: currentAppStreak, lastActiveDate: todayStr });
+        const updateData = { streakCount: currentAppStreak, lastActiveDate: todayStr };
+        console.log('[updateStreak] updateData:', JSON.stringify(updateData));
+        await updateDoc(userRef, updateData);
         return currentAppStreak;
       }
       return 0;
@@ -1124,7 +1127,9 @@ export default function GardenScreen({ route, navigation }) {
 
       if (newlyUnlocked.length > 0) {
         const newIds = newlyUnlocked.map(achievement => achievement.id);
-        await updateDoc(userRef, { unlockedAchievements: arrayUnion(...newIds) });
+        const updateData = { unlockedAchievements: arrayUnion(...newIds) };
+        console.log('[checkAchievements] updateData:', JSON.stringify(updateData));
+        await updateDoc(userRef, updateData);
       }
     } catch (error) {
       console.error(error);
@@ -1147,9 +1152,11 @@ export default function GardenScreen({ route, navigation }) {
     }
     if (isGoalDoneForDate(goal, todayKey)) return;
     try {
+      const todayKeyString = typeof todayKey === 'string' ? todayKey : toKey(todayKey);
+      console.log('[GardenScreen] toggleGoalTransaction selectedDateKey:', todayKeyString, typeof todayKeyString);
       await toggleGoalTransaction({
         goal,
-        selectedDateKey: todayKey,
+        selectedDateKey: todayKeyString,
         isSharedGoalView: !!sharedGardenId,
         routeSharedGardenId: sharedGardenId,
         shelfPosition: goal.shelfPosition,
@@ -2145,7 +2152,9 @@ export default function GardenScreen({ route, navigation }) {
           return;
         }
 
-        tx.update(gardenRef, { memberIds: arrayUnion(uid) });
+        const updateData = { memberIds: arrayUnion(uid) };
+        console.log('[acceptSharedGardenInvite] tx.update:', JSON.stringify(updateData));
+        tx.update(gardenRef, updateData);
       });
 
       await deleteDoc(doc(db, 'users', uid, 'sharedGardenInvites', invite.id));
@@ -2206,6 +2215,8 @@ export default function GardenScreen({ route, navigation }) {
 
         const nextMemberIds = memberIds.filter((memberId) => memberId !== uid);
         shouldDeleteSharedGoals = nextMemberIds.length === 0;
+        const updateData = { memberIds: nextMemberIds };
+        console.log('[removeFromSharedGarden] tx.update:', JSON.stringify(updateData));
         tx.update(gardenRef, { memberIds: nextMemberIds });
       });
 
