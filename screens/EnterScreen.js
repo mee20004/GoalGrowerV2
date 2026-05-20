@@ -96,8 +96,23 @@ export default function EnterScreen({ onDone }) {
       // ...existing code for updateAppStreak and finish...
       try {
         console.log('[EnterScreen] Awaiting updateAppStreak', { userId, todayKey });
-        await updateAppStreak(userId, todayKey);
-        console.log('[EnterScreen] updateAppStreak complete');
+        const streak = await updateAppStreak(userId, todayKey);
+        console.log('[EnterScreen] updateAppStreak complete, streak:', streak);
+        // Patch health log for today to include streak
+        for (const goal of goals) {
+          if (!goal.id) continue;
+          const ref = require('firebase/firestore').doc(db, 'users', userId, 'goals', goal.id);
+          const { updateDoc } = require('firebase/firestore');
+          // Read the current health log for today if it exists
+          const healthLog = goal.logs?.health?.[todayKey] || {};
+          await updateDoc(ref, {
+            [`logs.health.${todayKey}`]: {
+              ...healthLog,
+              streak,
+              timestamp: new Date(),
+            }
+          });
+        }
       } catch (err) {
         // Removed Alert for app streak error
       }

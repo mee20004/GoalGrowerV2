@@ -350,10 +350,15 @@ export async function toggleGoalTransaction({
       // Unified health log: logs/health/{dateKey} with health, frozen, done, timestamp
       // Store health log as a map under logs.health.{dateKey} in the goal document
       if (typeof selectedDateKey === 'string' && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(selectedDateKey)) {
+        let streakToStore = currentStreak;
+        if (latestGoal?.isFrozenTrophyState && typeof latestGoal.frozenCurrentStreak === 'number') {
+          streakToStore = latestGoal.frozenCurrentStreak;
+        }
         updateData[`logs.health.${selectedDateKey}`] = {
           health: safeHealthLevel2,
           frozen: !!latestGoal.isFrozenTrophyState,
           done: !!isNowDone,
+          streak: streakToStore,
           timestamp: new Date(),
         };
       } else {
