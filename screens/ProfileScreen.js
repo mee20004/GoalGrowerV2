@@ -1,8 +1,8 @@
 // ProfileScreen.js
 import React, { useState, useCallback } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput, Alert } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { doc, getDoc, collection, getDocs, updateDoc } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs, updateDoc, query, where, writeBatch, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { theme } from "../theme";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -16,6 +16,8 @@ export default function ProfileScreen({ navigation }) {
   const [followers, setFollowers] = useState([]);
   const [following, setFollowing] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [friendUsername, setFriendUsername] = useState("");
+  const [addingFriend, setAddingFriend] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -48,6 +50,74 @@ export default function ProfileScreen({ navigation }) {
       console.error("Error fetching social data:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAddFriendByUsername = async () => {
+    const enteredUsername = friendUsername.trim();
+    if (!enteredUsername) {
+      Alert.alert("Notice", "Enter a username.");
+      return;
+    }
+    if (!auth.currentUser?.uid) return;
+
+    setAddingFriend(true);
+    try {
+      const normalizedUsername = enteredUsername.toLowerCase();
+
+      // Primary lookup: normalized search key (fast path if populated)
+      const searchKeyQuery = query(collection(db, "users"), where("searchKey", "==", normalizedUsername));
+      let userSnapshot = await getDocs(searchKeyQuery);
+
+      // Fallback 1: exact username field
+      if (userSnapshot.empty) {
+        const usernameQuery = query(collection(db, "users"), where("username", "==", enteredUsername));
+        userSnapshot = await getDocs(usernameQuery);
+      }
+
+      // Fallback 2: case-insensitive local match (for older docs without searchKey)
+      let targetDoc = userSnapshot.docs.find((d) => d.id !== auth.currentUser.uid);
+      if (!targetDoc) {
+        const allUsersSnapshot = await getDocs(collection(db, "users"));
+        targetDoc = allUsersSnapshot.docs.find((d) => {
+          if (d.id === auth.currentUser.uid) return false;
+          const username = String(d.data()?.username || "").trim().toLowerCase();
+          return username === normalizedUsername;
+        });
+      }
+
+      if (!targetDoc) {
+        Alert.alert("Not found", `No user found matching "${enteredUsername}".`);
+        return;
+      }
+
+      const targetUser = { id: targetDoc.id, ...targetDoc.data() };
+      const myUid = auth.currentUser.uid;
+
+      const myProfileSnap = await getDoc(doc(db, "users", myUid));
+      const myUsername = myProfileSnap.exists() ? (myProfileSnap.data()?.username || "User") : "User";
+
+      const batch = writeBatch(db);
+      batch.set(doc(db, "users", myUid, "following", targetUser.id), {
+        uid: targetUser.id,
+        username: targetUser.username,
+        followedAt: serverTimestamp(),
+      });
+      batch.set(doc(db, "users", targetUser.id, "followers", myUid), {
+        uid: myUid,
+        username: myUsername,
+        followedAt: serverTimestamp(),
+      });
+      await batch.commit();
+
+      setFriendUsername("");
+      await fetchSocialData(myUid);
+      Alert.alert("Success", `You are now following ${targetUser.username}.`);
+    } catch (error) {
+      console.error("Error adding friend by username:", error);
+      Alert.alert("Error", "Could not add friend right now.");
+    } finally {
+      setAddingFriend(false);
     }
   };
 
@@ -90,6 +160,30 @@ export default function ProfileScreen({ navigation }) {
             <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate("FollowingListScreen")}> 
               <Text style={styles.statNumber}>{following.length}</Text>
               <Text style={styles.statLabel}>FOLLOWING</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Add Friend</Text>
+        <View style={styles.infoCard}>
+          <View style={styles.friendInputRow}>
+            <TextInput
+              style={styles.friendInput}
+              placeholder="Enter exact username"
+              autoCapitalize="none"
+              value={friendUsername}
+              onChangeText={setFriendUsername}
+              onSubmitEditing={handleAddFriendByUsername}
+              editable={!addingFriend}
+            />
+            <TouchableOpacity
+              style={[styles.addFriendBtn, addingFriend && styles.addFriendBtnDisabled]}
+              onPress={handleAddFriendByUsername}
+              disabled={addingFriend}
+            >
+              <Text style={styles.addFriendBtnText}>{addingFriend ? "Adding..." : "Add"}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -289,6 +383,42 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#edf2f6',
+  },
+  friendInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    margin: 10,
+  },
+  friendInput: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#d4e1ee",
+    backgroundColor: "#fff",
+    paddingHorizontal: 12,
+    color: theme.text,
+    fontSize: 14,
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
+  addFriendBtn: {
+    height: 44,
+    minWidth: 84,
+    borderRadius: 12,
+    backgroundColor: "#2cca00", //help
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  addFriendBtnDisabled: {
+    opacity: 0.7,
+  },
+  addFriendBtnText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "900",
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   infoLabel: {
     fontSize: 14,
