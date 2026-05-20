@@ -16,13 +16,6 @@ export default function EnterScreen({ onDone }) {
   const [loading, setLoading] = useState(false);
   console.log('[EnterScreen] goals:', goals);
 
-  // If there are no goals, immediately proceed
-  React.useEffect(() => {
-    if (Array.isArray(goals) && goals.length === 0 && onDone) {
-      onDone();
-    }
-  }, [goals, onDone]);
-
   // Helper to find the last dateKey in logs for a goal
   function getLastLoggedDateKey(goal) {
     const logKeys = Object.keys(goal?.logs?.health || {});
@@ -50,6 +43,7 @@ export default function EnterScreen({ onDone }) {
       const lastDate = await AsyncStorage.getItem(storageKey);
       if (lastDate === todayKey) {
         setLoading(false);
+        if (onDone) await onDone();
         return;
       }
       await AsyncStorage.setItem(storageKey, todayKey);

@@ -2500,9 +2500,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       return (
         <View style={[styles.storagePage, { width, height }]}> 
           <View style={styles.storageHeader}>
-            <Ionicons name="trophy" size={20} color="#FFD700" style={styles.storageHeaderIcon} />
-            <Text style={styles.storageHeaderTitle}>Trophy Collection</Text>
-            <Ionicons name="trophy" size={20} color="#FFD700" style={styles.storageHeaderIcon} />
+            <Text style={styles.storageHeaderTitle}>Trophies</Text>
           </View>
           <ScrollView
             style={styles.storageScroll}
@@ -3108,7 +3106,7 @@ const styles = StyleSheet.create({
   },
   gardenSwitcherShell: {
     position: 'absolute',
-    top: 54,
+    top: 55,
     right: 16,
     width: 156,
     maxWidth: '52%',
@@ -3116,7 +3114,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(66, 66, 66, 0.96)',
     zIndex: 60,
     overflow: 'hidden',
-    borderWidth: 1,
+    borderWidth: 0,
     borderColor: 'rgba(255,255,255,0.14)',
   },
   gardenSwitcherShellExpanded: {
@@ -3527,24 +3525,27 @@ const styles = StyleSheet.create({
   storageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 54,
-    paddingBottom: 14,
+    justifyContent: 'flex-start',
+    paddingTop: 10,
+    paddingBottom: 6,
     paddingHorizontal: 20,
     backgroundColor: '#1a1836',
-    borderBottomWidth: 1,
+    borderBottomWidth: 0,
     borderBottomColor: '#2e2b5a',
+    margin: 15,
+    marginTop: 55,
+    borderRadius: 40,
   },
   storageHeaderTitle: {
-    color: '#FFD700',
-    fontSize: 18,
+    color: '#ffffff',
+    fontSize: 20,
     fontWeight: '800',
     letterSpacing: 1.2,
-    marginHorizontal: 10,
-    textShadowColor: 'rgba(255, 200, 0, 0.45)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
+    marginHorizontal: 0,
+    textAlign: 'left',
     fontFamily: 'CeraRoundProDEMO-Black',
+    paddingBottom: 5,
+    paddingLeft: 10,
   },
   storageHeaderIcon: {
     opacity: 0.9,
