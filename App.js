@@ -1,3 +1,4 @@
+import { theme } from './theme';
 import React, { useState, useEffect, useRef } from "react";
 import { useCallback } from "react";
 import { Asset } from 'expo-asset';
@@ -16,15 +17,7 @@ import CenteredTabBar from './components/CenteredTabBar';
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "./firebaseConfig";
-import Login from "./login";
 
-// Stores & Theme
-import { GoalsProvider } from "./components/GoalsStore";
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import EnterScreen from './screens/EnterScreen';
-import { theme } from "./theme";
-import { PLANT_ASSETS } from "./constants/PlantAssets";
-import { FAR_BG_ASSETS } from "./constants/FarBGAssets";
 import { FRAME_ASSETS } from "./constants/FrameAssets";
 import { WALLPAPER_ASSETS } from "./constants/WallpaperAssets";
 import { initializeNotifications } from "./utils/notifications";
@@ -241,85 +234,50 @@ function MainTabs() {
 
 // --- ROOT APP COMPONENT ---
 
+import { FontProvider } from './components/FontProvider';
+import { GoalsProvider } from './components/GoalsStore';
+import EnterScreen from './screens/EnterScreen';
+import Login from './login';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 export default function App() {
-    // Preload all major assets for GardenScreen and GoalsScreen on app load
-    const preloadAllAssets = useCallback(async () => {
-      // Flatten plant asset tree
-      const flattenPlantAssets = (obj) => {
-        let arr = [];
-        for (const v of Object.values(obj)) {
-          if (typeof v === 'number') arr.push(v);
-          else if (typeof v === 'object') arr = arr.concat(flattenPlantAssets(v));
-        }
-        return arr;
-      };
-      const plantImages = flattenPlantAssets(PLANT_ASSETS);
-      const allAssets = [
-        ...plantImages,
-        ...FAR_BG_ASSETS,
-        ...FRAME_ASSETS,
-        ...WALLPAPER_ASSETS,
-        require('./assets/plants/pot.png'),
-        require('./assets/plants/pot_b.png'),
-        require('./assets/plants/pot_s.png'),
-        require('./assets/plants/pot_g.png'),
-        require('./assets/plants/pot_p.png'),
-        require('./assets/far_background.png'),
-      ];
-      try {
-        await Asset.loadAsync(allAssets);
-      } catch (e) {
-        // Ignore errors, just try to cache as much as possible
-      }
-    }, []);
-
-    useEffect(() => {
-      preloadAllAssets();
-    }, [preloadAllAssets]);
   const [user, setUser] = useState(null);
-  const [hasUsername, setHasUsername] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [hasUsername, setHasUsername] = useState(false);
   const [showEnterScreen, setShowEnterScreen] = useState(false);
-
   const userRef = useRef(null);
+  const unsubFirestoreRef = useRef(null);
+  const appStateListenerRef = useRef(null);
+
+  // Helper to check if EnterScreen should be shown
+  const checkEnterScreen = async (uid, context) => {
+    if (!uid) {
+      setShowEnterScreen(false);
+      return;
+    }
+    const key = `lastEnterScreenDate_${uid}`;
+    const today = new Date().toLocaleDateString('en-CA');
+    const lastDate = await AsyncStorage.getItem(key);
+    if (lastDate !== today) {
+      setShowEnterScreen(true);
+    } else {
+      setShowEnterScreen(false);
+    }
+  };
+
   useEffect(() => {
-    let unsubFirestore = null;
-    let appStateListener = null;
-
-    const checkEnterScreen = async (uid, context = "") => {
-      if (!uid) {
-        console.log(`[EnterScreen][${context}] No uid, hiding EnterScreen.`);
-        setShowEnterScreen(false);
-        return;
-      }
-      // Use local date in YYYY-MM-DD format
-      const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
-      const key = `lastEnterScreenDate_${uid}`;
-      const lastShown = await AsyncStorage.getItem(key);
-      console.log(`[EnterScreen][${context}] Today:`, today, 'Key:', key, 'LastShown:', lastShown);
-      if (lastShown !== today) {
-        console.log(`[EnterScreen][${context}] Showing EnterScreen.`);
-        setShowEnterScreen(true);
-      } else {
-        console.log(`[EnterScreen][${context}] Hiding EnterScreen.`);
-        setShowEnterScreen(false);
-      }
-    };
-
-    const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
-      if (unsubFirestore) {
-        unsubFirestore();
-        unsubFirestore = null;
+    let unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      if (unsubFirestoreRef.current) {
+        unsubFirestoreRef.current();
+        unsubFirestoreRef.current = null;
       }
 
       setUser(firebaseUser);
       userRef.current = firebaseUser;
 
       if (firebaseUser) {
-        // Initialize notifications when user logs in
         initializeNotifications(null);
-
-        unsubFirestore = onSnapshot(
+        unsubFirestoreRef.current = onSnapshot(
           doc(db, "users", firebaseUser.uid),
           (docSnap) => {
             if (docSnap.exists() && docSnap.data().username) {
@@ -346,64 +304,53 @@ export default function App() {
       }
     });
 
-    // Listen for app foreground events
-    appStateListener = AppState.addEventListener('change', (state) => {
+    appStateListenerRef.current = AppState.addEventListener('change', (state) => {
       if (state === 'active' && userRef.current) {
         checkEnterScreen(userRef.current.uid, "AppState.active");
       }
     });
 
     return () => {
-      unsubAuth();
-      if (unsubFirestore) unsubFirestore();
-      if (appStateListener) appStateListener.remove();
+      if (unsubAuth) unsubAuth();
+      if (unsubFirestoreRef.current) unsubFirestoreRef.current();
+      if (appStateListenerRef.current) appStateListenerRef.current.remove();
     };
   }, []);
 
   if (initializing) return null;
 
   const handleEnterScreenDone = async () => {
-    // Use local date in YYYY-MM-DD format
     const today = new Date().toLocaleDateString('en-CA');
     const uid = auth.currentUser?.uid;
     if (uid) {
       const key = `lastEnterScreenDate_${uid}`;
       await AsyncStorage.setItem(key, today);
-      console.log('[App] handleEnterScreenDone: set', key, 'to', today);
-    } else {
-      console.log('[App] handleEnterScreenDone: no uid');
     }
     setShowEnterScreen(false);
-    console.log('[App] handleEnterScreenDone: setShowEnterScreen(false) called');
-    // Debug: print AsyncStorage value after setting
-    if (uid) {
-      const key = `lastEnterScreenDate_${uid}`;
-      const val = await AsyncStorage.getItem(key);
-      console.log(`[EnterScreen][handleEnterScreenDone] After set, key:`, key, 'val:', val);
-    }
-    // Navigation will switch to Tabs automatically when showEnterScreen is false
   };
 
   return (
-    <SafeAreaProvider>
-      <GoalsProvider>
-        <NavigationContainer>
-          <StatusBar style="dark" />
-          <RootStack.Navigator screenOptions={{ headerShown: false }}>
-            {user && hasUsername ? (
-              showEnterScreen ? (
-                <RootStack.Screen name="Enter" options={{ headerShown: false }}>
-                  {props => <EnterScreen {...props} onDone={handleEnterScreenDone} />}
-                </RootStack.Screen>
+    <FontProvider>
+      <SafeAreaProvider>
+        <GoalsProvider>
+          <NavigationContainer>
+            <StatusBar style="dark" />
+            <RootStack.Navigator screenOptions={{ headerShown: false }}>
+              {user && hasUsername ? (
+                showEnterScreen ? (
+                  <RootStack.Screen name="Enter" options={{ headerShown: false }}>
+                    {props => <EnterScreen {...props} onDone={handleEnterScreenDone} />}
+                  </RootStack.Screen>
+                ) : (
+                  <RootStack.Screen name="Tabs" component={MainTabs} />
+                )
               ) : (
-                <RootStack.Screen name="Tabs" component={MainTabs} />
-              )
-            ) : (
-              <RootStack.Screen name="Login" component={Login} />
-            )}
-          </RootStack.Navigator>
-        </NavigationContainer>
-      </GoalsProvider>
-    </SafeAreaProvider>
+                <RootStack.Screen name="Login" component={Login} />
+              )}
+            </RootStack.Navigator>
+          </NavigationContainer>
+        </GoalsProvider>
+      </SafeAreaProvider>
+    </FontProvider>
   );
 }
