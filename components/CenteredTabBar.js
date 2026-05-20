@@ -9,6 +9,7 @@ const TASKBAR_ICON_MAP = {
   Garden: require('../assets/Icons/Taskbar/GardenIcon.png'),
   ProfileTab: require('../assets/Icons/Taskbar/ProfileIcon.png'),
   Journey: require('../assets/Icons/Taskbar/Journey.png'),
+  Shop: require('../assets/Icons/Taskbar/Shop.png'),
 };
 
 export default function CenteredTabBar({ state, descriptors, navigation }) {

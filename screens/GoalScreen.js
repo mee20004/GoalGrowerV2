@@ -1,3 +1,5 @@
+import { ContributorsTodaySection } from './ContributorsTodaySection';
+import { useUsernames } from '../hooks/useUsernames';
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
@@ -1296,6 +1298,13 @@ export default function GoalScreen({ route, navigation }) {
 
       await setDoc(doc(db, "users", auth.currentUser.uid, "goals", goal.id), updatedGoalData, { merge: true });
 
+      // --- FULLY RESET LOGS after saving edits ---
+      await setDoc(
+        doc(db, "users", auth.currentUser.uid, "goals", goal.id),
+        { logs: {} },
+        { merge: true }
+      );
+
       if (nextSharedGardenId) {
         const sharedLayoutRef = doc(db, "sharedGardens", nextSharedGardenId, "layout", goal.id);
         const sharedPayload = {
@@ -1313,6 +1322,12 @@ export default function GoalScreen({ route, navigation }) {
         }
 
         await setDoc(sharedLayoutRef, sharedPayload, { merge: true });
+        // --- FULLY RESET LOGS in shared layout as well ---
+        await setDoc(
+          sharedLayoutRef,
+          { logs: {} },
+          { merge: true }
+        );
       }
 
       if (isGardenChanged && !nextSharedGardenId) {
@@ -2137,6 +2152,7 @@ export default function GoalScreen({ route, navigation }) {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Today</Text>
+          {/* Check off/progress section (moved above contributors) */}
           <View style={styles.progressCard}>
             <View style={styles.progressContent}>
               <Text style={styles.progressDate}>
@@ -2237,6 +2253,17 @@ export default function GoalScreen({ route, navigation }) {
               </Pressable>
             </View>
           </View>
+          {/* Contributors for today (usernames) - now below check off section */}
+          {(() => {
+            const isSharedGoal = goal?.sharedGardenId || goal?.gardenType === 'shared';
+            if (!isSharedGoal) return null;
+            const contributorIds = Array.isArray(goal?.logs?.completion?.[selectedDateKey]?.contributors)
+              ? goal.logs.completion[selectedDateKey].contributors
+              : [];
+            return (
+              <ContributorsTodaySection contributorIds={contributorIds} />
+            );
+          })()}
           <View style={styles.todayHealthCard}>
             <View style={styles.todayHealthHeader}>
               <Text style={styles.todayHealthTitle}>Plant health</Text>

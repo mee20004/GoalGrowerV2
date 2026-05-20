@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useCallback } from "react";
 import { Asset } from 'expo-asset';
 import { StackActions } from '@react-navigation/native';
 import { Text, View, Image } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import { AppState } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
@@ -42,6 +43,7 @@ import FollowingListScreen from './screens/FollowingListScreen';
 import RankScreen from './screens/RankScreen';
 import GardenScreen from './screens/GardenScreen'; // <-- 1. IMPORT GARDEN SCREEN
 import JourneyScreen from './screens/JourneyScreen';
+import ShopScreen from './screens/ShopScreen';
 
 const TASKBAR_ICON_MAP = {
   Rank: require("./assets/Icons/Taskbar/TrophyIcon.png"),
@@ -49,6 +51,7 @@ const TASKBAR_ICON_MAP = {
   Garden: require("./assets/Icons/Taskbar/GardenIcon.png"),
   ProfileTab: require("./assets/Icons/Taskbar/ProfileIcon.png"),
   Journey: require("./assets/Icons/Taskbar/Journey.png"),
+  Shop: require("./assets/Icons/Taskbar/Shop.png"),
 };
 
 // Helper Placeholder Screen
@@ -175,12 +178,16 @@ function MainTabs() {
               />
             );
           }
-
           // Fallback for any unexpected route.
           return <Ionicons name="ellipse-outline" size={22} color={color} />;
         },
       })}
     >
+            <Tab.Screen
+              name="Shop"
+              component={ShopScreen}
+              options={{ tabBarLabel: "Shop" }}
+            />
       <Tab.Screen name="Rank" component={RankStack} options={{ tabBarLabel: "Rank" }} />
       <Tab.Screen
         name="Goals"
@@ -274,17 +281,27 @@ export default function App() {
   const [initializing, setInitializing] = useState(true);
   const [showEnterScreen, setShowEnterScreen] = useState(false);
 
+  const userRef = useRef(null);
   useEffect(() => {
     let unsubFirestore = null;
+    let appStateListener = null;
 
-    const checkEnterScreen = async (uid) => {
-      if (!uid) { setShowEnterScreen(false); return; }
-      const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const checkEnterScreen = async (uid, context = "") => {
+      if (!uid) {
+        console.log(`[EnterScreen][${context}] No uid, hiding EnterScreen.`);
+        setShowEnterScreen(false);
+        return;
+      }
+      // Use local date in YYYY-MM-DD format
+      const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
       const key = `lastEnterScreenDate_${uid}`;
       const lastShown = await AsyncStorage.getItem(key);
+      console.log(`[EnterScreen][${context}] Today:`, today, 'Key:', key, 'LastShown:', lastShown);
       if (lastShown !== today) {
+        console.log(`[EnterScreen][${context}] Showing EnterScreen.`);
         setShowEnterScreen(true);
       } else {
+        console.log(`[EnterScreen][${context}] Hiding EnterScreen.`);
         setShowEnterScreen(false);
       }
     };
@@ -296,6 +313,7 @@ export default function App() {
       }
 
       setUser(firebaseUser);
+      userRef.current = firebaseUser;
 
       if (firebaseUser) {
         // Initialize notifications when user logs in
@@ -310,7 +328,7 @@ export default function App() {
               setHasUsername(false);
             }
             setInitializing(false);
-            checkEnterScreen(firebaseUser.uid);
+            checkEnterScreen(firebaseUser.uid, "onSnapshot");
           },
           (error) => {
             if (error?.code !== "permission-denied" || auth.currentUser) {
@@ -318,7 +336,7 @@ export default function App() {
             }
             setHasUsername(false);
             setInitializing(false);
-            checkEnterScreen(firebaseUser.uid);
+            checkEnterScreen(firebaseUser.uid, "onSnapshotError");
           }
         );
       } else {
@@ -328,22 +346,42 @@ export default function App() {
       }
     });
 
+    // Listen for app foreground events
+    appStateListener = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && userRef.current) {
+        checkEnterScreen(userRef.current.uid, "AppState.active");
+      }
+    });
+
     return () => {
       unsubAuth();
       if (unsubFirestore) unsubFirestore();
+      if (appStateListener) appStateListener.remove();
     };
   }, []);
 
   if (initializing) return null;
 
   const handleEnterScreenDone = async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    // Use local date in YYYY-MM-DD format
+    const today = new Date().toLocaleDateString('en-CA');
     const uid = auth.currentUser?.uid;
     if (uid) {
       const key = `lastEnterScreenDate_${uid}`;
       await AsyncStorage.setItem(key, today);
+      console.log('[App] handleEnterScreenDone: set', key, 'to', today);
+    } else {
+      console.log('[App] handleEnterScreenDone: no uid');
     }
     setShowEnterScreen(false);
+    console.log('[App] handleEnterScreenDone: setShowEnterScreen(false) called');
+    // Debug: print AsyncStorage value after setting
+    if (uid) {
+      const key = `lastEnterScreenDate_${uid}`;
+      const val = await AsyncStorage.getItem(key);
+      console.log(`[EnterScreen][handleEnterScreenDone] After set, key:`, key, 'val:', val);
+    }
+    // Navigation will switch to Tabs automatically when showEnterScreen is false
   };
 
   return (

@@ -16,6 +16,7 @@ const normalizeQuantityTargetInput = (value) => {
 import React, { useEffect, useMemo, useRef, useState, memo } from "react";
 import { useFonts } from 'expo-font';
 import {
+    ActivityIndicator,
   View,
   Text,
   TextInput,
@@ -247,22 +248,23 @@ const IconItem = memo(({ iconName, isActive, onSelect }) => (
 
 const ASSET_CAROUSEL_ITEM_SIZE = 76;
 
-const CenteredAssetCarousel = memo(
-  ({
-    carouselKey,
-    title,
-    data,
-    selectedIndex,
-    onSelectIndex,
-    renderPreview,
-    itemSize = ASSET_CAROUSEL_ITEM_SIZE,
-    showTitle = true,
-    showCenterRing = true,
-    sectionStyle,
-    wrapStyle,
-    itemStyle,
-    activeItemStyle,
-  }) => {
+
+// --- Move CenteredAssetCarousel to top level to avoid hook order issues ---
+const CenteredAssetCarousel = memo(function CenteredAssetCarousel({
+  carouselKey,
+  title,
+  data,
+  selectedIndex,
+  onSelectIndex,
+  renderPreview,
+  itemSize = ASSET_CAROUSEL_ITEM_SIZE,
+  showTitle = true,
+  showCenterRing = true,
+  sectionStyle,
+  wrapStyle,
+  itemStyle,
+  activeItemStyle,
+}) {
   const listRef = useRef(null);
   const [carouselWidth, setCarouselWidth] = useState(0);
   const isMomentumScrollingRef = useRef(false);
@@ -372,8 +374,7 @@ const CenteredAssetCarousel = memo(
       </View>
     </View>
   );
-}
-);
+});
 
 function measureRef(ref, cb) {
   const node = findNodeHandle(ref.current);
