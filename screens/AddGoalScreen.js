@@ -497,7 +497,7 @@ function StepProgressBar({ total = 1, index = 0 }) {
   );
 }
 
-export default function AddGoalScreen({ navigation }) {
+export default function AddGoalScreen({ navigation, onGoalSaved, onBack, onboardingMode = false }) {
   // Load the Cera Round Pro DEMO font only for this screen
   const [fontsLoaded] = useFonts({
     'CeraRoundProDEMO-Black': require('../assets/fonts/CeraRoundProDEMOBlack.otf'),
@@ -1186,7 +1186,11 @@ export default function AddGoalScreen({ navigation }) {
   const goNextStep = () => setStep((prev) => Math.min(prev + 1, stepLabels.length - 1));
   const goBackStep = () => {
     if (step === 0) {
-      navigation.goBack();
+      if (typeof onBack === "function") {
+        onBack();
+      } else {
+        navigation.goBack();
+      }
     } else {
       setStep((prev) => Math.max(prev - 1, 0));
     }
@@ -1261,7 +1265,11 @@ export default function AddGoalScreen({ navigation }) {
         );
       }
 
-      navigation.navigate("Goals", { screen: "Goal", params: { goalId: docRef.id, source: "goals" } });
+      if (typeof onGoalSaved === "function") {
+        onGoalSaved(docRef.id);
+      } else {
+        navigation.navigate("Goals", { screen: "Goal", params: { goalId: docRef.id, source: "goals" } });
+      }
     } catch (error) {
       Alert.alert("Error", "Could not save your goal.");
     } finally {
@@ -1306,11 +1314,11 @@ export default function AddGoalScreen({ navigation }) {
           </ScrollView>
         </KeyboardAvoidingView>
 
-        <View style={styles.stepFooterRow}>
-          <View style={styles.footerProgressWrap}>
+        <View style={[styles.stepFooterRow, onboardingMode && styles.stepFooterRowOnboarding]}>
+          <View style={[styles.footerProgressWrap, onboardingMode && styles.footerProgressWrapOnboarding]}>
             <StepProgressBar total={stepLabels.length} index={step} />
           </View>
-          <View style={styles.stepButtonGroup}>
+          <View style={[styles.stepButtonGroup, onboardingMode && styles.stepButtonGroupOnboarding]}>
             <Button
               variant="secondary"
               label="Back"
@@ -1367,7 +1375,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   actionButtonPrimary: { backgroundColor: "#59d700" },
-  actionButtonSecondary: { backgroundColor: "#e7edf5" },
+  actionButtonSecondary: { backgroundColor: "#ffffff" },
   actionButtonPrimaryDisabled: { backgroundColor: "#97cd71"},
   actionButtonSecondaryDisabled: { backgroundColor: "#dde3ea" },
   actionButtonPressed: { transform: [{ translateY: 4 }] },
@@ -1456,7 +1464,9 @@ const styles = StyleSheet.create({
   privateSectionGap: { height: 8 },
   footer: { flexDirection: "row", paddingTop: 10, paddingBottom: 8 },
   stepFooterRow: { paddingTop: 8, paddingBottom: 12, paddingHorizontal: 2 },
+  stepFooterRowOnboarding: { paddingBottom: 4 },
   footerProgressWrap: { marginBottom: 12 },
+  footerProgressWrapOnboarding: { marginBottom: 8 },
   stepButtonGroup: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1464,6 +1474,9 @@ const styles = StyleSheet.create({
     width: "100%",
     gap: 12,
     marginBottom: 100,
+  },
+  stepButtonGroupOnboarding: {
+    marginBottom: 44,
   },
   stepButton: { flex: 1 },
   sectionLabel: { fontSize: 13, color: theme.text, marginBottom: 8, fontFamily: 'CeraRoundProDEMO-Black' },

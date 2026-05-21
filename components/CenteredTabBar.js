@@ -12,7 +12,7 @@ const TASKBAR_ICON_MAP = {
   Shop: require('../assets/Icons/Taskbar/Shop.png'),
 };
 
-export default function CenteredTabBar({ state, descriptors, navigation }) {
+export default function CenteredTabBar({ state, descriptors, navigation, disabled = false }) {
   const width = '90%'; // Set your desired width
   const tapScalesRef = useRef({});
   const insets = useSafeAreaInsets();
@@ -71,6 +71,7 @@ export default function CenteredTabBar({ state, descriptors, navigation }) {
           const tapScale = getTapScale(route.key);
 
           const onPress = () => {
+            if (disabled) return;
             runTapAnimation(route.key);
             const event = navigation.emit({
               type: 'tabPress',
@@ -83,6 +84,7 @@ export default function CenteredTabBar({ state, descriptors, navigation }) {
           };
 
           const onLongPress = () => {
+            if (disabled) return;
             navigation.emit({
               type: 'tabLongPress',
               target: route.key,

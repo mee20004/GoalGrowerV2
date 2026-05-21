@@ -77,6 +77,7 @@ const persistedGardenState = {
 let editRestrictionAlertShown = { current: false };
 import { collection, doc, onSnapshot, setDoc, writeBatch, increment, updateDoc, getDoc, getDocs, arrayUnion, query, where, deleteDoc, runTransaction, deleteField } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
+import { onAuthStateChanged } from "firebase/auth";
 import { theme } from "../theme";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
@@ -104,6 +105,7 @@ import {
 } from "../utils/goalState";
 import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
 const FAR_BG = require('../assets/far_background.png');
+const GARDEN_MASCOT = require('../assets/mascot/mascot.png');
 // Asset arrays are now imported from constants
 const STORAGE_PAGE_ID = 'storage';
 const STORAGE_SHELF_COUNT = 10;
@@ -852,7 +854,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
 });
 
 // --- 3. MAIN GARDEN SCREEN ---
-export default function GardenScreen({ route, navigation }) {
+export default function GardenScreen({ route, navigation, onboardingStep, onboardingActions = {}, onOnboardingAction, onGardenTutorialNext }) {
     // Utility to update a goal and always recalculate healthLevel for today
     async function updateGoalWithHealth(goal, updatedFields) {
       const today = new Date();
@@ -926,17 +928,25 @@ export default function GardenScreen({ route, navigation }) {
   // Fetch shared garden settings (permissions)
   useEffect(() => {
     if (!isSharedGarden || !sharedGardenId) return;
-    const unsub = onSnapshot(doc(db, "sharedGardens", sharedGardenId), (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data();
-      setSharedGardenSettings({
-        restrictAddPeople: !!data.restrictAddPeople,
-        restrictCustomize: !!data.restrictCustomize,
-        restrictEditPlants: !!data.restrictEditPlants,
-        ownerId: data.ownerId || null,
-        editModeLock: data.editModeLock || null,
-      });
-    });
+    const unsub = onSnapshot(
+      doc(db, "sharedGardens", sharedGardenId),
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        setSharedGardenSettings({
+          restrictAddPeople: !!data.restrictAddPeople,
+          restrictCustomize: !!data.restrictCustomize,
+          restrictEditPlants: !!data.restrictEditPlants,
+          ownerId: data.ownerId || null,
+          editModeLock: data.editModeLock || null,
+        });
+      },
+      (error) => {
+        if (error?.code !== 'permission-denied' || auth.currentUser?.uid) {
+          console.error('Error loading shared garden settings', error);
+        }
+      }
+    );
     return () => unsub();
   }, [isSharedGarden, sharedGardenId]);
 
@@ -960,6 +970,8 @@ export default function GardenScreen({ route, navigation }) {
   const [acceptingInviteId, setAcceptingInviteId] = useState('');
   const [leavingGardenId, setLeavingGardenId] = useState('');
   const [myUsername, setMyUsername] = useState('User');
+  const [currentUid, setCurrentUid] = useState(auth.currentUser?.uid || null);
+  const prevPagesCountRef = useRef(0);
   const currentPageRef = useRef(currentPageId);
   const sharedEditLockAlertShown = useRef(false);
   const skipNextSharedLockEnsureRef = useRef(false);
@@ -978,12 +990,97 @@ export default function GardenScreen({ route, navigation }) {
   const splashOpacity2 = useRef(new Animated.Value(0)).current; // native driver
   const wiggleAnim = useRef(new Animated.Value(0)).current;
   const switcherOpenAnim = useRef(new Animated.Value(0)).current;
+  const bubbleScale = useRef(new Animated.Value(0.8)).current;
+  const bubbleTranslate = useRef(new Animated.ValueXY({ x: 40, y: 40 })).current;
+  const bubbleSway = useRef(new Animated.Value(0)).current;
   const drawerShouldShowRef = useRef((shouldPersistState ? (persistedGardenState.currentPageId || "default") : "default") !== STORAGE_PAGE_ID);
   const sharedDropOverridesRef = useRef({});
 
   useEffect(() => {
     currentPageRef.current = currentPageId;
   }, [currentPageId]);
+
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      setCurrentUid(user?.uid || null);
+    });
+    return () => unsubAuth();
+  }, []);
+
+  useEffect(() => {
+    if (onboardingStep !== 'garden_tutorial') return;
+    const nonStoragePageCount = pages.filter((p) => p.id !== STORAGE_PAGE_ID).length;
+    if (prevPagesCountRef.current > 0 && nonStoragePageCount > prevPagesCountRef.current) {
+      onOnboardingAction?.('addedPage');
+    }
+    prevPagesCountRef.current = nonStoragePageCount;
+  }, [pages, onboardingStep, onOnboardingAction]);
+
+  useEffect(() => {
+    if (onboardingStep === 'garden_tutorial' && showSharedGardensModal) {
+      onOnboardingAction?.('openedGardenSwitcher');
+    }
+  }, [showSharedGardensModal, onboardingStep, onOnboardingAction]);
+
+  useEffect(() => {
+    if (onboardingStep === 'garden_tutorial' && showCustomization) {
+      onOnboardingAction?.('customizedGarden');
+    }
+  }, [showCustomization, onboardingStep, onOnboardingAction]);
+
+  useEffect(() => {
+    if (onboardingStep !== 'garden_tutorial') return;
+    bubbleScale.setValue(0.6);
+    bubbleTranslate.setValue({ x: 100, y: 200 });
+    Animated.parallel([
+      Animated.spring(bubbleScale, {
+        toValue: 1,
+        friction: 8,
+        tension: 10,
+        useNativeDriver: true,
+      }),
+      Animated.spring(bubbleTranslate, {
+        toValue: { x: 0, y: 0 },
+        friction: 8,
+        tension: 10,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [onboardingActions, isEditing]);
+
+  useEffect(() => {
+    if (onboardingStep !== 'garden_tutorial') {
+      bubbleSway.stopAnimation();
+      bubbleSway.setValue(0);
+      return;
+    }
+
+    const swayLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bubbleSway, {
+          toValue: 1,
+          duration: 1100,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(bubbleSway, {
+          toValue: -1,
+          duration: 2200,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(bubbleSway, {
+          toValue: 0,
+          duration: 1100,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    swayLoop.start();
+    return () => swayLoop.stop();
+  }, [onboardingStep, bubbleSway]);
 
   useEffect(() => {
     const next = currentPageId !== STORAGE_PAGE_ID;
@@ -1011,9 +1108,14 @@ export default function GardenScreen({ route, navigation }) {
   }, []);
 
   useEffect(() => {
-    if (isReadOnly || !auth.currentUser) return undefined;
+    if (isReadOnly || !currentUid) {
+      setSharedGardens([]);
+      setSharedGardenInvites([]);
+      setFollowingUsers([]);
+      return undefined;
+    }
 
-    const uid = auth.currentUser.uid;
+    const uid = currentUid;
 
     const unsubSharedGardens = onSnapshot(
       query(collection(db, 'sharedGardens'), where('memberIds', 'array-contains', uid)),
@@ -1024,7 +1126,9 @@ export default function GardenScreen({ route, navigation }) {
         setSharedGardens(docs);
       },
       (error) => {
-        console.error('Error loading shared gardens', error);
+        if (error?.code !== 'permission-denied' || auth.currentUser?.uid === uid) {
+          console.error('Error loading shared gardens', error);
+        }
       }
     );
 
@@ -1037,7 +1141,9 @@ export default function GardenScreen({ route, navigation }) {
         setSharedGardenInvites(docs);
       },
       (error) => {
-        console.error('Error loading shared garden invites', error);
+        if (error?.code !== 'permission-denied' || auth.currentUser?.uid === uid) {
+          console.error('Error loading shared garden invites', error);
+        }
       }
     );
 
@@ -1047,7 +1153,9 @@ export default function GardenScreen({ route, navigation }) {
         setFollowingUsers(snap.docs.map((userDoc) => ({ id: userDoc.id, ...userDoc.data() })));
       },
       (error) => {
-        console.error('Error loading following list', error);
+        if (error?.code !== 'permission-denied' || auth.currentUser?.uid === uid) {
+          console.error('Error loading following list', error);
+        }
       }
     );
 
@@ -1072,7 +1180,7 @@ export default function GardenScreen({ route, navigation }) {
       unsubInvites();
       unsubFollowing();
     };
-  }, [isReadOnly, isSharedGarden]);
+  }, [currentUid, isReadOnly]);
 
   const setCompletionTargetRef = useCallback((plantId, node) => {
     if (node) {
@@ -1163,11 +1271,14 @@ export default function GardenScreen({ route, navigation }) {
         findFirstOpenStorageSlot,
         findFirstOpenSharedStorageSlot,
       });
+      if (onboardingStep === 'garden_tutorial') {
+        onOnboardingAction?.('completedGoal');
+      }
     } catch (error) {
       console.error("Error toggling goal status (GardenScreen):", error);
       Alert.alert("Error", "Could not update goal progress.");
     }
-  }, [allPlants, isReadOnly, sharedGardenId]);
+  }, [allPlants, findFirstOpenSharedStorageSlot, findFirstOpenStorageSlot, isReadOnly, onboardingStep, onOnboardingAction, sharedGardenId]);
 
   const findCompletionTargetId = useCallback(async (moveX, moveY) => {
     const visiblePlantIds = allPlants
@@ -1684,9 +1795,21 @@ export default function GardenScreen({ route, navigation }) {
     if (!isEditing) {
       setIsEditing(true);
       if (shouldPersistState) persistedGardenState.isEditing = true;
+      if (onboardingStep === 'garden_tutorial' && onboardingActions?.completedGoal) {
+        onOnboardingAction?.('reenteredEditMode');
+      }
     }
     return true;
-  }, [acquireSharedEditLock, canEnterEditMode, globalDragging, isEditing, isReadOnly, isSharedGarden, shouldPersistState]);
+  }, [acquireSharedEditLock, canEnterEditMode, globalDragging, isEditing, isReadOnly, isSharedGarden, onboardingActions, onboardingStep, onOnboardingAction, shouldPersistState]);
+
+  const exitEditModeFromTap = useCallback(() => {
+    if (isReadOnly || !isEditing) return;
+    setIsEditing(false);
+    if (shouldPersistState) persistedGardenState.isEditing = false;
+    if (onboardingStep === 'garden_tutorial' && onboardingActions?.movedGoal) {
+      onOnboardingAction?.('exitedEditMode');
+    }
+  }, [isEditing, isReadOnly, onboardingActions, onboardingStep, onOnboardingAction, shouldPersistState]);
 
   const handleDragStart = async (plant, touchX, touchY) => {
     if (!canEditPlants) {
@@ -1769,6 +1892,9 @@ export default function GardenScreen({ route, navigation }) {
       const uid = auth.currentUser?.uid;
       const dest = await checkDropZones(moveX, moveY);
       if (dest) {
+        if (onboardingStep === 'garden_tutorial') {
+          onOnboardingAction?.('movedGoal');
+        }
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         const baseOldPos = dragStartShelfPosition
           ? { ...dragStartShelfPosition, pageId: dragStartShelfPosition.pageId || currentPageId }
@@ -2526,8 +2652,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
               clearTimeout(storageTouchTimer.current);
               const elapsed = Date.now() - storageTouchStartTime.current;
               if (!storageTouchMoved.current && elapsed < 300 && isEditing) {
-                setIsEditing(false);
-                if (shouldPersistState) persistedGardenState.isEditing = false;
+                exitEditModeFromTap();
               }
             }}
           >
@@ -2549,10 +2674,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         delayLongPress={350}
         onLongPress={isReadOnly ? undefined : activateEditMode}
         onPress={() => {
-          if (!isReadOnly && isEditing) {
-            setIsEditing(false);
-            if (shouldPersistState) persistedGardenState.isEditing = false;
-          }
+          exitEditModeFromTap();
         }}
       >
         <View style={{ width, height, overflow: 'hidden' }}>
@@ -2703,8 +2825,96 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
     outputRange: [-6, 0],
   });
 
+  const showGardenTutorialCard = onboardingStep === 'garden_tutorial';
+  const tutorialChecklist = [
+    { key: 'movedGoal', label: 'Move a goal to a different spot' },
+    { key: 'exitedEditMode', label: 'Tap anywhere to exit edit mode' },
+    { key: 'completedGoal', label: 'Drag the water drop to complete a goal' },
+    { key: 'reenteredEditMode', label: 'Long-press anywhere to enter edit mode' },
+    { key: 'addedPage', label: 'Add a new page' },
+    { key: 'customizedGarden', label: 'Open customization' },
+    { key: 'openedGardenSwitcher', label: 'Open garden switcher' },
+  ];
+  const tutorialComplete = tutorialChecklist.every((item) => !!onboardingActions?.[item.key]);
+  const nextTutorialTask = tutorialChecklist.find((item) => !onboardingActions?.[item.key]);
+  const tutorialBubbleText = !nextTutorialTask
+    ? 'Nice work. Finishing up your garden tutorial...'
+    : nextTutorialTask.key === 'movedGoal'
+      ? 'Drag your new goal onto a shelf to place it in your garden.'
+      : nextTutorialTask.key === 'exitedEditMode'
+        ? (isEditing ? 'Tap anywhere in the garden to exit edit mode.' : 'Great. You are out of edit mode.')
+      : nextTutorialTask.key === 'completedGoal'
+        ? 'Now drag the water drop onto your goal to complete it.'
+      : nextTutorialTask.key === 'reenteredEditMode'
+        ? (isEditing ? 'Perfect, edit mode is back on.' : 'Long-press anywhere in the garden to enter edit mode again.')
+      : nextTutorialTask.key === 'addedPage'
+        ? (isEditing ? 'Tap the + button on the right to add another page.' : 'Long-press the garden to enter edit mode, then add a page.')
+        : nextTutorialTask.key === 'customizedGarden'
+          ? (isEditing ? 'Tap the palette button to customize your garden.' : 'Long-press the garden, then tap the palette to customize it.')
+          : 'Tap the garden switcher in the top right to see your gardens.';
+
   return (
   <View style={styles.container}>
+    {showGardenTutorialCard && (
+      <View pointerEvents="none" style={[styles.mascotGuideWrap, { right: 18, bottom: insets.bottom + 138 }]}> 
+        <Animated.View
+          style={[
+            styles.mascotBubble,
+            {
+              transform: [
+                { scale: bubbleScale },
+                { translateX: bubbleTranslate.x },
+                { translateY: bubbleTranslate.y },
+                {
+                  translateX: bubbleSway.interpolate({
+                    inputRange: [-1, 0, 1],
+                    outputRange: [-4, 0, 4],
+                  }),
+                },
+                {
+                  rotate: bubbleSway.interpolate({
+                    inputRange: [-1, 0, 1],
+                    outputRange: ['-2deg', '0deg', '2deg'],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <Text style={styles.mascotBubbleTitle}>Garden Tutorial</Text>
+          {nextTutorialTask?.key === 'addedPage' && isEditing ? (
+            <Text style={styles.mascotBubbleText}>
+              {'Tap the  '}
+              <Image source={require('../assets/Icons/addPageBlack.png')} style={{ width: 13, height: 13 }} />
+              {'  button on the right to add another page.'}
+            </Text>
+          ) : (
+            <Text style={styles.mascotBubbleText}>{tutorialBubbleText}</Text>
+          )}
+        </Animated.View>
+        <Image source={GARDEN_MASCOT} style={styles.mascotImage} resizeMode="contain" />
+      </View>
+    )}
+    {showGardenTutorialCard && (
+      <View style={[styles.tutorialNextWrap, { right: 24, bottom: insets.bottom + 82 }]}> 
+        <View style={styles.tutorialNextButtonWrap}>
+          <View pointerEvents="none" style={[styles.tutorialNextButtonShadow, styles.tutorialNextButtonShadowColor]} />
+          <Pressable
+            onPress={tutorialComplete ? onGardenTutorialNext : undefined}
+            disabled={!tutorialComplete}
+            style={({ pressed }) => [
+              styles.tutorialNextButtonFace,
+              styles.tutorialNextButtonFaceColor,
+              pressed && !tutorialComplete === false && styles.tutorialNextButtonPressed,
+              !tutorialComplete && styles.tutorialNextButtonFaceDisabled,
+            ]}
+          >
+            <Text style={[styles.tutorialNextBtnText, !tutorialComplete && styles.tutorialNextBtnTextDisabled]}>{tutorialComplete ? 'Next' : 'Finish tasks first'}</Text>
+          </Pressable>
+        </View>
+      </View>
+    )}
+
     {isReadOnly && !isSharedGarden && (
       <View style={styles.readOnlyHeader}>
         <TouchableOpacity style={styles.readOnlyBackBtn} onPress={() => navigation.goBack()}>
@@ -2849,7 +3059,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
 
     {!isReadOnly && isEditing && canCustomize && (
       <TouchableOpacity style={styles.addPageSideFab} onPress={handleAddPage}>
-        <Ionicons name="add" size={22} color="#fff" />
+        <Image source={require('../assets/Icons/addPage.png')} style={{ width: 20, height: 20 }} resizeMode="contain" />
       </TouchableOpacity>
     )}
 
@@ -3007,6 +3217,92 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fdfbf700' },
+  mascotGuideWrap: {
+    position: 'absolute',
+    zIndex: 70,
+    alignItems: 'flex-end',
+    paddingBottom: 70,
+  },
+  mascotBubble: {
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    maxWidth: 240,
+    shadowColor: '#4c6782',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 0,
+    elevation: 4,
+    marginBottom: 0,
+    marginRight: 45,
+  },
+  mascotBubbleTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#1f2e3d',
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
+  mascotBubbleText: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6f8296',
+    lineHeight: 18,
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
+  mascotImage: {
+    width: 142,
+    height: 142,
+    left: 40,
+  },
+  tutorialNextWrap: {
+    position: 'absolute',
+    zIndex: 13050,
+    elevation: 30,
+  },
+  tutorialNextButtonWrap: {
+    height: 56,
+    position: 'relative',
+    minWidth: 140,
+  },
+  tutorialNextButtonShadow: {
+    position: 'absolute',
+    top: 4,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 20,
+  },
+  tutorialNextButtonShadowColor: {
+    backgroundColor: '#4aa93a',
+  },
+  tutorialNextButtonFace: {
+    height: 52,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  tutorialNextButtonFaceColor: {
+    backgroundColor: '#59d700',
+  },
+  tutorialNextButtonFaceDisabled: {
+    backgroundColor: '#97cd71',
+  },
+  tutorialNextButtonPressed: {
+    transform: [{ translateY: 4 }],
+  },
+  tutorialNextBtnText: {
+    fontSize: 15,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    color: '#FFFFFF',
+    fontWeight: '900',
+    letterSpacing: 0.1,
+  },
+  tutorialNextBtnTextDisabled: {
+    color: '#f7fbf3',
+  },
   readOnlyHeader: {
     position: 'absolute',
     top: 48,

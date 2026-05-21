@@ -677,7 +677,7 @@ function SwipeCalendar({ month, setMonth, selectedDate, onSelectDate }) {
   );
 }
 
-export default function GoalScreen({ route, navigation }) {
+export default function GoalScreen({ route, navigation, tutorialLocked = false, onTutorialGoalCompleted }) {
   // --- ICON PICKER STATE (ported from AddGoalScreen) ---
   const [iconSearch, setIconSearch] = useState("");
   const [visibleIconCount, setVisibleIconCount] = useState(120);
@@ -919,6 +919,13 @@ export default function GoalScreen({ route, navigation }) {
   }, [goalId, isSharedGoalView, routeSharedGardenId, uid]);
 
   useEffect(() => {
+    if (!tutorialLocked || !goal) return;
+    if (isGoalDoneForDate(goal, selectedDateKey)) {
+      onTutorialGoalCompleted?.(goal.id);
+    }
+  }, [goal, onTutorialGoalCompleted, selectedDateKey, tutorialLocked]);
+
+  useEffect(() => {
     if (isSharedGoalView) {
       setShelfPosition(goal?.shelfPosition || null);
       return;
@@ -1024,6 +1031,10 @@ export default function GoalScreen({ route, navigation }) {
   }, [goal]);
 
   const handleBack = () => {
+    if (tutorialLocked) {
+      return;
+    }
+
     if (navigation.canGoBack()) {
       navigation.goBack();
       return;
