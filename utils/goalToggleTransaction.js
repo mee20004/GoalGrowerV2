@@ -1,5 +1,5 @@
 // Shared goal toggle/update transaction logic for all screens
-import { doc, updateDoc, runTransaction, setDoc, increment, arrayUnion, getDoc } from "firebase/firestore";
+import { doc, updateDoc, runTransaction, setDoc, increment, arrayUnion, getDoc, deleteField } from "firebase/firestore";
 import { getPlantHealthState, calculateGoalStreak, isGoalDoneForDate } from "../utils/goalState";
 import { fromKey } from "../components/GoalsStore";
 import { updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
@@ -32,7 +32,25 @@ export async function toggleGoalTransaction({
   findFirstOpenStorageSlot = null,
   clearLocalOptimisticProgress = null,
 }) {
-  if (!auth.currentUser || !goal || (shelfPosition?.pageId === STORAGE_PAGE_ID)) return;
+  // Debug: print goal type detection flags and relevant properties
+  console.log('[toggleGoalTransaction] goal.type:', goal?.type, 'goal.kind:', goal?.kind, 'goal.multiUserWateringEnabled:', goal?.multiUserWateringEnabled, 'goal.gardenType:', goal?.gardenType);
+  if (!auth.currentUser) {
+    console.error('[toggleGoalTransaction] Early return: No current user');
+    return;
+  }
+  if (!goal) {
+    console.error('[toggleGoalTransaction] Early return: No goal object');
+    return;
+  }
+  if (shelfPosition?.pageId === STORAGE_PAGE_ID) {
+    console.warn('[toggleGoalTransaction] Early return: Goal is in storage (shelfPosition)', shelfPosition);
+    return;
+  }
+  // Defensive check: selectedDateKey must be a valid YYYY-MM-DD string
+  if (typeof selectedDateKey !== 'string' || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(selectedDateKey)) {
+    console.error('toggleGoalTransaction: Invalid selectedDateKey, aborting:', selectedDateKey, typeof selectedDateKey);
+    return;
+  }
   const currentUserId = auth.currentUser.uid;
   let transactionUpdate = null;
   let ownerIdForSync = null;
@@ -53,13 +71,19 @@ export async function toggleGoalTransaction({
 
     await runTransaction(db, async (tx) => {
       const snap = await tx.get(goalRef);
-      if (!snap.exists()) return;
+      if (!snap.exists()) {
+        console.error('[toggleGoalTransaction] Early return: Firestore doc does not exist:', goalRef.path);
+        return;
+      }
       const latestGoal = {
         id: snap.id,
         ...snap.data(),
         ...(isSharedGoalView ? { gardenType: "shared", sharedGardenId: routeSharedGardenId } : {}),
       };
-      if (latestGoal?.shelfPosition?.pageId === STORAGE_PAGE_ID) return;
+      if (latestGoal?.shelfPosition?.pageId === STORAGE_PAGE_ID) {
+        console.warn('[toggleGoalTransaction] Early return: Goal is in storage (latestGoal)', goalRef.path, latestGoal);
+        return;
+      }
       latestWasDone = isGoalDoneForDate(latestGoal, selectedDateKey);
       const updatedLogs = JSON.parse(JSON.stringify(latestGoal.logs || {}));
       const updateData = {};
@@ -72,83 +96,230 @@ export async function toggleGoalTransaction({
         }
       }
 
+      // Log the state before update
+      console.log('[toggleGoalTransaction] Pre-update logs:', JSON.stringify(updatedLogs));
+
       if (isSharedMultiUserCompletion) {
+        console.log('[toggleGoalTransaction] Entered SHARED MULTI-USER COMPLETION branch');
         if (!updatedLogs.completion) updatedLogs.completion = {};
         const existingEntry = updatedLogs.completion[selectedDateKey] || {};
         const existingUsers = existingEntry.users || {};
         let nextUsers;
         if (existingUsers[currentUserId]) {
-          // Uncheck: remove user
-          nextUsers = { ...existingUsers };
-          delete nextUsers[currentUserId];
+          // Uncheck: set user to false
+          nextUsers = { ...existingUsers, [currentUserId]: false };
         } else {
           // Check: add user
           nextUsers = { ...existingUsers, [currentUserId]: true };
         }
-        const allContributors = Array.isArray(latestGoal.contributors)
-          ? latestGoal.contributors
-          : Object.keys(nextUsers);
+        // --- Contributors: all users who are checked for that day ---
+        // Always recalculate contributors for this day from nextUsers
+        const nextContributors = Object.keys(nextUsers).filter(uid => nextUsers[uid]);
+        // Calculate isNowDone based on requiredContributors
         const requiredContributors = Math.max(2, Math.floor(Number(latestGoal?.requiredContributors) || 2));
-        const uniqueCount = allContributors.filter((userId) => !!nextUsers[userId]).length;
-        isNowDone = uniqueCount >= requiredContributors;
-        updatedLogs.completion[selectedDateKey] = { ...existingEntry, users: nextUsers, done: isNowDone };
-        updateData[`logs.completion.${selectedDateKey}`] = updatedLogs.completion[selectedDateKey];
+        isNowDone = nextContributors.length >= requiredContributors;
+        // Update Firestore and in-memory log
+        if (nextContributors.length === 0) {
+          // No contributors left, remove contributors property from in-memory log and Firestore
+          const nextCompletionEntry = { ...existingEntry, users: nextUsers, done: isNowDone };
+          delete nextCompletionEntry.contributors;
+          updatedLogs.completion[selectedDateKey] = nextCompletionEntry;
+          updateData[`logs.completion.${selectedDateKey}.contributors`] = deleteField();
+          updateData[`logs.completion.${selectedDateKey}.users`] = nextUsers;
+          updateData[`logs.completion.${selectedDateKey}.done`] = isNowDone;
+        } else {
+          // Always explicitly set done in the update
+          const nextCompletionEntry = { ...existingEntry, users: nextUsers, done: isNowDone, contributors: nextContributors };
+          updatedLogs.completion[selectedDateKey] = nextCompletionEntry;
+          updateData[`logs.completion.${selectedDateKey}`] = { ...nextCompletionEntry, done: isNowDone };
+        }
         shouldAwardCompletion = isNowDone && !latestWasDone;
       } else if (isSharedMultiUserQuantity) {
-        if (!updatedLogs.quantity) updatedLogs.quantity = {};
-        const targetValue = Math.max(1, Math.floor(Number(latestGoal.measurable?.target) || 1));
-        const todayQuantityLog = updatedLogs.quantity[selectedDateKey] || {};
-        const existingUsers = todayQuantityLog.users || {};
-        let prevValue = Number(existingUsers[currentUserId]) || 0;
-        let nextValue;
-        if (prevValue >= targetValue) {
-          // If already at target, reset to 0 (toggle off)
-          nextValue = 0;
-        } else {
-          // Otherwise, increment by 1
-          nextValue = Math.min(prevValue + 1, targetValue);
-        }
-        const nextUsers = { ...existingUsers, [currentUserId]: nextValue };
-        const allContributors = Array.isArray(latestGoal.contributors)
-          ? latestGoal.contributors
-          : Object.keys(nextUsers);
-        const requiredContributors = Math.max(2, Math.floor(Number(latestGoal?.requiredContributors) || 2));
-        const userDoneCount = allContributors.filter((userId) => Number(nextUsers[userId]) >= targetValue).length;
-        isNowDone = userDoneCount >= requiredContributors;
-        const nextEntry = { ...todayQuantityLog, users: nextUsers, done: isNowDone };
-        updatedLogs.quantity[selectedDateKey] = nextEntry;
-        updateData[`logs.quantity.${selectedDateKey}`] = nextEntry;
-        // Streaks and health
-        const { currentStreak, longestStreak } = calculateGoalStreak(latestGoal, updatedLogs, selectedDateKey);
-        updateData.currentStreak = currentStreak;
-        updateData.longestStreak = longestStreak;
-        updateData.healthLevel = getPlantHealthState({ ...latestGoal, logs: updatedLogs }, fromKey(selectedDateKey)).healthLevel;
-        // Completions
-        const wasDone = !!latestGoal?.logs?.quantity?.[selectedDateKey]?.done;
-        let growthChange = 0;
-        if (isNowDone !== wasDone) growthChange = isNowDone ? 1 : -1;
-        if (growthChange !== 0) updateData.totalCompletions = increment(growthChange);
-        shouldAwardCompletion = isNowDone && !latestWasDone;
+          console.log('[toggleGoalTransaction] Entered SHARED MULTI-USER QUANTITY branch');
+          if (!updatedLogs.quantity) updatedLogs.quantity = {};
+          if (!updatedLogs.completion) updatedLogs.completion = {};
+          const targetValue = Math.max(1, Math.floor(Number(latestGoal.measurable?.target) || 1));
+          const todayQuantityLog = updatedLogs.quantity[selectedDateKey] || {};
+          const existingQuantityUsers = todayQuantityLog.users || {};
+          let prevValue = Number(existingQuantityUsers[currentUserId]) || 0;
+          let nextValue;
+          if (prevValue >= targetValue) {
+            // If already at target, reset to 0 (toggle off)
+            nextValue = 0;
+          } else {
+            // Otherwise, increment by 1
+            nextValue = Math.min(prevValue + 1, targetValue);
+          }
+          // Update quantity log for this user
+          const nextQuantityUsers = { ...existingQuantityUsers, [currentUserId]: nextValue };
+          const nextQuantityEntry = { ...todayQuantityLog, users: nextQuantityUsers };
+          updatedLogs.quantity[selectedDateKey] = nextQuantityEntry;
+          updateData[`logs.quantity.${selectedDateKey}`] = nextQuantityEntry;
+
+          // Recalculate completion users for group logic from all users' quantities
+          // Defensive: always remove current user if their value is below target
+          let nextCompletionUsers = {};
+          Object.entries(nextQuantityUsers).forEach(([uid, val]) => {
+            if (Number(val) >= targetValue) {
+              nextCompletionUsers[uid] = true;
+            }
+          });
+          // If current user is below target, ensure they are not in the users map
+          if (nextValue < targetValue && nextCompletionUsers[currentUserId]) {
+            delete nextCompletionUsers[currentUserId];
+          }
+          // --- Contributors: merge from Firestore and in-memory log, then add/remove current user ---
+          let prevContributors = [];
+          if (Array.isArray(latestGoal.logs?.quantity?.[selectedDateKey]?.contributors)) {
+            prevContributors = prevContributors.concat(latestGoal.logs.quantity[selectedDateKey].contributors);
+          }
+          if (Array.isArray(todayQuantityLog.contributors)) {
+            prevContributors = prevContributors.concat(todayQuantityLog.contributors);
+          }
+          // Remove duplicates
+          let quantityContributors = new Set(prevContributors);
+          if (nextValue > 0) {
+            quantityContributors.add(currentUserId);
+          } else {
+            quantityContributors.delete(currentUserId);
+          }
+          quantityContributors = Array.from(quantityContributors);
+
+          // --- Contributors: merge from Firestore and in-memory log for completion, then add/remove current user ---
+          // Use the already-declared existingCompletionEntry for both contributors merging and completion log update
+          let prevCompletionContributors = [];
+          if (Array.isArray(latestGoal.logs?.completion?.[selectedDateKey]?.contributors)) {
+            prevCompletionContributors = prevCompletionContributors.concat(latestGoal.logs.completion[selectedDateKey].contributors);
+          }
+          if (Array.isArray(updatedLogs.completion[selectedDateKey]?.contributors)) {
+            prevCompletionContributors = prevCompletionContributors.concat(updatedLogs.completion[selectedDateKey].contributors);
+          }
+          let completionContributors = new Set(prevCompletionContributors);
+          if (nextValue >= targetValue) {
+            completionContributors.add(currentUserId);
+          } else {
+            completionContributors.delete(currentUserId);
+          }
+          completionContributors = Array.from(completionContributors);
+          const requiredContributors = Math.max(2, Math.floor(Number(latestGoal?.requiredContributors) || 2));
+          isNowDone = Object.keys(nextCompletionUsers).length >= requiredContributors;
+
+          // Now update quantity log
+          const { deleteField } = require('firebase/firestore');
+          if (quantityContributors.length === 0) {
+            // Remove contributors property from in-memory log
+            const nextQuantityEntryWithContrib = { ...nextQuantityEntry };
+            delete nextQuantityEntryWithContrib.contributors;
+            updatedLogs.quantity[selectedDateKey] = nextQuantityEntryWithContrib;
+            updateData[`logs.quantity.${selectedDateKey}.contributors`] = deleteField();
+            updateData[`logs.quantity.${selectedDateKey}`] = nextQuantityEntryWithContrib;
+          } else {
+            const nextQuantityEntryWithContrib = { ...nextQuantityEntry, contributors: quantityContributors };
+            updatedLogs.quantity[selectedDateKey] = nextQuantityEntryWithContrib;
+            updateData[`logs.quantity.${selectedDateKey}`] = nextQuantityEntryWithContrib;
+          }
+
+          // Now update completion log
+          const existingCompletionEntry = updatedLogs.completion[selectedDateKey] || {};
+          if (completionContributors.length === 0) {
+            // Remove contributors property from in-memory log
+            const nextCompletionEntry = { ...existingCompletionEntry, users: nextCompletionUsers, done: isNowDone };
+            delete nextCompletionEntry.contributors;
+            updatedLogs.completion[selectedDateKey] = nextCompletionEntry;
+            updateData[`logs.completion.${selectedDateKey}.contributors`] = deleteField();
+            updateData[`logs.completion.${selectedDateKey}`] = nextCompletionEntry;
+          } else {
+            const nextCompletionEntry = { ...existingCompletionEntry, users: nextCompletionUsers, done: isNowDone, contributors: completionContributors };
+            updatedLogs.completion[selectedDateKey] = nextCompletionEntry;
+            updateData[`logs.completion.${selectedDateKey}`] = nextCompletionEntry;
+          }
+
+          // Streaks and health
+          const { currentStreak, longestStreak } = calculateGoalStreak(latestGoal, updatedLogs, selectedDateKey);
+          updateData.currentStreak = currentStreak;
+          updateData.longestStreak = longestStreak;
+          updateData.healthLevel = getPlantHealthState({ ...latestGoal, logs: updatedLogs }, fromKey(selectedDateKey)).healthLevel;
+          // Completions
+          const wasDone = !!latestGoal?.logs?.completion?.[selectedDateKey]?.done;
+          let growthChange = 0;
+          if (isNowDone !== wasDone) growthChange = isNowDone ? 1 : -1;
+          if (growthChange !== 0) updateData.totalCompletions = increment(growthChange);
+          shouldAwardCompletion = isNowDone && !latestWasDone;
       } else if ((latestGoal.type || latestGoal.kind) === "completion") {
+        console.log('[toggleGoalTransaction] Entered SINGLE-USER COMPLETION branch');
         if (!updatedLogs.completion) updatedLogs.completion = {};
         isNowDone = !latestWasDone;
-        updatedLogs.completion[selectedDateKey] = { done: isNowDone };
-        updateData[`logs.completion.${selectedDateKey}`] = updatedLogs.completion[selectedDateKey];
+        // For shared (non-multi-user) completion goals, update contributors
+        if (isSharedGoalView) {
+          const { deleteField } = require('firebase/firestore');
+          if (isNowDone) {
+            // Always set contributors to [currentUserId] for this day
+            updatedLogs.completion[selectedDateKey] = { done: isNowDone, contributors: [currentUserId] };
+            updateData[`logs.completion.${selectedDateKey}`] = updatedLogs.completion[selectedDateKey];
+          } else {
+            updatedLogs.completion[selectedDateKey] = { done: isNowDone };
+            updateData[`logs.completion.${selectedDateKey}.contributors`] = deleteField();
+            updateData[`logs.completion.${selectedDateKey}.done`] = isNowDone;
+          }
+        } else {
+          updatedLogs.completion[selectedDateKey] = { done: isNowDone, contributors: isNowDone ? [currentUserId] : [] };
+          updateData[`logs.completion.${selectedDateKey}`] = updatedLogs.completion[selectedDateKey];
+        }
         shouldAwardCompletion = isNowDone && !latestWasDone;
       } else {
-        if (!updatedLogs.quantity) updatedLogs.quantity = {};
-        const targetValue = Math.max(1, Math.floor(Number(latestGoal.measurable?.target) || 1));
-        const currentValue = Math.max(
-          0,
-          Math.min(Number(updatedLogs.quantity?.[selectedDateKey]?.value) || 0, targetValue)
-        );
-        const nextValue = latestWasDone
-          ? 0
-          : Math.min(currentValue + 1, targetValue);
-        updatedLogs.quantity[selectedDateKey] = { value: nextValue };
-        updateData[`logs.quantity.${selectedDateKey}`] = updatedLogs.quantity[selectedDateKey];
-        isNowDone = nextValue >= targetValue;
-        shouldAwardCompletion = isNowDone && !latestWasDone;
+         console.log('[toggleGoalTransaction] Entered SINGLE-USER QUANTITY branch');
+         if (!updatedLogs.quantity) updatedLogs.quantity = {};
+         const targetValue = Math.max(1, Math.floor(Number(latestGoal.measurable?.target) || 1));
+         const currentValue = Math.max(
+           0,
+           Math.min(Number(updatedLogs.quantity?.[selectedDateKey]?.value) || 0, targetValue)
+         );
+         const nextValue = latestWasDone
+           ? 0
+           : Math.min(currentValue + 1, targetValue);
+         updatedLogs.quantity[selectedDateKey] = { value: nextValue };
+         updateData[`logs.quantity.${selectedDateKey}`] = updatedLogs.quantity[selectedDateKey];
+         isNowDone = nextValue >= targetValue;
+         // Always update completion for shared (non-multi-user) quantity goals
+         if (isSharedGoalView && (latestGoal.type === "quantity" || latestGoal.kind === "quantity") && !latestGoal.multiUserWateringEnabled) {
+           if (!updatedLogs.completion) updatedLogs.completion = {};
+           // Explicitly delete users property using FieldValue.delete()
+           console.log('[toggleGoalTransaction] Firestore deleteField:', deleteField, 'typeof:', typeof deleteField);
+           const delVal = deleteField();
+           console.log('[toggleGoalTransaction] Setting updateData logs.completion.' + selectedDateKey + '.users to:', delVal, 'typeof:', typeof delVal);
+           updateData[`logs.completion.${selectedDateKey}.users`] = delVal;
+           updateData[`logs.completion.${selectedDateKey}.done`] = isNowDone;
+           // Also update the in-memory logs for consistency
+           if (updatedLogs.completion[selectedDateKey] && updatedLogs.completion[selectedDateKey].users) {
+             delete updatedLogs.completion[selectedDateKey].users;
+           }
+           // --- Contributors: merge from Firestore and in-memory log, then add/remove current user ---
+           let prevContributors = [];
+           if (Array.isArray(latestGoal.logs?.completion?.[selectedDateKey]?.contributors)) {
+             prevContributors = prevContributors.concat(latestGoal.logs.completion[selectedDateKey].contributors);
+           }
+           if (Array.isArray(updatedLogs.completion[selectedDateKey]?.contributors)) {
+             prevContributors = prevContributors.concat(updatedLogs.completion[selectedDateKey].contributors);
+           }
+           let contributorsSet = new Set(prevContributors);
+           const value = updatedLogs.quantity[selectedDateKey]?.value || 0;
+           if (value > 0) {
+             contributorsSet.add(currentUserId);
+             updatedLogs.completion[selectedDateKey] = { done: isNowDone, contributors: Array.from(contributorsSet) };
+             updateData[`logs.completion.${selectedDateKey}`] = updatedLogs.completion[selectedDateKey];
+           } else {
+             // Unchecking: remove all contributors for the day
+             updateData[`logs.completion.${selectedDateKey}.contributors`] = deleteField();
+             updateData[`logs.completion.${selectedDateKey}.done`] = isNowDone;
+             if (updatedLogs.completion[selectedDateKey]) {
+               delete updatedLogs.completion[selectedDateKey].contributors;
+               updatedLogs.completion[selectedDateKey].done = isNowDone;
+             } else {
+               updatedLogs.completion[selectedDateKey] = { done: isNowDone };
+             }
+           }
+         }
+         shouldAwardCompletion = isNowDone && !latestWasDone;
       }
 
       // Health, streaks, completions (for all cases)
@@ -176,12 +347,55 @@ export async function toggleGoalTransaction({
       updateData.healthLevel = safeHealthLevel2;
       updateData[`logs.healthHistory.${selectedDateKey}`] = updatedLogs.healthHistory[selectedDateKey];
       updateData[`logs.frozenDays`] = updatedLogs.frozenDays;
+      // Unified health log: logs/health/{dateKey} with health, frozen, done, timestamp
+      // Store health log as a map under logs.health.{dateKey} in the goal document
+      if (typeof selectedDateKey === 'string' && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(selectedDateKey)) {
+        let streakToStore = currentStreak;
+        if (latestGoal?.isFrozenTrophyState && typeof latestGoal.frozenCurrentStreak === 'number') {
+          streakToStore = latestGoal.frozenCurrentStreak;
+        }
+        updateData[`logs.health.${selectedDateKey}`] = {
+          health: safeHealthLevel2,
+          frozen: !!latestGoal.isFrozenTrophyState,
+          done: !!isNowDone,
+          streak: streakToStore,
+          timestamp: new Date(),
+        };
+      } else {
+        console.error('Invalid selectedDateKey for Firestore field path:', selectedDateKey);
+      }
+      // Debug: print all updateData keys and their types before updating Firestore
+      Object.keys(updateData).forEach(k => {
+        if (typeof k !== 'string' || k === '[object Object]') {
+          console.error('toggleGoalTransaction: Invalid updateData key:', k, typeof k);
+        }
+      });
+      try {
+        console.log('toggleGoalTransaction: updateData payload:', JSON.stringify(updateData));
+      } catch (e) {
+        console.log('toggleGoalTransaction: updateData payload (non-serializable)', updateData);
+      }
       tx.update(goalRef, updateData);
       transactionUpdate = updateData;
       latestIsNowDone = isNowDone;
     });
     if (!transactionUpdate) return;
+        if (!transactionUpdate) {
+          console.error('[toggleGoalTransaction] Early return: No transactionUpdate after transaction');
+          return;
+        }
     if (isSharedGoalView && goal?.ownerId && goal?.sourceGoalId && transactionUpdate) {
+      // Debug: print all transactionUpdate keys and their types before updating Firestore
+      Object.keys(transactionUpdate).forEach(k => {
+        if (typeof k !== 'string' || k === '[object Object]') {
+          console.error('toggleGoalTransaction: Invalid transactionUpdate key:', k, typeof k);
+        }
+      });
+      try {
+        console.log('toggleGoalTransaction: transactionUpdate payload:', JSON.stringify(transactionUpdate));
+      } catch (e) {
+        console.log('toggleGoalTransaction: transactionUpdate payload (non-serializable)', transactionUpdate);
+      }
       try {
         await updateDoc(doc(db, "users", goal.ownerId, "goals", goal.sourceGoalId), transactionUpdate);
       } catch (syncError) {

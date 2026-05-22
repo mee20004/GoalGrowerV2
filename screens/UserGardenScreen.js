@@ -21,6 +21,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import { LinearGradient } from "expo-linear-gradient";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
+import { POT_ASSETS } from "../constants/PotAssets";
 import { subscribePersonalCustomizations } from "../utils/customizationFirestore";
 import { auth } from "../firebaseConfig";
 import { toKey } from "../components/GoalsStore";
@@ -51,7 +52,7 @@ function GoalIcon({ name, size, color }) {
   return <FontAwesomeIcon icon={iconDef} size={size} color={color} />;
 }
 
-const POT_IMAGE = require("../assets/plants/pot.png");
+const POT_IMAGE = POT_ASSETS.default;
 const TROPHY_POT_IMAGES = {
   bronze: require("../assets/plants/pot_b.png"),
   silver: require("../assets/plants/pot_s.png"),
@@ -591,10 +592,12 @@ const PlantVisual = ({ plant }) => {
 
   const species = plant.plantSpecies || (plant.type !== "completion" && plant.type !== "quantity" ? plant.type : "fern");
   const speciesAssets = PLANT_ASSETS[species] || PLANT_ASSETS.fern;
-  const healthStatus = getPlantHealthState(plant).status;
+  const healthStatus = getPlantHealthState(plant, new Date(), auth.currentUser?.uid).status;
   // Use the correct image for the health status, fallback to 'alive' if missing
   const plantSource = speciesAssets?.[stage]?.[healthStatus] || speciesAssets?.[stage]?.alive || PLANT_ASSETS.fern?.[stage]?.alive || PLANT_ASSETS.fern.stage1.alive;
-  const potSource = POT_IMAGE;
+  // Use the correct pot image based on plant.potStyle, fallback to default
+  const potStyle = plant.potStyle || 'default';
+  const potSource = POT_ASSETS[potStyle] || POT_ASSETS.default;
   const showTrophyParticles = Boolean(rating);
   const trophyBadgeSource = getTrophyBadgeSource(rating);
 

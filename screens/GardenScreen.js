@@ -443,7 +443,7 @@ const PlantVisual = ({ plant, isDraggingHighlight }) => {
 
   // Always use calculated healthLevel for today for ALL plants (matches GoalScreen)
   const today = new Date();
-  const displayHealthState = getPlantHealthState(plant, today);
+  const displayHealthState = getPlantHealthState(plant, today, auth.currentUser?.uid);
   const healthLevel = displayHealthState.healthLevel;
 
   const swayAnim = useRef(new Animated.Value(0)).current;
@@ -462,7 +462,7 @@ const PlantVisual = ({ plant, isDraggingHighlight }) => {
 
   // --- Use the exact same logic as GoalPlantPreview for plant image selection ---
   const stage = getGrowthStage(plant?.totalCompletions);
-  const { status } = getPlantHealthState(plant);
+  const { status } = getPlantHealthState(plant, new Date(), auth.currentUser?.uid);
   const species = plant?.plantSpecies || ((plant?.type !== "completion" && plant?.type !== "quantity") ? plant?.type : "fern");
   const speciesAssets = PLANT_ASSETS[species] || PLANT_ASSETS.fern;
   const plantSource =
@@ -857,8 +857,9 @@ export default function GardenScreen({ route, navigation }) {
     async function updateGoalWithHealth(goal, updatedFields) {
       const today = new Date();
       const updatedGoal = { ...goal, ...updatedFields };
-      const updatedHealthLevel = getPlantHealthState(updatedGoal, today).healthLevel;
+      const updatedHealthLevel = getPlantHealthState(updatedGoal, today, auth.currentUser?.uid).healthLevel;
       const updateData = { ...updatedFields, healthLevel: updatedHealthLevel };
+      console.log('[updateGoalWithHealth] updateData:', JSON.stringify(updateData));
       await updateDoc(doc(db, "users", auth.currentUser.uid, "goals", goal.id), updateData);
     }
   // --- Drawer and shelf positioning state/logic ---
@@ -1103,7 +1104,9 @@ export default function GardenScreen({ route, navigation }) {
         let currentAppStreak = userData.streakCount || 0;
         if (userData.lastActiveDate === todayStr) return currentAppStreak;
         currentAppStreak = (userData.lastActiveDate === yesterdayStr) ? currentAppStreak + 1 : 1;
-        await updateDoc(userRef, { streakCount: currentAppStreak, lastActiveDate: todayStr });
+        const updateData = { streakCount: currentAppStreak, lastActiveDate: todayStr };
+        console.log('[updateStreak] updateData:', JSON.stringify(updateData));
+        await updateDoc(userRef, updateData);
         return currentAppStreak;
       }
       return 0;
@@ -1126,7 +1129,9 @@ export default function GardenScreen({ route, navigation }) {
 
       if (newlyUnlocked.length > 0) {
         const newIds = newlyUnlocked.map(achievement => achievement.id);
-        await updateDoc(userRef, { unlockedAchievements: arrayUnion(...newIds) });
+        const updateData = { unlockedAchievements: arrayUnion(...newIds) };
+        console.log('[checkAchievements] updateData:', JSON.stringify(updateData));
+        await updateDoc(userRef, updateData);
       }
     } catch (error) {
       console.error(error);
@@ -1149,9 +1154,11 @@ export default function GardenScreen({ route, navigation }) {
     }
     if (isGoalDoneForDate(goal, todayKey)) return;
     try {
+      const todayKeyString = typeof todayKey === 'string' ? todayKey : toKey(todayKey);
+      console.log('[GardenScreen] toggleGoalTransaction selectedDateKey:', todayKeyString, typeof todayKeyString);
       await toggleGoalTransaction({
         goal,
-        selectedDateKey: todayKey,
+        selectedDateKey: todayKeyString,
         isSharedGoalView: !!sharedGardenId,
         routeSharedGardenId: sharedGardenId,
         shelfPosition: goal.shelfPosition,
@@ -2164,7 +2171,9 @@ export default function GardenScreen({ route, navigation }) {
           return;
         }
 
-        tx.update(gardenRef, { memberIds: arrayUnion(uid) });
+        const updateData = { memberIds: arrayUnion(uid) };
+        console.log('[acceptSharedGardenInvite] tx.update:', JSON.stringify(updateData));
+        tx.update(gardenRef, updateData);
       });
 
       await deleteDoc(doc(db, 'users', uid, 'sharedGardenInvites', invite.id));
@@ -2225,6 +2234,8 @@ export default function GardenScreen({ route, navigation }) {
 
         const nextMemberIds = memberIds.filter((memberId) => memberId !== uid);
         shouldDeleteSharedGoals = nextMemberIds.length === 0;
+        const updateData = { memberIds: nextMemberIds };
+        console.log('[removeFromSharedGarden] tx.update:', JSON.stringify(updateData));
         tx.update(gardenRef, { memberIds: nextMemberIds });
       });
 
@@ -2508,9 +2519,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       return (
         <View style={[styles.storagePage, { width, height }]}> 
           <View style={styles.storageHeader}>
-            <Ionicons name="trophy" size={20} color="#FFD700" style={styles.storageHeaderIcon} />
-            <Text style={styles.storageHeaderTitle}>Trophy Collection</Text>
-            <Ionicons name="trophy" size={20} color="#FFD700" style={styles.storageHeaderIcon} />
+            <Text style={styles.storageHeaderTitle}>Trophies</Text>
           </View>
           <ScrollView
             style={styles.storageScroll}
@@ -3143,7 +3152,7 @@ const styles = StyleSheet.create({
   },
   gardenSwitcherShell: {
     position: 'absolute',
-    top: 54,
+    top: 55,
     right: 16,
     width: 156,
     maxWidth: '52%',
@@ -3151,7 +3160,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(66, 66, 66, 0.96)',
     zIndex: 60,
     overflow: 'hidden',
-    borderWidth: 1,
+    borderWidth: 0,
     borderColor: 'rgba(255,255,255,0.14)',
   },
   gardenSwitcherShellExpanded: {
@@ -3627,24 +3636,27 @@ const styles = StyleSheet.create({
   storageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 54,
-    paddingBottom: 14,
+    justifyContent: 'flex-start',
+    paddingTop: 10,
+    paddingBottom: 6,
     paddingHorizontal: 20,
     backgroundColor: '#1a1836',
-    borderBottomWidth: 1,
+    borderBottomWidth: 0,
     borderBottomColor: '#2e2b5a',
+    margin: 15,
+    marginTop: 55,
+    borderRadius: 40,
   },
   storageHeaderTitle: {
-    color: '#FFD700',
-    fontSize: 18,
+    color: '#ffffff',
+    fontSize: 20,
     fontWeight: '800',
     letterSpacing: 1.2,
-    marginHorizontal: 10,
-    textShadowColor: 'rgba(255, 200, 0, 0.45)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
+    marginHorizontal: 0,
+    textAlign: 'left',
     fontFamily: 'CeraRoundProDEMO-Black',
+    paddingBottom: 5,
+    paddingLeft: 10,
   },
   storageHeaderIcon: {
     opacity: 0.9,

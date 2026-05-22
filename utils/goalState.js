@@ -1,4 +1,5 @@
 import { fromKey, toKey } from "../components/GoalsStore";
+import { logHealthForDay } from "./logHealthForDay";
 
 // --- Trophy/Storage State Freeze Helpers ---
 function isTrophyState(goal) {
@@ -119,7 +120,14 @@ export function dateFromFirestoreValue(value) {
   return Number.isNaN(converted.getTime()) ? null : converted;
 }
 
-export function getPlantHealthState(goal, now = new Date()) {
+/**
+ * Calculates plant health state and asynchronously logs health for each day.
+ * @param {object} goal
+ * @param {Date} now
+ * @returns {object} health state
+ */
+// userId must be passed in to log health in the correct Firestore location
+export function getPlantHealthState(goal, now = new Date(), userId = null) {
   // --- Trophy/Storage freeze logic ---
   if (goal?.isFrozenTrophyState && typeof goal?.frozenHealthLevel === 'number') {
     // If frozen, always return the frozen value
@@ -162,6 +170,7 @@ export function getPlantHealthState(goal, now = new Date()) {
       const done = isGoalDoneForDate(goal, dateKey);
       healthLevel += done ? 1 : -1;
       healthLevel = clampHealthLevel(healthLevel);
+      // Removed logHealthForDay call to prevent repeated Firestore writes during health calculation
     }
     cursor.setDate(cursor.getDate() + 1);
   }

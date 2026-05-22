@@ -249,9 +249,11 @@ export default function GoalsScreen({ navigation }) {
       return;
     }
     try {
+      const selectedDateKeyString = typeof selectedDateKey === 'string' ? selectedDateKey : toKey(selectedDateKey);
+      console.log('[GoalsScreen] toggleGoalTransaction selectedDateKey:', selectedDateKeyString, typeof selectedDateKeyString);
       await toggleGoalTransaction({
         goal,
-        selectedDateKey,
+        selectedDateKey: selectedDateKeyString,
         isSharedGoalView: !!sharedGardenId,
         routeSharedGardenId: sharedGardenId,
         shelfPosition,

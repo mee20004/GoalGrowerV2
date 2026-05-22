@@ -1,3 +1,5 @@
+import { ContributorsTodaySection } from './ContributorsTodaySection';
+import { useUsernames } from '../hooks/useUsernames';
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
@@ -105,7 +107,7 @@ const getPreviewTrophyRating = (longestStreak = 0, healthLevel = 1) => {
 function GoalPlantPreview({ goal, getPlantHealthState, backdropColor = DEFAULT_PLANT_PREVIEW_COLOR, variant = "card" }) {
   const stage = getGrowthStage(goal?.totalCompletions);
 
-  const { status } = getPlantHealthState(goal);
+  const { status } = getPlantHealthState(goal, new Date(), auth.currentUser?.uid);
   const species = goal?.plantSpecies || ((goal?.type !== "completion" && goal?.type !== "quantity") ? goal?.type : "fern");
   const speciesAssets = PLANT_ASSETS[species] || PLANT_ASSETS.fern;
   const plantSource =
@@ -1296,6 +1298,13 @@ export default function GoalScreen({ route, navigation }) {
 
       await setDoc(doc(db, "users", auth.currentUser.uid, "goals", goal.id), updatedGoalData, { merge: true });
 
+      // --- FULLY RESET LOGS after saving edits ---
+      await setDoc(
+        doc(db, "users", auth.currentUser.uid, "goals", goal.id),
+        { logs: {} },
+        { merge: true }
+      );
+
       if (nextSharedGardenId) {
         const sharedLayoutRef = doc(db, "sharedGardens", nextSharedGardenId, "layout", goal.id);
         const sharedPayload = {
@@ -1313,6 +1322,12 @@ export default function GoalScreen({ route, navigation }) {
         }
 
         await setDoc(sharedLayoutRef, sharedPayload, { merge: true });
+        // --- FULLY RESET LOGS in shared layout as well ---
+        await setDoc(
+          sharedLayoutRef,
+          { logs: {} },
+          { merge: true }
+        );
       }
 
       if (isGardenChanged && !nextSharedGardenId) {
@@ -1411,9 +1426,11 @@ export default function GoalScreen({ route, navigation }) {
     try {
       if (tapCooldownRef.current) return;
       startTapCooldown();
+      const selectedDateKeyString = typeof selectedDateKey === 'string' ? selectedDateKey : toKey(selectedDateKey);
+      console.log('[GoalScreen] toggleGoalTransaction selectedDateKey:', selectedDateKeyString, typeof selectedDateKeyString);
       await toggleGoalTransaction({
         goal,
-        selectedDateKey,
+        selectedDateKey: selectedDateKeyString,
         isSharedGoalView,
         routeSharedGardenId,
         shelfPosition,
@@ -1511,6 +1528,11 @@ export default function GoalScreen({ route, navigation }) {
         frozenLongestStreak,
         trophyDate: todayTrophyDate,
       };
+      // Log health for today as frozen
+      if (!isSharedGoalView && auth.currentUser?.uid && goal?.id) {
+        const { logHealthForDay } = require('../utils/logHealthForDay');
+        await logHealthForDay(auth.currentUser.uid, goal.id, todayTrophyDate, frozenHealthLevel, true, false);
+      }
       await updateDoc(goalRef, updateData);
 
       if (isSharedGoalView && goal?.ownerId && goal?.sourceGoalId) {
@@ -1583,7 +1605,7 @@ export default function GoalScreen({ route, navigation }) {
       const resumeFromTrophyDate = trophyDate ? fromKey(trophyDate) : today;
       resumeFromTrophyDate.setDate(resumeFromTrophyDate.getDate() + 1); // day after trophy
       const resumeFromTrophyDateKey = toKey(resumeFromTrophyDate);
-      await updateDoc(goalRef, {
+      let updateData = {
         ...restGoal,
         completionCondition: nextCompletionCondition,
         isFrozenTrophyState: deleteField(),
@@ -1592,7 +1614,16 @@ export default function GoalScreen({ route, navigation }) {
         frozenLongestStreak: deleteField(),
         resumeFromTrophyDate: resumeFromTrophyDateKey,
         resumeFromTrophyHealth: Number(frozenHealthLevel) || 5,
+      };
+      // Remove any keys that are not valid Firestore field paths
+      Object.keys(updateData).forEach((key) => {
+        if (typeof key !== 'string' || key === '[object Object]') {
+          console.warn('[returnGoalFromTrophy] Removing invalid key from updateData:', key);
+          delete updateData[key];
+        }
       });
+      console.log('[returnGoalFromTrophy] filtered updateData:', JSON.stringify(updateData));
+      await updateDoc(goalRef, updateData);
 
       if (isSharedGoalView && goal?.ownerId && goal?.sourceGoalId) {
         try {
@@ -1866,7 +1897,7 @@ export default function GoalScreen({ route, navigation }) {
   // If goal is a trophy or was a trophy and frozen, use frozen values for streak, health, rewards
   const isFrozenTrophy = goal?.isFrozenTrophyState;
   // Always use real current date for health bar, not selected date
-  const displayHealthState = getPlantHealthState(goalForDerivedState, new Date());
+  const displayHealthState = getPlantHealthState(goalForDerivedState, new Date(), auth.currentUser?.uid);
 
   // Find the date the plant became a trophy
   const trophyDate = goal?.trophyDate || null;
@@ -2121,6 +2152,7 @@ export default function GoalScreen({ route, navigation }) {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Today</Text>
+          {/* Check off/progress section (moved above contributors) */}
           <View style={styles.progressCard}>
             <View style={styles.progressContent}>
               <Text style={styles.progressDate}>
@@ -2221,6 +2253,17 @@ export default function GoalScreen({ route, navigation }) {
               </Pressable>
             </View>
           </View>
+          {/* Contributors for today (usernames) - now below check off section */}
+          {(() => {
+            const isSharedGoal = goal?.sharedGardenId || goal?.gardenType === 'shared';
+            if (!isSharedGoal) return null;
+            const contributorIds = Array.isArray(goal?.logs?.completion?.[selectedDateKey]?.contributors)
+              ? goal.logs.completion[selectedDateKey].contributors
+              : [];
+            return (
+              <ContributorsTodaySection contributorIds={contributorIds} />
+            );
+          })()}
           <View style={styles.todayHealthCard}>
             <View style={styles.todayHealthHeader}>
               <Text style={styles.todayHealthTitle}>Plant health</Text>

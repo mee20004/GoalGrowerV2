@@ -154,7 +154,7 @@ export async function scheduleDailyGoalNotification() {
     );
     
     for (const notif of dailyGoalNotifications) {
-      await Notifications.cancelNotificationAsync(notif.identifier);
+      await Notifications.cancelScheduledNotificationAsync(notif.identifier);
     }
 
     // Calculate seconds until target time
@@ -266,7 +266,7 @@ export async function cancelAllScheduledNotifications() {
   try {
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     for (const notif of scheduled) {
-      await Notifications.cancelNotificationAsync(notif.identifier);
+      await Notifications.cancelScheduledNotificationAsync(notif.identifier);
     }
     console.log('All notifications cancelled');
   } catch (error) {
@@ -281,7 +281,7 @@ export async function cancelDailyGoalNotification() {
   try {
     const notificationId = await AsyncStorage.getItem('dailyGoalNotificationId');
     if (notificationId) {
-      await Notifications.cancelNotificationAsync(notificationId);
+      await Notifications.cancelScheduledNotificationAsync(notificationId);
       await AsyncStorage.removeItem('dailyGoalNotificationId');
       console.log('Daily goal notification cancelled');
     }
@@ -552,7 +552,7 @@ export async function cancelGoalNotification(goalId) {
     );
     
     for (const notif of goalNotifications) {
-      await Notifications.cancelNotificationAsync(notif.identifier);
+      await Notifications.cancelScheduledNotificationAsync(notif.identifier);
     }
     
     console.log(`Notifications cancelled for goal: ${goalId}`);

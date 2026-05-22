@@ -316,30 +316,23 @@ export default function JourneyScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <View style={[styles.heroScene, { height: heroHeight }]}>
-        <Image
-          source={require("../assets/Tree/Tree_BG.png")}
-          style={[
-            styles.heroBgImage,
-            {
-              transform: [
-                { scale: HERO_BG_SCALE },
-                { translateX: HERO_BG_OFFSET_X },
-                { translateY: HERO_BG_OFFSET_Y },
-              ],
-            },
-          ]}
-          resizeMode="cover"
-        />
-        <View style={styles.headerSpacer} />
-
-        <View style={[styles.headerCard, styles.insetX]}>
+      <View style={{ margin: 18 }}>
+        <View style={[styles.headerCard, { backgroundColor: 'rgba(255,255,255,0.96)', marginBottom: 18 }]}> 
           <Text style={styles.headerTitle}>Journey</Text>
         </View>
-
-        <View style={styles.treeShowcase}>
-          <View style={styles.treeGlow} />
-          <Image source={TREE_STAGES[treeStageIndex]} style={styles.treeImage} resizeMode="contain" />
+        <View style={styles.heroContainer}>
+          <View style={styles.treeShowcaseOuter}>
+            <View style={styles.treeShowcaseAbsolute}>
+              <View style={styles.treeGlow} />
+              <Image source={TREE_STAGES[treeStageIndex]} style={styles.treeImage} />
+            </View>
+          </View>
+          <Image
+            source={require("../assets/Tree/Tree_BG.png")}
+            style={styles.heroBgImageRounded}
+            resizeMode="cover"
+          />
+          <View style={styles.headerSpacer} />
         </View>
       </View>
 
@@ -535,7 +528,26 @@ const styles = StyleSheet.create({
   completeGoalButtonText: { color: "#FFF", fontSize: 15, fontWeight: "900", fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1 },
   container: {
     flex: 1,
-    backgroundColor: "#226B4B",
+    backgroundColor: theme.bg,
+  },
+  heroContainer: {
+    borderRadius: 32,
+    overflow: 'hidden',
+    shadowColor: '#cdcdcd',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 4,
+    top: 50,
+  },
+  heroBgImageRounded: {
+    width: '100%',
+    height: 520,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    overflow: 'hidden',
   },
   heroBgImage: {
     ...StyleSheet.absoluteFillObject,
@@ -560,6 +572,7 @@ const styles = StyleSheet.create({
     shadowRadius: 0,
     elevation: 3,
     marginBottom: 12,
+    top: 50,
   },
   headerTitle: {
     fontSize: 22,
@@ -585,13 +598,21 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 10,
   },
-  treeShowcase: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-    bottom: 40,
+  treeShowcaseOuter: {
+    position: 'relative',
+    height: 0,
+    zIndex: 2,
   },
+  treeShowcaseAbsolute: {
+    position: 'absolute',
+    top: 60,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  treeShowcase: {},
   treeGlow: {
     position: "absolute",
     width: 230,
@@ -601,9 +622,11 @@ const styles = StyleSheet.create({
     top: 34,
   },
   treeImage: {
-    width: "100%",
-    height: "100%",
-    marginTop: -100,
+    width: 340,
+    height: 340,
+    resizeMode: 'contain',
+    zIndex: 2,
+    marginBottom: 0,
   },
   section: {
     marginBottom: 18,
@@ -611,11 +634,62 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 12,
     fontWeight: "900",
-    color: "#111111",
+    color: theme.text,
     marginBottom: 8,
     textTransform: "uppercase",
     letterSpacing: 1,
     fontFamily: 'CeraRoundProDEMO-Black',
+  },
+  progressFootMeta: {
+    marginTop: 1,
+    fontSize: 13,
+    fontWeight: "900",
+    color: theme.muted,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
+  },
+  growthLabel: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: theme.muted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 2,
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
+  stageChipText: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: '#3d6f46',
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
+  },
+  nextGoalsTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: theme.text,
+    marginBottom: 2,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
+  },
+  nextGoalLabel: {
+    flex: 1,
+    minWidth: 120,
+    fontSize: 12,
+    fontWeight: "900",
+    color: theme.text,
+    paddingBottom: 6,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
+  },
+  nextGoalValue: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: theme.text,
+    paddingRight: 10,
+    paddingBottom: 6,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
   },
   progressCard: {
     backgroundColor: "#ffffff",
@@ -792,7 +866,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   trackTitle: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "900",
     color: theme.text,
     flex: 1,
@@ -820,7 +894,7 @@ const styles = StyleSheet.create({
   },
   trackDesc: {
     marginTop: 2,
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "700",
     color: theme.text2,
     fontFamily: 'CeraRoundProDEMO-Black',
@@ -875,7 +949,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   summaryValue: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "900",
     color: theme.text,
     fontFamily: 'CeraRoundProDEMO-Black',
@@ -883,7 +957,7 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     marginTop: 2,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "800",
     color: "#7d8a97",
     textTransform: "uppercase",

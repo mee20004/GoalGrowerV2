@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from "react";
+import { theme } from './theme';
+import React, { useState, useEffect, useRef } from "react";
 import { useCallback } from "react";
 import { Asset } from 'expo-asset';
 import { StackActions } from '@react-navigation/native';
 import { Text, View, Image } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import { AppState } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
@@ -15,13 +17,7 @@ import CenteredTabBar from './components/CenteredTabBar';
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "./firebaseConfig";
-import Login from "./login";
 
-// Stores & Theme
-import { GoalsProvider } from "./components/GoalsStore";
-import { theme } from "./theme";
-import { PLANT_ASSETS } from "./constants/PlantAssets";
-import { FAR_BG_ASSETS } from "./constants/FarBGAssets";
 import { FRAME_ASSETS } from "./constants/FrameAssets";
 import { WALLPAPER_ASSETS } from "./constants/WallpaperAssets";
 import { initializeNotifications } from "./utils/notifications";
@@ -40,6 +36,7 @@ import FollowingListScreen from './screens/FollowingListScreen';
 import RankScreen from './screens/RankScreen';
 import GardenScreen from './screens/GardenScreen'; // <-- 1. IMPORT GARDEN SCREEN
 import JourneyScreen from './screens/JourneyScreen';
+import ShopScreen from './screens/ShopScreen';
 
 const TASKBAR_ICON_MAP = {
   Rank: require("./assets/Icons/Taskbar/TrophyIcon.png"),
@@ -47,6 +44,7 @@ const TASKBAR_ICON_MAP = {
   Garden: require("./assets/Icons/Taskbar/GardenIcon.png"),
   ProfileTab: require("./assets/Icons/Taskbar/ProfileIcon.png"),
   Journey: require("./assets/Icons/Taskbar/Journey.png"),
+  Shop: require("./assets/Icons/Taskbar/Shop.png"),
 };
 
 // Helper Placeholder Screen
@@ -173,12 +171,16 @@ function MainTabs() {
               />
             );
           }
-
           // Fallback for any unexpected route.
           return <Ionicons name="ellipse-outline" size={22} color={color} />;
         },
       })}
     >
+            <Tab.Screen
+              name="Shop"
+              component={ShopScreen}
+              options={{ tabBarLabel: "Shop" }}
+            />
       <Tab.Screen name="Rank" component={RankStack} options={{ tabBarLabel: "Rank" }} />
       <Tab.Screen
         name="Goals"
@@ -232,61 +234,50 @@ function MainTabs() {
 
 // --- ROOT APP COMPONENT ---
 
-export default function App() {
-    // Preload all major assets for GardenScreen and GoalsScreen on app load
-    const preloadAllAssets = useCallback(async () => {
-      // Flatten plant asset tree
-      const flattenPlantAssets = (obj) => {
-        let arr = [];
-        for (const v of Object.values(obj)) {
-          if (typeof v === 'number') arr.push(v);
-          else if (typeof v === 'object') arr = arr.concat(flattenPlantAssets(v));
-        }
-        return arr;
-      };
-      const plantImages = flattenPlantAssets(PLANT_ASSETS);
-      const allAssets = [
-        ...plantImages,
-        ...FAR_BG_ASSETS,
-        ...FRAME_ASSETS,
-        ...WALLPAPER_ASSETS,
-        require('./assets/plants/pot.png'),
-        require('./assets/plants/pot_b.png'),
-        require('./assets/plants/pot_s.png'),
-        require('./assets/plants/pot_g.png'),
-        require('./assets/plants/pot_p.png'),
-        require('./assets/far_background.png'),
-      ];
-      try {
-        await Asset.loadAsync(allAssets);
-      } catch (e) {
-        // Ignore errors, just try to cache as much as possible
-      }
-    }, []);
+import { FontProvider } from './components/FontProvider';
+import { GoalsProvider } from './components/GoalsStore';
+import EnterScreen from './screens/EnterScreen';
+import Login from './login';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-    useEffect(() => {
-      preloadAllAssets();
-    }, [preloadAllAssets]);
+export default function App() {
   const [user, setUser] = useState(null);
-  const [hasUsername, setHasUsername] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [hasUsername, setHasUsername] = useState(false);
+  const [showEnterScreen, setShowEnterScreen] = useState(false);
+  const userRef = useRef(null);
+  const unsubFirestoreRef = useRef(null);
+  const appStateListenerRef = useRef(null);
+
+  // Helper to check if EnterScreen should be shown
+  const checkEnterScreen = async (uid, context) => {
+    if (!uid) {
+      setShowEnterScreen(false);
+      return;
+    }
+    const key = `lastEnterScreenDate_${uid}`;
+    const today = new Date().toLocaleDateString('en-CA');
+    const lastDate = await AsyncStorage.getItem(key);
+    if (lastDate !== today) {
+      setShowEnterScreen(true);
+    } else {
+      setShowEnterScreen(false);
+    }
+  };
 
   useEffect(() => {
-    let unsubFirestore = null;
-
-    const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
-      if (unsubFirestore) {
-        unsubFirestore();
-        unsubFirestore = null;
+    let unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      if (unsubFirestoreRef.current) {
+        unsubFirestoreRef.current();
+        unsubFirestoreRef.current = null;
       }
 
       setUser(firebaseUser);
+      userRef.current = firebaseUser;
 
       if (firebaseUser) {
-        // Initialize notifications when user logs in
         initializeNotifications(null);
-
-        unsubFirestore = onSnapshot(
+        unsubFirestoreRef.current = onSnapshot(
           doc(db, "users", firebaseUser.uid),
           (docSnap) => {
             if (docSnap.exists() && docSnap.data().username) {
@@ -295,6 +286,7 @@ export default function App() {
               setHasUsername(false);
             }
             setInitializing(false);
+            checkEnterScreen(firebaseUser.uid, "onSnapshot");
           },
           (error) => {
             if (error?.code !== "permission-denied" || auth.currentUser) {
@@ -302,36 +294,63 @@ export default function App() {
             }
             setHasUsername(false);
             setInitializing(false);
+            checkEnterScreen(firebaseUser.uid, "onSnapshotError");
           }
         );
       } else {
         setHasUsername(false);
         setInitializing(false);
+        setShowEnterScreen(false);
+      }
+    });
+
+    appStateListenerRef.current = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && userRef.current) {
+        checkEnterScreen(userRef.current.uid, "AppState.active");
       }
     });
 
     return () => {
-      unsubAuth();
-      if (unsubFirestore) unsubFirestore();
+      if (unsubAuth) unsubAuth();
+      if (unsubFirestoreRef.current) unsubFirestoreRef.current();
+      if (appStateListenerRef.current) appStateListenerRef.current.remove();
     };
   }, []);
 
   if (initializing) return null;
 
+  const handleEnterScreenDone = async () => {
+    const today = new Date().toLocaleDateString('en-CA');
+    const uid = auth.currentUser?.uid;
+    if (uid) {
+      const key = `lastEnterScreenDate_${uid}`;
+      await AsyncStorage.setItem(key, today);
+    }
+    setShowEnterScreen(false);
+  };
+
   return (
-    <SafeAreaProvider>
-      <GoalsProvider>
-        <NavigationContainer>
-          <StatusBar style="dark" />
-          <RootStack.Navigator screenOptions={{ headerShown: false }}>
-            {user && hasUsername ? (
-              <RootStack.Screen name="Tabs" component={MainTabs} />
-            ) : (
-              <RootStack.Screen name="Login" component={Login} />
-            )}
-          </RootStack.Navigator>
-        </NavigationContainer>
-      </GoalsProvider>
-    </SafeAreaProvider>
+    <FontProvider>
+      <SafeAreaProvider>
+        <GoalsProvider>
+          <NavigationContainer>
+            <StatusBar style="dark" />
+            <RootStack.Navigator screenOptions={{ headerShown: false }}>
+              {user && hasUsername ? (
+                showEnterScreen ? (
+                  <RootStack.Screen name="Enter" options={{ headerShown: false }}>
+                    {props => <EnterScreen {...props} onDone={handleEnterScreenDone} />}
+                  </RootStack.Screen>
+                ) : (
+                  <RootStack.Screen name="Tabs" component={MainTabs} />
+                )
+              ) : (
+                <RootStack.Screen name="Login" component={Login} />
+              )}
+            </RootStack.Navigator>
+          </NavigationContainer>
+        </GoalsProvider>
+      </SafeAreaProvider>
+    </FontProvider>
   );
 }
