@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { theme } from "../../theme";
 import { computeTutorialCardLayout } from "../../tutorial/cardLayout";
 import { isValidRect } from "../../tutorial/layout";
+import TutorialComparisonImages from "./TutorialComparisonImages";
 
 function CardArrow({ placement }) {
   if (!placement) return null;
@@ -33,6 +34,7 @@ export default function TutorialCard({
   targetRect = null,
   centered = false,
   cardPlacement = null,
+  comparisonImages = null,
 }) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -70,6 +72,7 @@ export default function TutorialCard({
           title={title}
           description={description}
           imageSource={imageSource}
+          comparisonImages={comparisonImages}
           primaryLabel={primaryLabel}
           showPrimary={showPrimary}
           onSkip={onSkip}
@@ -94,6 +97,7 @@ export default function TutorialCard({
             title={title}
             description={description}
             imageSource={imageSource}
+            comparisonImages={comparisonImages}
             primaryLabel={primaryLabel}
             showPrimary={showPrimary}
             onSkip={onSkip}
@@ -109,6 +113,7 @@ function CardBody({
   title,
   description,
   imageSource,
+  comparisonImages,
   primaryLabel,
   showPrimary,
   onSkip,
@@ -116,6 +121,14 @@ function CardBody({
 }) {
   return (
     <View style={styles.card}>
+      {comparisonImages ? (
+        <TutorialComparisonImages
+          leftSource={comparisonImages.leftSource}
+          rightSource={comparisonImages.rightSource}
+          leftLabel={comparisonImages.leftLabel}
+          rightLabel={comparisonImages.rightLabel}
+        />
+      ) : null}
       {imageSource ? (
         <Image source={imageSource} style={styles.image} resizeMode="contain" />
       ) : null}

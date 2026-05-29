@@ -1,5 +1,11 @@
 import { TUTORIAL_STEP_MODES, TUTORIAL_TARGET_KEYS } from "./constants";
 import { TUTORIAL_WELCOME_PLANT_IMAGE } from "./welcomeAssets";
+import {
+  TUTORIAL_GROWTH_STAGE_END,
+  TUTORIAL_GROWTH_STAGE_START,
+  TUTORIAL_HEALTHY_PLANT_IMAGE,
+  TUTORIAL_WILTING_PLANT_IMAGE,
+} from "./educationAssets";
 
 // Onboarding step sequence
 export const TUTORIAL_STEPS = [
@@ -58,6 +64,13 @@ export const TUTORIAL_STEPS = [
       screen: "JourneyHome",
     },
     requiresUserAction: false,
+    cardPlacement: "top",
+    comparisonImages: {
+      leftSource: TUTORIAL_GROWTH_STAGE_START,
+      rightSource: TUTORIAL_GROWTH_STAGE_END,
+      leftLabel: "Early stage",
+      rightLabel: "Full bloom",
+    },
   },
   {
     id: "consistency",
@@ -72,6 +85,13 @@ export const TUTORIAL_STEPS = [
       screen: "GardenHome",
     },
     requiresUserAction: false,
+    cardPlacement: "top",
+    comparisonImages: {
+      leftSource: TUTORIAL_HEALTHY_PLANT_IMAGE,
+      rightSource: TUTORIAL_WILTING_PLANT_IMAGE,
+      leftLabel: "Healthy",
+      rightLabel: "Wilting",
+    },
   },
   {
     id: "completion",

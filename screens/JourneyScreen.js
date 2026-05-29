@@ -5,6 +5,9 @@ import { useFocusEffect } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
+import HighlightTarget from "../components/tutorial/HighlightTarget";
+import useRemeasureTutorialOnFocus from "../components/tutorial/useRemeasureTutorialOnFocus";
+import { TUTORIAL_TARGET_KEYS } from "../tutorial/constants";
 import { theme } from "../theme";
 import { getGoalTrophyRating, updateOverallScoreForUser } from "../utils/scoreUtils";
 import { getScoredGoalsForUser } from "../utils/scoreUtils";
@@ -175,6 +178,7 @@ function ProgressBar({ value, target }) {
 }
 
 export default function JourneyScreen() {
+  useRemeasureTutorialOnFocus();
   // Track which growth goals have been completed in this session
   const [completedGrowthGoals, setCompletedGrowthGoals] = useState([]);
   // Handler for completing a growth goal (stub)
@@ -320,25 +324,33 @@ export default function JourneyScreen() {
         <View style={[styles.headerCard, { backgroundColor: 'rgba(255,255,255,0.96)', marginBottom: 18 }]}> 
           <Text style={styles.headerTitle}>Journey</Text>
         </View>
-        <View style={styles.heroContainer}>
-          <View style={styles.treeShowcaseOuter}>
-            <View style={styles.treeShowcaseAbsolute}>
-              <View style={styles.treeGlow} />
-              <Image source={TREE_STAGES[treeStageIndex]} style={styles.treeImage} />
-            </View>
-          </View>
-          <Image
-            source={require("../assets/Tree/Tree_BG.png")}
-            style={styles.heroBgImageRounded}
-            resizeMode="cover"
-          />
-          <View style={styles.headerSpacer} />
-        </View>
       </View>
 
-      <View style={[styles.section, styles.insetX]}>
-        <Text style={styles.sectionTitle}>Garden Growth</Text>
-        <View style={styles.progressCard}>
+      <HighlightTarget
+        targetKey={TUTORIAL_TARGET_KEYS.PLANT_GROWTH}
+        collapsable={false}
+      >
+        <View>
+          <View style={{ marginHorizontal: 18 }}>
+            <View style={styles.heroContainer}>
+              <View style={styles.treeShowcaseOuter}>
+                <View style={styles.treeShowcaseAbsolute}>
+                  <View style={styles.treeGlow} />
+                  <Image source={TREE_STAGES[treeStageIndex]} style={styles.treeImage} />
+                </View>
+              </View>
+              <Image
+                source={require("../assets/Tree/Tree_BG.png")}
+                style={styles.heroBgImageRounded}
+                resizeMode="cover"
+              />
+              <View style={styles.headerSpacer} />
+            </View>
+          </View>
+
+          <View style={[styles.section, styles.insetX]}>
+            <Text style={styles.sectionTitle}>Garden Growth</Text>
+            <View style={styles.progressCard}>
           <View style={styles.growthHeaderRow}>
             <View>
               <Text style={styles.growthLabel}>Current Stage</Text>
@@ -417,9 +429,10 @@ export default function JourneyScreen() {
               })}
             </View>
           ) : null}
-          
+            </View>
+          </View>
         </View>
-      </View>
+      </HighlightTarget>
 
       <View style={[styles.section, styles.insetX]}>
         <Text style={styles.sectionTitle}>Achievements</Text>

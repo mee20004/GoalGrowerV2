@@ -138,6 +138,7 @@ export default function TutorialHost() {
             targetRect={overlayConfig.cardTargetRect}
             centered={overlayConfig.cardCentered}
             cardPlacement={currentStep.cardPlacement ?? null}
+            comparisonImages={currentStep.comparisonImages ?? null}
           />
         )}
       </TutorialOverlay>

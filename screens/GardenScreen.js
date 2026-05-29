@@ -103,6 +103,9 @@ import {
   isGoalScheduledOnDate,
 } from "../utils/goalState";
 import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
+import HighlightTarget from "../components/tutorial/HighlightTarget";
+import useRemeasureTutorialOnFocus from "../components/tutorial/useRemeasureTutorialOnFocus";
+import { TUTORIAL_TARGET_KEYS } from "../tutorial/constants";
 const FAR_BG = require('../assets/far_background.png');
 // Asset arrays are now imported from constants
 const STORAGE_PAGE_ID = 'storage';
@@ -853,6 +856,8 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
 
 // --- 3. MAIN GARDEN SCREEN ---
 export default function GardenScreen({ route, navigation }) {
+  useRemeasureTutorialOnFocus();
+
     // Utility to update a goal and always recalculate healthLevel for today
     async function updateGoalWithHealth(goal, updatedFields) {
       const today = new Date();
@@ -2581,10 +2586,11 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                 <View style={styles.pageDrawerUnderlayTopBandPrimary} />
                 <View style={styles.pageDrawerUnderlayTopBandSecondary} />
               </View>
-              <View
-                style={styles.gardenMain}
-                onLayout={onGardenMainLayout}
+              <HighlightTarget
+                targetKey={TUTORIAL_TARGET_KEYS.PLANT_HEALTH}
+                collapsable={false}
               >
+                <View style={styles.gardenMain} onLayout={onGardenMainLayout}>
                 {["topShelf", "middleShelf", "bottomShelf"].map((shelfName) =>
                   renderShelf(
                     page.id,
@@ -2594,7 +2600,8 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                     shelfName === 'bottomShelf' ? onBottomShelfLayout : undefined
                   )
                 )}
-              </View>
+                </View>
+              </HighlightTarget>
             </ImageBackground>
           </ImageBackground>
           <GardenAmbientParticles />
