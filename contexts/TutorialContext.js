@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import TutorialDevPanel from "../components/tutorial/TutorialDevPanel";
 import {
   TUTORIAL_STEP_COUNT,
   TUTORIAL_STEPS,
@@ -16,6 +17,7 @@ import {
   persistOnboardingSkipped,
   resetOnboardingState,
 } from "../tutorial";
+import { DEV_TUTORIAL_TOOLS_ENABLED } from "../tutorial/devConfig";
 
 const TutorialContext = createContext(null);
 
@@ -25,6 +27,7 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
   const [skipped, setSkipped] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const targetsRef = useRef(new Map());
+  const devPreviewRef = useRef(false);
 
   // Hydrate from AsyncStorage
   useEffect(() => {
@@ -109,7 +112,9 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
     setCompleted(true);
     setSkipped(false);
     setCurrentStepIndex(TUTORIAL_STEP_COUNT - 1);
-    if (userId) {
+    const skipPersist = DEV_TUTORIAL_TOOLS_ENABLED && devPreviewRef.current;
+    devPreviewRef.current = false;
+    if (userId && !skipPersist) {
       await persistOnboardingCompleted(userId, true);
     }
   }, [userId]);
@@ -117,7 +122,9 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
   const skipTutorial = useCallback(async () => {
     setSkipped(true);
     setCompleted(true);
-    if (userId) {
+    const skipPersist = DEV_TUTORIAL_TOOLS_ENABLED && devPreviewRef.current;
+    devPreviewRef.current = false;
+    if (userId && !skipPersist) {
       await persistOnboardingSkipped(userId, true);
     }
   }, [userId]);
@@ -126,9 +133,19 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
     setCompleted(false);
     setSkipped(false);
     setCurrentStepIndex(0);
+    devPreviewRef.current = false;
     if (userId) {
       await resetOnboardingState(userId);
     }
+  }, [userId]);
+
+  const previewTutorial = useCallback(async () => {
+    if (!DEV_TUTORIAL_TOOLS_ENABLED || !userId) return;
+    devPreviewRef.current = true;
+    await resetOnboardingState(userId);
+    setCompleted(false);
+    setSkipped(false);
+    setCurrentStepIndex(0);
   }, [userId]);
 
   const finishIfLastStep = useCallback(async () => {
@@ -160,6 +177,7 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
       completeTutorial,
       skipTutorial,
       resetTutorial,
+      previewTutorial,
       finishIfLastStep,
       registerTarget,
       unregisterTarget,
@@ -182,6 +200,7 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
       completeTutorial,
       skipTutorial,
       resetTutorial,
+      previewTutorial,
       finishIfLastStep,
       registerTarget,
       unregisterTarget,
@@ -190,7 +209,10 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
   );
 
   return (
-    <TutorialContext.Provider value={value}>{children}</TutorialContext.Provider>
+    <TutorialContext.Provider value={value}>
+      {children}
+      {DEV_TUTORIAL_TOOLS_ENABLED ? <TutorialDevPanel /> : null}
+    </TutorialContext.Provider>
   );
 }
 

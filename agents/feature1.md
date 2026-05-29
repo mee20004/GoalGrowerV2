@@ -619,3 +619,35 @@ Architecture should support:
 
 Design implementation with extensibility in mind.
 
+---
+
+# Post-Completion Cleanup — Remove Dev Testing Tools
+
+Before production release, remove all temporary dev-only tutorial testing helpers. These must not ship.
+
+## Delete files
+
+- `tutorial/devConfig.js`
+- `components/tutorial/TutorialDevPanel.js`
+
+## Remove references
+
+### `contexts/TutorialContext.js`
+
+- Remove `DEV_TUTORIAL_TOOLS_ENABLED` import from `tutorial/devConfig`
+- Remove `TutorialDevPanel` import and render
+- Remove `devPreviewRef` and `previewTutorial`
+- Remove dev-only skip-persist logic inside `completeTutorial` and `skipTutorial`
+
+### `screens/SettingsScreen.js`
+
+- Remove `useTutorial` import (if unused elsewhere on that screen)
+- Remove the entire `{__DEV__ ? ( ... ) : null}` **Developer** block with **Preview onboarding tutorial**
+
+## Verify before release
+
+- [ ] No **Developer** section in Settings
+- [ ] No `devConfig` or `TutorialDevPanel` imports remain
+- [ ] Tutorial only runs for real first-time authenticated users
+- [ ] Completing or skipping tutorial persists correctly in AsyncStorage
+
