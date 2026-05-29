@@ -24,3 +24,12 @@ export {
   getStepNavigationTarget,
   buildTutorialNavigateAction,
 } from "./navigation";
+
+export {
+  TUTORIAL_OVERLAY_COLOR,
+  TUTORIAL_HIGHLIGHT_PADDING,
+  TUTORIAL_HIGHLIGHT_RADIUS,
+  expandRect,
+  isValidRect,
+  rectsEqual,
+} from "./layout";

@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import TutorialDevPanel from "../components/tutorial/TutorialDevPanel";
+import TutorialHost from "../components/tutorial/TutorialHost";
 import {
   TUTORIAL_STEP_COUNT,
   TUTORIAL_STEPS,
@@ -16,6 +16,7 @@ import {
   persistOnboardingCompleted,
   persistOnboardingSkipped,
   resetOnboardingState,
+  rectsEqual,
 } from "../tutorial";
 import { DEV_TUTORIAL_TOOLS_ENABLED } from "../tutorial/devConfig";
 
@@ -26,6 +27,7 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
   const [completed, setCompleted] = useState(false);
   const [skipped, setSkipped] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [targetLayouts, setTargetLayouts] = useState({});
   const targetsRef = useRef(new Map());
   const devPreviewRef = useRef(false);
 
@@ -72,20 +74,66 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
     isTutorialEligible && !isTutorialFinished && currentStepIndex < TUTORIAL_STEP_COUNT;
 
   // Highlight target registry
-  const registerTarget = useCallback((targetKey, ref) => {
-    if (!targetKey || !ref) return;
-    targetsRef.current.set(targetKey, ref);
+  const updateTargetLayout = useCallback((targetKey, layout) => {
+    if (!targetKey || !layout) return;
+    setTargetLayouts((prev) => {
+      if (rectsEqual(prev[targetKey], layout)) return prev;
+      return { ...prev, [targetKey]: layout };
+    });
   }, []);
+
+  const measureTarget = useCallback(
+    (targetKey) => {
+      const ref = targetsRef.current.get(targetKey);
+      const node = ref?.current ?? ref;
+      if (!node?.measureInWindow) return;
+
+      node.measureInWindow((x, y, width, height) => {
+        if (width <= 0 || height <= 0) return;
+        updateTargetLayout(targetKey, { x, y, width, height });
+      });
+    },
+    [updateTargetLayout]
+  );
+
+  const remeasureTargets = useCallback(() => {
+    targetsRef.current.forEach((_, targetKey) => {
+      measureTarget(targetKey);
+    });
+  }, [measureTarget]);
+
+  const registerTarget = useCallback(
+    (targetKey, ref) => {
+      if (!targetKey || !ref) return;
+      targetsRef.current.set(targetKey, ref);
+      requestAnimationFrame(() => measureTarget(targetKey));
+    },
+    [measureTarget]
+  );
 
   const unregisterTarget = useCallback((targetKey) => {
     if (!targetKey) return;
     targetsRef.current.delete(targetKey);
+    setTargetLayouts((prev) => {
+      if (!prev[targetKey]) return prev;
+      const next = { ...prev };
+      delete next[targetKey];
+      return next;
+    });
   }, []);
 
   const getTargetRef = useCallback((targetKey) => {
     if (!targetKey) return null;
     return targetsRef.current.get(targetKey) ?? null;
   }, []);
+
+  const getTargetLayout = useCallback(
+    (targetKey) => {
+      if (!targetKey) return null;
+      return targetLayouts[targetKey] ?? null;
+    },
+    [targetLayouts]
+  );
 
   // Step navigation
   const goToStep = useCallback((index) => {
@@ -179,9 +227,14 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
       resetTutorial,
       previewTutorial,
       finishIfLastStep,
+      targetLayouts,
       registerTarget,
       unregisterTarget,
       getTargetRef,
+      getTargetLayout,
+      updateTargetLayout,
+      measureTarget,
+      remeasureTargets,
     }),
     [
       hydrated,
@@ -202,16 +255,21 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
       resetTutorial,
       previewTutorial,
       finishIfLastStep,
+      targetLayouts,
       registerTarget,
       unregisterTarget,
       getTargetRef,
+      getTargetLayout,
+      updateTargetLayout,
+      measureTarget,
+      remeasureTargets,
     ]
   );
 
   return (
     <TutorialContext.Provider value={value}>
       {children}
-      {DEV_TUTORIAL_TOOLS_ENABLED ? <TutorialDevPanel /> : null}
+      <TutorialHost />
     </TutorialContext.Provider>
   );
 }
