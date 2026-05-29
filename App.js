@@ -236,6 +236,7 @@ function MainTabs() {
 
 import { FontProvider } from './components/FontProvider';
 import { GoalsProvider } from './components/GoalsStore';
+import { TutorialProvider } from './contexts/TutorialContext';
 import EnterScreen from './screens/EnterScreen';
 import Login from './login';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -329,26 +330,30 @@ export default function App() {
     setShowEnterScreen(false);
   };
 
+  const tutorialEnabled = Boolean(user && hasUsername);
+
   return (
     <FontProvider>
       <SafeAreaProvider>
         <GoalsProvider>
-          <NavigationContainer>
-            <StatusBar style="dark" />
-            <RootStack.Navigator screenOptions={{ headerShown: false }}>
-              {user && hasUsername ? (
-                showEnterScreen ? (
-                  <RootStack.Screen name="Enter" options={{ headerShown: false }}>
-                    {props => <EnterScreen {...props} onDone={handleEnterScreenDone} />}
-                  </RootStack.Screen>
+          <TutorialProvider userId={user?.uid ?? null} enabled={tutorialEnabled}>
+            <NavigationContainer>
+              <StatusBar style="dark" />
+              <RootStack.Navigator screenOptions={{ headerShown: false }}>
+                {user && hasUsername ? (
+                  showEnterScreen ? (
+                    <RootStack.Screen name="Enter" options={{ headerShown: false }}>
+                      {props => <EnterScreen {...props} onDone={handleEnterScreenDone} />}
+                    </RootStack.Screen>
+                  ) : (
+                    <RootStack.Screen name="Tabs" component={MainTabs} />
+                  )
                 ) : (
-                  <RootStack.Screen name="Tabs" component={MainTabs} />
-                )
-              ) : (
-                <RootStack.Screen name="Login" component={Login} />
-              )}
-            </RootStack.Navigator>
-          </NavigationContainer>
+                  <RootStack.Screen name="Login" component={Login} />
+                )}
+              </RootStack.Navigator>
+            </NavigationContainer>
+          </TutorialProvider>
         </GoalsProvider>
       </SafeAreaProvider>
     </FontProvider>
