@@ -15,6 +15,8 @@ IMPORTANT:
 - Use the wireframe images in the `/wireframes` folder as the primary visual guide.
 - Match positioning, spacing, interaction flow, and emotional tone closely.
 - Prioritize maintainable architecture and high QA standards over rapid implementation.
+- When adding comments, add short section labels only - no phase references.
+- If you need clarification with implementing a step or see a gap or weakness in my instructions, ask me for clarification before moving on. 
 
 ---
 
@@ -248,6 +250,54 @@ Behavior:
 - Can later be reset from settings (future-ready architecture)
 
 ---
+
+## Authentication / Entry Flow Requirement
+
+The onboarding tutorial must only begin after the user has:
+
+- logged into an account  
+  OR  
+- explicitly entered guest mode  
+
+The tutorial must NOT appear:
+
+- on the splash screen  
+- during authentication loading  
+- before app initialization completes  
+- before navigation state is ready  
+
+---
+
+## Requirements
+
+- Wait until authentication state is resolved  
+- Wait until the user has entered the main application experience  
+- Only initialize onboarding after the app has a valid active session context  
+
+---
+
+## Supported Session Types
+
+- authenticated user session  
+- guest session  
+
+---
+
+## The onboarding system should rely on:
+
+- resolved auth state  
+- navigation readiness  
+- user/guest session availability  
+
+---
+
+
+## Implementation Notes
+
+- `TutorialProvider` should mount after auth resolution when possible  
+- Tutorial activation should depend on session readiness  
+- Guest users should receive onboarding the same way authenticated users do  
+- Onboarding persistence should support both authenticated and guest sessions  
 
 # Responsiveness Requirements
 
@@ -563,3 +613,4 @@ Architecture should support:
 - A/B onboarding experiments
 
 Design implementation with extensibility in mind.
+
