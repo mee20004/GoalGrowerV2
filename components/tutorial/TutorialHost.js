@@ -3,17 +3,27 @@ import { Modal, useWindowDimensions } from "react-native";
 import { useTutorial } from "../../contexts/TutorialContext";
 import { TUTORIAL_STEP_MODES } from "../../tutorial/constants";
 import { expandRect, isValidRect } from "../../tutorial/layout";
-import { DEV_TUTORIAL_TOOLS_ENABLED } from "../../tutorial/devConfig";
-import TutorialDevPanel from "./TutorialDevPanel";
+import TutorialCard from "./TutorialCard";
 import TutorialOverlay from "./TutorialOverlay";
+
+function getPrimaryLabel(step, isLastStep) {
+  if (step?.id === "welcome") return "Get Started";
+  if (isLastStep) return "End Tutorial";
+  return "Next";
+}
 
 export default function TutorialHost() {
   const { width, height } = useWindowDimensions();
   const {
     isTutorialActive,
     currentStep,
+    currentStepIndex,
+    stepCount,
     remeasureTargets,
     getTargetLayout,
+    nextStep,
+    skipTutorial,
+    finishIfLastStep,
   } = useTutorial();
 
   useEffect(() => {
@@ -28,6 +38,7 @@ export default function TutorialHost() {
     return null;
   }
 
+  const isLastStep = currentStepIndex >= stepCount - 1;
   const isCenteredStep = currentStep.mode === TUTORIAL_STEP_MODES.CENTERED;
   const rawLayout = currentStep.targetKey
     ? getTargetLayout(currentStep.targetKey)
@@ -35,6 +46,14 @@ export default function TutorialHost() {
   const highlightRect = expandRect(rawLayout);
   const useHighlight =
     !isCenteredStep && currentStep.targetKey && isValidRect(highlightRect);
+
+  const handlePrimary = async () => {
+    if (isLastStep) {
+      await finishIfLastStep();
+      return;
+    }
+    nextStep();
+  };
 
   return (
     <Modal
@@ -49,7 +68,16 @@ export default function TutorialHost() {
         mode={useHighlight ? "highlight" : "centered"}
         highlightRect={useHighlight ? highlightRect : null}
       >
-        {DEV_TUTORIAL_TOOLS_ENABLED ? <TutorialDevPanel /> : null}
+        <TutorialCard
+          title={currentStep.title}
+          description={currentStep.description}
+          primaryLabel={getPrimaryLabel(currentStep, isLastStep)}
+          showPrimary={!currentStep.requiresUserAction}
+          onSkip={skipTutorial}
+          onPrimary={handlePrimary}
+          targetRect={useHighlight ? highlightRect : null}
+          centered={!useHighlight}
+        />
       </TutorialOverlay>
     </Modal>
   );

@@ -154,7 +154,5 @@ const styles = StyleSheet.create({
   },
   content: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: "center",
-    alignItems: "center",
   },
 });

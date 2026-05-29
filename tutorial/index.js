@@ -33,3 +33,9 @@ export {
   isValidRect,
   rectsEqual,
 } from "./layout";
+
+export {
+  CARD_MAX_WIDTH,
+  CARD_MIN_WIDTH,
+  computeTutorialCardLayout,
+} from "./cardLayout";
