@@ -32,6 +32,7 @@ export default function TutorialCard({
   onPrimary,
   targetRect = null,
   centered = false,
+  cardPlacement = null,
 }) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -46,9 +47,10 @@ export default function TutorialCard({
       cardHeight: measuredSize.height,
       targetRect: isValidRect(targetRect) ? targetRect : null,
       centered,
+      cardPlacement,
       safeInsets: insets,
     });
-  }, [centered, insets, measuredSize, screenHeight, screenWidth, targetRect]);
+  }, [cardPlacement, centered, insets, measuredSize, screenHeight, screenWidth, targetRect]);
 
   const isPositioned = Boolean(layout);
 

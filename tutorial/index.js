@@ -36,6 +36,8 @@ export {
   resolveStepTransition,
   isLastStepIndex,
   isWelcomeStep,
+  shouldUseHighlightPassthrough,
+  getTutorialOverlayPresentation,
 } from "./stepEngine";
 
 export { TUTORIAL_WELCOME_PLANT_IMAGE } from "./welcomeAssets";
@@ -53,4 +55,6 @@ export {
   CARD_MAX_WIDTH,
   CARD_MIN_WIDTH,
   computeTutorialCardLayout,
+  computeTopDockedCardLayout,
+  shouldDockCardToTop,
 } from "./cardLayout";

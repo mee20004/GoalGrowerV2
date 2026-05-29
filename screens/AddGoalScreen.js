@@ -42,6 +42,10 @@ import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import * as Haptics from "expo-haptics";
 import Page from "../components/Page";
+import HighlightTarget from "../components/tutorial/HighlightTarget";
+import useRemeasureTutorialOnFocus from "../components/tutorial/useRemeasureTutorialOnFocus";
+import { useTutorial } from "../contexts/TutorialContext";
+import { TUTORIAL_TARGET_KEYS } from "../tutorial/constants";
 import { theme } from "../theme";
 import { useGoals, fromKey } from "../components/GoalsStore";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
@@ -498,6 +502,9 @@ function StepProgressBar({ total = 1, index = 0 }) {
 }
 
 export default function AddGoalScreen({ navigation }) {
+  useRemeasureTutorialOnFocus();
+  const { isTutorialActive, remeasureTargets } = useTutorial();
+
   // Load the Cera Round Pro DEMO font only for this screen
   const [fontsLoaded] = useFonts({
     'CeraRoundProDEMO-Black': require('../assets/fonts/CeraRoundProDEMOBlack.otf'),
@@ -505,6 +512,14 @@ export default function AddGoalScreen({ navigation }) {
 
   // Step state for multi-step form
   const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    if (!isTutorialActive) return undefined;
+    const frame = requestAnimationFrame(() => {
+      remeasureTargets();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isTutorialActive, remeasureTargets, step]);
   // Early return after all hooks
   if (!fontsLoaded) {
     return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" /></View>;
@@ -1285,25 +1300,31 @@ export default function AddGoalScreen({ navigation }) {
             </View>
           </View>
 
-          <ScrollView
+          <HighlightTarget
+            targetKey={TUTORIAL_TARGET_KEYS.GOAL_CREATION}
             style={styles.contentArea}
-            contentContainerStyle={styles.formScrollContent}
-            keyboardShouldPersistTaps="handled"
-            onScroll={() => Keyboard.dismiss()}
-            onLayout={(event) => setScrollViewHeight(event.nativeEvent.layout.height)}
-            onContentSizeChange={(_, height) => setContentHeight(height)}
-            scrollEnabled={shouldEnableScroll}
-            bounces={shouldEnableScroll}
-            alwaysBounceVertical={shouldEnableScroll}
+            collapsable={false}
           >
-            {renderStepContent()}
+            <ScrollView
+              style={styles.contentArea}
+              contentContainerStyle={styles.formScrollContent}
+              keyboardShouldPersistTaps="handled"
+              onScroll={() => Keyboard.dismiss()}
+              onLayout={(event) => setScrollViewHeight(event.nativeEvent.layout.height)}
+              onContentSizeChange={(_, height) => setContentHeight(height)}
+              scrollEnabled={shouldEnableScroll}
+              bounces={shouldEnableScroll}
+              alwaysBounceVertical={shouldEnableScroll}
+            >
+              {renderStepContent()}
 
-            {!!formError && (
-              <View style={styles.errorInline}>
-                <Text style={styles.errorInlineText}>{formError}</Text>
-              </View>
-            )}
-          </ScrollView>
+              {!!formError && (
+                <View style={styles.errorInline}>
+                  <Text style={styles.errorInlineText}>{formError}</Text>
+                </View>
+              )}
+            </ScrollView>
+          </HighlightTarget>
         </KeyboardAvoidingView>
 
         <View style={styles.stepFooterRow}>

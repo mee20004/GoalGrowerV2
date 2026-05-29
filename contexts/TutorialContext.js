@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { StyleSheet, View } from "react-native";
 import TutorialHost from "../components/tutorial/TutorialHost";
 import {
   TUTORIAL_STEP_COUNT,
@@ -19,6 +20,7 @@ import {
   rectsEqual,
 } from "../tutorial";
 import { DEV_TUTORIAL_TOOLS_ENABLED } from "../tutorial/devConfig";
+import { TUTORIAL_TARGET_KEYS } from "../tutorial/constants";
 import {
   canAdvanceFromUserAction,
   getTutorialProgress,
@@ -106,20 +108,6 @@ export function TutorialProvider({
     [navigationRef]
   );
 
-  useEffect(() => {
-    if (!isTutorialActive || !currentStep || !navigationRef) return undefined;
-
-    syncStepNavigation(currentStep);
-
-    const unsubscribe = navigationRef.addListener?.("state", () => {
-      if (pendingNavigationStepIdRef.current !== currentStep.id) return;
-      if (!isTutorialNavigationReady(navigationRef)) return;
-      syncStepNavigation(currentStep);
-    });
-
-    return unsubscribe;
-  }, [currentStep, isTutorialActive, navigationRef, syncStepNavigation]);
-
   // Highlight target registry
   const updateTargetLayout = useCallback((targetKey, layout) => {
     if (!targetKey || !layout) return;
@@ -130,13 +118,24 @@ export function TutorialProvider({
   }, []);
 
   const measureTarget = useCallback(
-    (targetKey) => {
+    (targetKey, attempt = 0) => {
       const ref = targetsRef.current.get(targetKey);
       const node = ref?.current ?? ref;
-      if (!node?.measureInWindow) return;
+
+      if (!node?.measureInWindow) {
+        if (attempt < 10) {
+          setTimeout(() => measureTarget(targetKey, attempt + 1), 60 * (attempt + 1));
+        }
+        return;
+      }
 
       node.measureInWindow((x, y, width, height) => {
-        if (width <= 0 || height <= 0) return;
+        if (width <= 0 || height <= 0) {
+          if (attempt < 10) {
+            setTimeout(() => measureTarget(targetKey, attempt + 1), 60 * (attempt + 1));
+          }
+          return;
+        }
         updateTargetLayout(targetKey, { x, y, width, height });
       });
     },
@@ -148,6 +147,37 @@ export function TutorialProvider({
       measureTarget(targetKey);
     });
   }, [measureTarget]);
+
+  useEffect(() => {
+    if (!isTutorialActive || !currentStep || !navigationRef) return undefined;
+
+    syncStepNavigation(currentStep);
+
+    const unsubscribe = navigationRef.addListener?.("state", () => {
+      if (pendingNavigationStepIdRef.current === currentStep.id) {
+        if (!isTutorialNavigationReady(navigationRef)) return;
+        syncStepNavigation(currentStep);
+      }
+      requestAnimationFrame(() => {
+        requestAnimationFrame(remeasureTargets);
+      });
+    });
+
+    return unsubscribe;
+  }, [currentStep, isTutorialActive, navigationRef, remeasureTargets, syncStepNavigation]);
+
+  useEffect(() => {
+    if (!isTutorialActive || !currentStep?.targetKey) return undefined;
+
+    remeasureTargets();
+    const retryTimers = [80, 200, 400, 700, 1200].map((delay) =>
+      setTimeout(remeasureTargets, delay)
+    );
+
+    return () => {
+      retryTimers.forEach(clearTimeout);
+    };
+  }, [currentStep?.id, currentStep?.targetKey, isTutorialActive, remeasureTargets]);
 
   const registerTarget = useCallback(
     (targetKey, ref) => {
@@ -266,9 +296,13 @@ export function TutorialProvider({
     setSkipped(false);
     setCurrentStepIndex(0);
     pendingNavigationStepIdRef.current = null;
-    const welcomeStep = getTutorialStepByIndex(0);
-    if (welcomeStep) syncStepNavigation(welcomeStep);
-  }, [syncStepNavigation, userId]);
+
+    const goalsHomeStep = getTutorialStepByIndex(1);
+    if (goalsHomeStep) syncStepNavigation(goalsHomeStep);
+
+    setTimeout(remeasureTargets, 150);
+    setTimeout(remeasureTargets, 450);
+  }, [remeasureTargets, syncStepNavigation, userId]);
 
   const advanceStep = useCallback(async () => {
     const transition = resolveStepTransition({
@@ -296,7 +330,11 @@ export function TutorialProvider({
     const nextStep = getTutorialStepByIndex(1);
     if (nextStep) syncStepNavigation(nextStep);
     setCurrentStepIndex(1);
-  }, [advanceStep, currentStep, isTutorialActive, syncStepNavigation]);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(remeasureTargets);
+    });
+    setTimeout(remeasureTargets, 250);
+  }, [advanceStep, currentStep, isTutorialActive, remeasureTargets, syncStepNavigation]);
 
   const notifyUserAction = useCallback(
     (actionId) => {
@@ -306,6 +344,19 @@ export function TutorialProvider({
       return true;
     },
     [currentStep, isTutorialActive, nextStep]
+  );
+
+  const activateTutorialUserAction = useCallback(
+    (actionId) => {
+      if (!actionId) return false;
+
+      if (actionId === TUTORIAL_TARGET_KEYS.ADD_GOAL_FAB && navigationRef?.current) {
+        navigationRef.current.navigate("Goals", { screen: "AddGoal" });
+      }
+
+      return notifyUserAction(actionId);
+    },
+    [navigationRef, notifyUserAction]
   );
 
   const finishIfLastStep = useCallback(async () => {
@@ -343,6 +394,7 @@ export function TutorialProvider({
       advanceStep,
       beginWelcomeFlow,
       notifyUserAction,
+      activateTutorialUserAction,
       completeTutorial,
       skipTutorial,
       resetTutorial,
@@ -376,6 +428,7 @@ export function TutorialProvider({
       advanceStep,
       beginWelcomeFlow,
       notifyUserAction,
+      activateTutorialUserAction,
       completeTutorial,
       skipTutorial,
       resetTutorial,
@@ -394,11 +447,19 @@ export function TutorialProvider({
 
   return (
     <TutorialContext.Provider value={value}>
-      {children}
-      <TutorialHost />
+      <View style={styles.providerRoot}>
+        {children}
+        <TutorialHost />
+      </View>
     </TutorialContext.Provider>
   );
 }
+
+const styles = StyleSheet.create({
+  providerRoot: {
+    flex: 1,
+  },
+});
 
 export function useTutorial() {
   const ctx = useContext(TutorialContext);

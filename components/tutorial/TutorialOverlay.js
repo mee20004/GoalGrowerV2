@@ -58,6 +58,16 @@ function HighlightCutout({ rect, screenWidth, screenHeight, animatedOpacity }) {
           height: rect.height,
         }}
       />
+      <View
+        pointerEvents="box-none"
+        style={{
+          position: "absolute",
+          left: rect.x,
+          top: rect.y,
+          width: rect.width,
+          height: rect.height,
+        }}
+      />
       <Animated.View
         pointerEvents="none"
         style={[
@@ -81,6 +91,7 @@ export default function TutorialOverlay({
   mode = "centered",
   highlightRect = null,
   entranceDuration = 220,
+  blocking = true,
   children = null,
 }) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -123,12 +134,10 @@ export default function TutorialOverlay({
           animatedOpacity={fade}
         />
       ) : showCenteredDim ? (
-        <Pressable style={StyleSheet.absoluteFill} accessibilityRole="none">
-          <Animated.View
-            style={[styles.centeredDim, { opacity: fade }]}
-            pointerEvents="none"
-          />
-        </Pressable>
+        <Animated.View
+          style={[styles.centeredDim, { opacity: fade }]}
+          pointerEvents={blocking ? "auto" : "none"}
+        />
       ) : null}
 
       {children ? (

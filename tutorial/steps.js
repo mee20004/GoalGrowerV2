@@ -43,6 +43,7 @@ export const TUTORIAL_STEPS = [
       screen: "AddGoal",
     },
     requiresUserAction: false,
+    cardPlacement: "top",
   },
   {
     id: "plant-growth",

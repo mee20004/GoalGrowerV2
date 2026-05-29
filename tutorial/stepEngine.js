@@ -38,11 +38,28 @@ export function shouldNavigateForStep(step) {
 export function getOverlayModeForStep(step, { hasValidTarget = false } = {}) {
   if (!step) return "centered";
   if (step.mode === TUTORIAL_STEP_MODES.CENTERED) return "centered";
-  if (step.mode === TUTORIAL_STEP_MODES.FLOW) return "flow";
+  if (step.mode === TUTORIAL_STEP_MODES.FLOW) {
+    return hasValidTarget && step.targetKey ? "highlight" : "flow";
+  }
   if (step.mode === TUTORIAL_STEP_MODES.HIGHLIGHT && step.targetKey && hasValidTarget) {
     return "highlight";
   }
+  if (step.targetKey) return "flow";
   return "centered";
+}
+
+export function getTutorialOverlayPresentation(step, { hasValidTarget = false } = {}) {
+  const mode = getOverlayModeForStep(step, { hasValidTarget });
+
+  return {
+    mode,
+    blocking: mode === "centered",
+    highlightRect: mode === "highlight",
+  };
+}
+
+export function shouldUseHighlightPassthrough(step) {
+  return Boolean(step?.requiresUserAction && step?.advanceOn);
 }
 
 export function canAdvanceFromUserAction(step, actionId) {
