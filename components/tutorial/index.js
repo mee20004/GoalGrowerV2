@@ -5,6 +5,7 @@ export { default as TutorialOverlay } from "./TutorialOverlay";
 export { default as TutorialHost } from "./TutorialHost";
 export { default as TutorialCard } from "./TutorialCard";
 export { default as TutorialWelcomeCard } from "./TutorialWelcomeCard";
+export { default as TutorialCompletionCard } from "./TutorialCompletionCard";
 export { default as TutorialComparisonImages } from "./TutorialComparisonImages";
 export { default as TutorialProgress } from "./TutorialProgress";
 export { default as TutorialDevPanel } from "./TutorialDevPanel";

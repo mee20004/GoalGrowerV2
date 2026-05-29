@@ -15,6 +15,10 @@ export function isWelcomeStep(step) {
   return step?.id === "welcome";
 }
 
+export function isCompletionStep(step) {
+  return step?.id === "completion";
+}
+
 export function getStepPrimaryLabel(step, { isLastStep = false } = {}) {
   if (!step) return "Next";
   if (isWelcomeStep(step)) return "Get Started";

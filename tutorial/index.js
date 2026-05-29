@@ -36,11 +36,13 @@ export {
   resolveStepTransition,
   isLastStepIndex,
   isWelcomeStep,
+  isCompletionStep,
   shouldUseHighlightPassthrough,
   getTutorialOverlayPresentation,
 } from "./stepEngine";
 
 export { TUTORIAL_WELCOME_PLANT_IMAGE } from "./welcomeAssets";
+export { TUTORIAL_COMPLETION_TROPHY_IMAGE } from "./completionAssets";
 
 export {
   TUTORIAL_GROWTH_STAGE_START,

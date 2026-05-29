@@ -7,11 +7,13 @@ import {
   getStepPrimaryLabel,
   getTutorialOverlayPresentation,
   isLastStepIndex,
+  isCompletionStep,
   isWelcomeStep,
   shouldShowStepPrimaryButton,
   shouldUseHighlightPassthrough,
 } from "../../tutorial/stepEngine";
 import TutorialCard from "./TutorialCard";
+import TutorialCompletionCard from "./TutorialCompletionCard";
 import TutorialHighlightPassthrough from "./TutorialHighlightPassthrough";
 import TutorialOverlay from "./TutorialOverlay";
 import TutorialProgress from "./TutorialProgress";
@@ -81,11 +83,12 @@ export default function TutorialHost() {
     activateTutorialUserAction(currentStep.advanceOn);
   }, [activateTutorialUserAction, currentStep?.advanceOn]);
 
-  if (!isTutorialActive || !currentStep) {
-    return null;
-  }
+  const handleEndTutorial = useCallback(async () => {
+    await advanceStep();
+  }, [advanceStep]);
 
   const showWelcome = isWelcomeStep(currentStep);
+  const showCompletion = isCompletionStep(currentStep);
   const isLastStep = isLastStepIndex(currentStepIndex, stepCount);
   const showPrimary = shouldShowStepPrimaryButton(currentStep, {
     devToolsEnabled: DEV_TUTORIAL_TOOLS_ENABLED,
@@ -95,16 +98,20 @@ export default function TutorialHost() {
     shouldUseHighlightPassthrough(currentStep) &&
     isValidRect(overlayConfig.highlightRect);
 
+  if (!isTutorialActive || !currentStep) {
+    return null;
+  }
+
   return (
     <View style={styles.host} pointerEvents="box-none" accessibilityViewIsModal>
       <TutorialOverlay
         visible
         mode={overlayConfig.mode}
         highlightRect={overlayConfig.highlightRect}
-        entranceDuration={showWelcome ? 320 : 220}
+        entranceDuration={showWelcome || showCompletion ? 320 : 220}
         blocking={overlayConfig.blocking}
       >
-        {!showWelcome ? (
+        {!showWelcome && !showCompletion ? (
           <TutorialProgress
             currentIndex={currentStepIndex}
             stepCount={stepCount}
@@ -125,6 +132,14 @@ export default function TutorialHost() {
             imageSource={currentStep.imageSource}
             onSkip={skipTutorial}
             onGetStarted={handleWelcomeCTA}
+          />
+        ) : showCompletion ? (
+          <TutorialCompletionCard
+            title={currentStep.title}
+            description={currentStep.description}
+            imageSource={currentStep.imageSource}
+            primaryLabel={getStepPrimaryLabel(currentStep, { isLastStep: true })}
+            onEndTutorial={handleEndTutorial}
           />
         ) : (
           <TutorialCard

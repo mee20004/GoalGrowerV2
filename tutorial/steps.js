@@ -6,6 +6,7 @@ import {
   TUTORIAL_HEALTHY_PLANT_IMAGE,
   TUTORIAL_WILTING_PLANT_IMAGE,
 } from "./educationAssets";
+import { TUTORIAL_COMPLETION_TROPHY_IMAGE } from "./completionAssets";
 
 // Onboarding step sequence
 export const TUTORIAL_STEPS = [
@@ -98,10 +99,13 @@ export const TUTORIAL_STEPS = [
     index: 5,
     mode: TUTORIAL_STEP_MODES.CENTERED,
     title: "You're ready to grow",
-    description: "You've earned your first trophy. Your garden journey starts now.",
+    description:
+      "You've earned your first trophy. Your garden journey starts now—keep showing up and watch everything flourish.",
     targetKey: null,
     navigation: null,
     requiresUserAction: false,
+    imageSource: TUTORIAL_COMPLETION_TROPHY_IMAGE,
+    variant: "completion",
   },
 ];
 
