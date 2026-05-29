@@ -11,9 +11,13 @@ export function getTutorialProgress(stepIndex, stepCount) {
   return (stepIndex + 1) / stepCount;
 }
 
+export function isWelcomeStep(step) {
+  return step?.id === "welcome";
+}
+
 export function getStepPrimaryLabel(step, { isLastStep = false } = {}) {
   if (!step) return "Next";
-  if (step.id === "welcome") return "Get Started";
+  if (isWelcomeStep(step)) return "Get Started";
   if (isLastStep) return "End Tutorial";
   return "Next";
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo } from "react";
 import { Modal, useWindowDimensions } from "react-native";
 import { useTutorial } from "../../contexts/TutorialContext";
 import { DEV_TUTORIAL_TOOLS_ENABLED } from "../../tutorial/devConfig";
@@ -7,11 +7,13 @@ import {
   getOverlayModeForStep,
   getStepPrimaryLabel,
   isLastStepIndex,
+  isWelcomeStep,
   shouldShowStepPrimaryButton,
 } from "../../tutorial/stepEngine";
 import TutorialCard from "./TutorialCard";
 import TutorialOverlay from "./TutorialOverlay";
 import TutorialProgress from "./TutorialProgress";
+import TutorialWelcomeCard from "./TutorialWelcomeCard";
 
 export default function TutorialHost() {
   const { width, height } = useWindowDimensions();
@@ -25,6 +27,7 @@ export default function TutorialHost() {
     remeasureTargets,
     getTargetLayout,
     advanceStep,
+    beginWelcomeFlow,
     skipTutorial,
   } = useTutorial();
 
@@ -56,10 +59,15 @@ export default function TutorialHost() {
     };
   }, [currentStep, getTargetLayout]);
 
+  const handleWelcomeCTA = useCallback(async () => {
+    await beginWelcomeFlow();
+  }, [beginWelcomeFlow]);
+
   if (!isTutorialActive || !currentStep) {
     return null;
   }
 
+  const showWelcome = isWelcomeStep(currentStep);
   const isLastStep = isLastStepIndex(currentStepIndex, stepCount);
   const showPrimary = shouldShowStepPrimaryButton(currentStep, {
     devToolsEnabled: DEV_TUTORIAL_TOOLS_ENABLED,
@@ -78,22 +86,37 @@ export default function TutorialHost() {
         visible
         mode={overlayConfig.mode}
         highlightRect={overlayConfig.highlightRect}
+        entranceDuration={showWelcome ? 320 : 220}
       >
-        <TutorialProgress
-          currentIndex={currentStepIndex}
-          stepCount={stepCount}
-          progress={progress}
-        />
-        <TutorialCard
-          title={currentStep.title}
-          description={currentStep.description}
-          primaryLabel={getStepPrimaryLabel(currentStep, { isLastStep })}
-          showPrimary={showPrimary}
-          onSkip={skipTutorial}
-          onPrimary={advanceStep}
-          targetRect={overlayConfig.cardTargetRect}
-          centered={overlayConfig.cardCentered}
-        />
+        {!showWelcome ? (
+          <TutorialProgress
+            currentIndex={currentStepIndex}
+            stepCount={stepCount}
+            progress={progress}
+          />
+        ) : null}
+
+        {showWelcome ? (
+          <TutorialWelcomeCard
+            title={currentStep.title}
+            description={currentStep.description}
+            imageSource={currentStep.imageSource}
+            onSkip={skipTutorial}
+            onGetStarted={handleWelcomeCTA}
+          />
+        ) : (
+          <TutorialCard
+            title={currentStep.title}
+            description={currentStep.description}
+            imageSource={currentStep.imageSource ?? null}
+            primaryLabel={getStepPrimaryLabel(currentStep, { isLastStep })}
+            showPrimary={showPrimary}
+            onSkip={skipTutorial}
+            onPrimary={advanceStep}
+            targetRect={overlayConfig.cardTargetRect}
+            centered={overlayConfig.cardCentered}
+          />
+        )}
       </TutorialOverlay>
     </Modal>
   );

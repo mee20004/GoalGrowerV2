@@ -1,4 +1,5 @@
 import { TUTORIAL_STEP_MODES, TUTORIAL_TARGET_KEYS } from "./constants";
+import { TUTORIAL_WELCOME_PLANT_IMAGE } from "./welcomeAssets";
 
 // Onboarding step sequence
 export const TUTORIAL_STEPS = [
@@ -12,6 +13,8 @@ export const TUTORIAL_STEPS = [
     targetKey: null,
     navigation: null,
     requiresUserAction: false,
+    imageSource: TUTORIAL_WELCOME_PLANT_IMAGE,
+    variant: "welcome",
   },
   {
     id: "highlight-add-goal",

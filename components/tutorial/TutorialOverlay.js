@@ -80,6 +80,7 @@ export default function TutorialOverlay({
   visible = false,
   mode = "centered",
   highlightRect = null,
+  entranceDuration = 220,
   children = null,
 }) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -92,10 +93,19 @@ export default function TutorialOverlay({
     }
     Animated.timing(fade, {
       toValue: 1,
-      duration: 220,
+      duration: entranceDuration,
       useNativeDriver: true,
     }).start();
-  }, [visible, fade, mode, highlightRect?.x, highlightRect?.y, highlightRect?.width, highlightRect?.height]);
+  }, [
+    visible,
+    fade,
+    mode,
+    entranceDuration,
+    highlightRect?.x,
+    highlightRect?.y,
+    highlightRect?.width,
+    highlightRect?.height,
+  ]);
 
   if (!visible) return null;
 

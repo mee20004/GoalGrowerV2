@@ -35,7 +35,10 @@ export {
   isTutorialNavigationReady,
   resolveStepTransition,
   isLastStepIndex,
+  isWelcomeStep,
 } from "./stepEngine";
+
+export { TUTORIAL_WELCOME_PLANT_IMAGE } from "./welcomeAssets";
 
 export {
   TUTORIAL_OVERLAY_COLOR,

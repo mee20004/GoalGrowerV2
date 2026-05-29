@@ -23,6 +23,7 @@ import {
   canAdvanceFromUserAction,
   getTutorialProgress,
   isTutorialNavigationReady,
+  isWelcomeStep,
   navigateForTutorialStep,
   resolveStepTransition,
 } from "../tutorial/stepEngine";
@@ -286,6 +287,17 @@ export function TutorialProvider({
     if (step) syncStepNavigation(step);
   }, [completeTutorial, currentStepIndex, syncStepNavigation]);
 
+  const beginWelcomeFlow = useCallback(async () => {
+    if (!isTutorialActive || !isWelcomeStep(currentStep)) {
+      await advanceStep();
+      return;
+    }
+
+    const nextStep = getTutorialStepByIndex(1);
+    if (nextStep) syncStepNavigation(nextStep);
+    setCurrentStepIndex(1);
+  }, [advanceStep, currentStep, isTutorialActive, syncStepNavigation]);
+
   const notifyUserAction = useCallback(
     (actionId) => {
       if (!isTutorialActive || !currentStep) return false;
@@ -329,6 +341,7 @@ export function TutorialProvider({
       nextStep,
       previousStep,
       advanceStep,
+      beginWelcomeFlow,
       notifyUserAction,
       completeTutorial,
       skipTutorial,
@@ -361,6 +374,7 @@ export function TutorialProvider({
       nextStep,
       previousStep,
       advanceStep,
+      beginWelcomeFlow,
       notifyUserAction,
       completeTutorial,
       skipTutorial,
