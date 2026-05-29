@@ -253,51 +253,56 @@ Behavior:
 
 ## Authentication / Entry Flow Requirement
 
-The onboarding tutorial must only begin after the user has:
+For now, onboarding scope is limited to first-time authenticated users only.
 
-- logged into an account  
-  OR  
-- explicitly entered guest mode  
+The onboarding tutorial must only begin after:
+
+- a user has created an account
+- the user has logged in
+- authentication and initialization are fully resolved
+
+The tutorial should start on the first screen shown immediately after successful login.
 
 The tutorial must NOT appear:
 
-- on the splash screen  
-- during authentication loading  
-- before app initialization completes  
-- before navigation state is ready  
+- during authentication loading
+- before app initialization completes
+- before navigation state is ready
+- for guest mode (out of scope for this pass)
 
 ---
 
 ## Requirements
 
-- Wait until authentication state is resolved  
-- Wait until the user has entered the main application experience  
-- Only initialize onboarding after the app has a valid active session context  
+- Only initialize onboarding for authenticated users on their first login experience
+- Trigger onboarding on the first post-login screen the user sees
+- Persist completion so it does not auto-run again after finishing
 
 ---
 
-## Supported Session Types
+## Supported Session Types (Current Scope)
 
-- authenticated user session  
-- guest session  
+- authenticated user session only
 
----
-
-## The onboarding system should rely on:
-
-- resolved auth state  
-- navigation readiness  
-- user/guest session availability  
+Guest onboarding support will be handled in a later phase.
 
 ---
 
+## App Startup Note
+
+This app does not use a separate splash screen.
+
+Any prior "splash" references should be interpreted as:
+
+- auth/loading states before the first post-login screen is rendered
+
+---
 
 ## Implementation Notes
 
-- `TutorialProvider` should mount after auth resolution when possible  
-- Tutorial activation should depend on session readiness  
-- Guest users should receive onboarding the same way authenticated users do  
-- Onboarding persistence should support both authenticated and guest sessions  
+- Keep changes minimal and in-scope
+- Do not touch unrelated navigation/UI behavior
+- Focus only on showing onboarding for first-time authenticated login users
 
 # Responsiveness Requirements
 
