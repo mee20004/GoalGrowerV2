@@ -105,6 +105,48 @@ function getPlacementOrder(targetRect, screenWidth, screenHeight) {
   return ["below", "above", "left", "right"];
 }
 
+const ARROW_EDGE_INSET = 24;
+
+function computeArrowOffsetX(targetRect, cardLeft, cardWidth, arrow) {
+  if (!arrow || (arrow !== "top" && arrow !== "bottom")) return null;
+  const targetCenterX = targetRect.x + targetRect.width / 2;
+  return clamp(
+    targetCenterX - cardLeft,
+    ARROW_EDGE_INSET,
+    cardWidth - ARROW_EDGE_INSET
+  );
+}
+
+function computeArrowOffsetY(targetRect, cardTop, cardHeight, arrow) {
+  if (!arrow || (arrow !== "left" && arrow !== "right")) return null;
+  const targetCenterY = targetRect.y + targetRect.height / 2;
+  return clamp(
+    targetCenterY - cardTop,
+    ARROW_EDGE_INSET,
+    cardHeight - ARROW_EDGE_INSET
+  );
+}
+
+function withArrowOffsets(layout, targetRect, cardHeight) {
+  if (!layout?.arrow || !isValidRect(targetRect)) return layout;
+
+  return {
+    ...layout,
+    arrowOffsetX: computeArrowOffsetX(
+      targetRect,
+      layout.left,
+      layout.width,
+      layout.arrow
+    ),
+    arrowOffsetY: computeArrowOffsetY(
+      targetRect,
+      layout.top,
+      cardHeight,
+      layout.arrow
+    ),
+  };
+}
+
 function resolveCandidate(candidate, targetRect, cardWidth, cardHeight, bounds) {
   const left = clamp(candidate.left, bounds.minLeft, bounds.maxRight - cardWidth);
   const top = clamp(candidate.top, bounds.minTop, bounds.maxBottom - cardHeight);
@@ -117,12 +159,16 @@ function resolveCandidate(candidate, targetRect, cardWidth, cardHeight, bounds) 
     return null;
   }
 
-  return {
-    left,
-    top,
-    arrow: candidate.arrow,
-    width: cardWidth,
-  };
+  return withArrowOffsets(
+    {
+      left,
+      top,
+      arrow: candidate.arrow,
+      width: cardWidth,
+    },
+    targetRect,
+    cardHeight
+  );
 }
 
 export function computeTopDockedCardLayout({
@@ -264,12 +310,16 @@ export function computeTutorialCardLayout({
   const fallbackRect = cardRect(fallbackLeft, fallbackTop, width, height);
 
   if (!rectsOverlap(fallbackRect, targetRect, CARD_TARGET_GAP)) {
-    return {
-      left: fallbackLeft,
-      top: fallbackTop,
-      arrow: "bottom",
-      width,
-    };
+    return withArrowOffsets(
+      {
+        left: fallbackLeft,
+        top: fallbackTop,
+        arrow: "bottom",
+        width,
+      },
+      targetRect,
+      height
+    );
   }
 
   return {

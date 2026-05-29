@@ -18,14 +18,52 @@ import TutorialRichDescription from "./TutorialRichDescription";
 import TutorialWarningBanner from "./TutorialWarningBanner";
 import { tutorialCardStyles } from "./tutorialStyles";
 
-function CardArrow({ placement }) {
+function CardArrow({ placement, offsetX = null, offsetY = null }) {
   if (!placement) return null;
 
   const base = [styles.arrow, styles.arrowBase];
-  if (placement === "top") return <View style={[...base, styles.arrowTop]} />;
-  if (placement === "bottom") return <View style={[...base, styles.arrowBottom]} />;
-  if (placement === "left") return <View style={[...base, styles.arrowLeft]} />;
-  return <View style={[...base, styles.arrowRight]} />;
+  if (placement === "top") {
+    return (
+      <View
+        style={[
+          ...base,
+          styles.arrowTop,
+          offsetX != null ? { left: offsetX, marginLeft: -10 } : null,
+        ]}
+      />
+    );
+  }
+  if (placement === "bottom") {
+    return (
+      <View
+        style={[
+          ...base,
+          styles.arrowBottom,
+          offsetX != null ? { left: offsetX, marginLeft: -10 } : null,
+        ]}
+      />
+    );
+  }
+  if (placement === "left") {
+    return (
+      <View
+        style={[
+          ...base,
+          styles.arrowLeft,
+          offsetY != null ? { top: offsetY, marginTop: -10 } : null,
+        ]}
+      />
+    );
+  }
+  return (
+    <View
+      style={[
+        ...base,
+        styles.arrowRight,
+        offsetY != null ? { top: offsetY, marginTop: -10 } : null,
+      ]}
+    />
+  );
 }
 
 export default function TutorialCard({
@@ -132,7 +170,11 @@ export default function TutorialCard({
             },
           ]}
         >
-          <CardArrow placement={layout.arrow} />
+          <CardArrow
+            placement={layout.arrow}
+            offsetX={layout.arrowOffsetX}
+            offsetY={layout.arrowOffsetY}
+          />
           <CardBody {...bodyProps} />
         </Animated.View>
       ) : null}
