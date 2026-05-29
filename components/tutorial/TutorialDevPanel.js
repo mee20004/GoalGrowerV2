@@ -10,24 +10,17 @@ export default function TutorialDevPanel() {
     currentStep,
     currentStepIndex,
     stepCount,
-    nextStep,
+    advanceStep,
     skipTutorial,
     completeTutorial,
-    finishIfLastStep,
   } = useTutorial();
 
   if (!DEV_TUTORIAL_TOOLS_ENABLED || !isTutorialActive || !currentStep) {
     return null;
   }
 
-  const isLastStep = currentStepIndex >= stepCount - 1;
-
   const handlePrimary = async () => {
-    if (isLastStep) {
-      await finishIfLastStep();
-      return;
-    }
-    nextStep();
+    await advanceStep();
   };
 
   return (

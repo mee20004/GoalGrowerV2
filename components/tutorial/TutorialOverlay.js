@@ -99,7 +99,9 @@ export default function TutorialOverlay({
 
   if (!visible) return null;
 
-  const showHighlight = mode === "highlight" && isValidRect(highlightRect);
+  const showHighlight =
+    mode === "highlight" && isValidRect(highlightRect);
+  const showCenteredDim = mode === "centered" || mode === "flow" || !showHighlight;
 
   return (
     <View style={styles.root} pointerEvents="box-none" accessibilityViewIsModal>
@@ -110,14 +112,14 @@ export default function TutorialOverlay({
           screenHeight={screenHeight}
           animatedOpacity={fade}
         />
-      ) : (
+      ) : showCenteredDim ? (
         <Pressable style={StyleSheet.absoluteFill} accessibilityRole="none">
           <Animated.View
             style={[styles.centeredDim, { opacity: fade }]}
             pointerEvents="none"
           />
         </Pressable>
-      )}
+      ) : null}
 
       {children ? (
         <View style={styles.content} pointerEvents="box-none">

@@ -1,16 +1,17 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import { Modal, useWindowDimensions } from "react-native";
 import { useTutorial } from "../../contexts/TutorialContext";
-import { TUTORIAL_STEP_MODES } from "../../tutorial/constants";
+import { DEV_TUTORIAL_TOOLS_ENABLED } from "../../tutorial/devConfig";
 import { expandRect, isValidRect } from "../../tutorial/layout";
+import {
+  getOverlayModeForStep,
+  getStepPrimaryLabel,
+  isLastStepIndex,
+  shouldShowStepPrimaryButton,
+} from "../../tutorial/stepEngine";
 import TutorialCard from "./TutorialCard";
 import TutorialOverlay from "./TutorialOverlay";
-
-function getPrimaryLabel(step, isLastStep) {
-  if (step?.id === "welcome") return "Get Started";
-  if (isLastStep) return "End Tutorial";
-  return "Next";
-}
+import TutorialProgress from "./TutorialProgress";
 
 export default function TutorialHost() {
   const { width, height } = useWindowDimensions();
@@ -19,11 +20,12 @@ export default function TutorialHost() {
     currentStep,
     currentStepIndex,
     stepCount,
+    progress,
+    isDevPreview,
     remeasureTargets,
     getTargetLayout,
-    nextStep,
+    advanceStep,
     skipTutorial,
-    finishIfLastStep,
   } = useTutorial();
 
   useEffect(() => {
@@ -34,26 +36,35 @@ export default function TutorialHost() {
     return () => cancelAnimationFrame(frame);
   }, [isTutorialActive, currentStep?.id, width, height, remeasureTargets]);
 
+  const overlayConfig = useMemo(() => {
+    if (!currentStep) {
+      return { mode: "centered", highlightRect: null };
+    }
+
+    const rawLayout = currentStep.targetKey
+      ? getTargetLayout(currentStep.targetKey)
+      : null;
+    const highlightRect = expandRect(rawLayout);
+    const hasValidTarget = isValidRect(highlightRect);
+    const mode = getOverlayModeForStep(currentStep, { hasValidTarget });
+
+    return {
+      mode,
+      highlightRect: mode === "highlight" ? highlightRect : null,
+      cardTargetRect: mode === "highlight" ? highlightRect : null,
+      cardCentered: mode !== "highlight",
+    };
+  }, [currentStep, getTargetLayout]);
+
   if (!isTutorialActive || !currentStep) {
     return null;
   }
 
-  const isLastStep = currentStepIndex >= stepCount - 1;
-  const isCenteredStep = currentStep.mode === TUTORIAL_STEP_MODES.CENTERED;
-  const rawLayout = currentStep.targetKey
-    ? getTargetLayout(currentStep.targetKey)
-    : null;
-  const highlightRect = expandRect(rawLayout);
-  const useHighlight =
-    !isCenteredStep && currentStep.targetKey && isValidRect(highlightRect);
-
-  const handlePrimary = async () => {
-    if (isLastStep) {
-      await finishIfLastStep();
-      return;
-    }
-    nextStep();
-  };
+  const isLastStep = isLastStepIndex(currentStepIndex, stepCount);
+  const showPrimary = shouldShowStepPrimaryButton(currentStep, {
+    devToolsEnabled: DEV_TUTORIAL_TOOLS_ENABLED,
+    devPreview: isDevPreview,
+  });
 
   return (
     <Modal
@@ -65,18 +76,23 @@ export default function TutorialHost() {
     >
       <TutorialOverlay
         visible
-        mode={useHighlight ? "highlight" : "centered"}
-        highlightRect={useHighlight ? highlightRect : null}
+        mode={overlayConfig.mode}
+        highlightRect={overlayConfig.highlightRect}
       >
+        <TutorialProgress
+          currentIndex={currentStepIndex}
+          stepCount={stepCount}
+          progress={progress}
+        />
         <TutorialCard
           title={currentStep.title}
           description={currentStep.description}
-          primaryLabel={getPrimaryLabel(currentStep, isLastStep)}
-          showPrimary={!currentStep.requiresUserAction}
+          primaryLabel={getStepPrimaryLabel(currentStep, { isLastStep })}
+          showPrimary={showPrimary}
           onSkip={skipTutorial}
-          onPrimary={handlePrimary}
-          targetRect={useHighlight ? highlightRect : null}
-          centered={!useHighlight}
+          onPrimary={advanceStep}
+          targetRect={overlayConfig.cardTargetRect}
+          centered={overlayConfig.cardCentered}
         />
       </TutorialOverlay>
     </Modal>

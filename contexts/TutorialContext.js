@@ -19,10 +19,22 @@ import {
   rectsEqual,
 } from "../tutorial";
 import { DEV_TUTORIAL_TOOLS_ENABLED } from "../tutorial/devConfig";
+import {
+  canAdvanceFromUserAction,
+  getTutorialProgress,
+  isTutorialNavigationReady,
+  navigateForTutorialStep,
+  resolveStepTransition,
+} from "../tutorial/stepEngine";
 
 const TutorialContext = createContext(null);
 
-export function TutorialProvider({ children, userId = null, enabled = true }) {
+export function TutorialProvider({
+  children,
+  userId = null,
+  enabled = true,
+  navigationRef = null,
+}) {
   const [hydrated, setHydrated] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [skipped, setSkipped] = useState(false);
@@ -30,6 +42,8 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
   const [targetLayouts, setTargetLayouts] = useState({});
   const targetsRef = useRef(new Map());
   const devPreviewRef = useRef(false);
+  const [devPreview, setDevPreview] = useState(false);
+  const pendingNavigationStepIdRef = useRef(null);
 
   // Hydrate from AsyncStorage
   useEffect(() => {
@@ -72,6 +86,38 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
   const isTutorialFinished = completed || skipped;
   const isTutorialActive =
     isTutorialEligible && !isTutorialFinished && currentStepIndex < TUTORIAL_STEP_COUNT;
+  const isDevPreview = DEV_TUTORIAL_TOOLS_ENABLED && devPreview;
+  const progress = getTutorialProgress(currentStepIndex, TUTORIAL_STEP_COUNT);
+
+  const syncStepNavigation = useCallback(
+    (step) => {
+      if (!step || !navigationRef) return false;
+
+      const didNavigate = navigateForTutorialStep(navigationRef, step);
+      if (!didNavigate && step.navigation) {
+        pendingNavigationStepIdRef.current = step.id;
+        return false;
+      }
+
+      pendingNavigationStepIdRef.current = null;
+      return didNavigate;
+    },
+    [navigationRef]
+  );
+
+  useEffect(() => {
+    if (!isTutorialActive || !currentStep || !navigationRef) return undefined;
+
+    syncStepNavigation(currentStep);
+
+    const unsubscribe = navigationRef.addListener?.("state", () => {
+      if (pendingNavigationStepIdRef.current !== currentStep.id) return;
+      if (!isTutorialNavigationReady(navigationRef)) return;
+      syncStepNavigation(currentStep);
+    });
+
+    return unsubscribe;
+  }, [currentStep, isTutorialActive, navigationRef, syncStepNavigation]);
 
   // Highlight target registry
   const updateTargetLayout = useCallback((targetKey, layout) => {
@@ -135,33 +181,52 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
     [targetLayouts]
   );
 
-  // Step navigation
-  const goToStep = useCallback((index) => {
-    if (index < 0 || index >= TUTORIAL_STEP_COUNT) return;
-    setCurrentStepIndex(index);
-  }, []);
+  const goToStep = useCallback(
+    (index) => {
+      if (index < 0 || index >= TUTORIAL_STEP_COUNT) return;
+      const step = getTutorialStepByIndex(index);
+      if (!step) return;
+      setCurrentStepIndex(index);
+      syncStepNavigation(step);
+    },
+    [syncStepNavigation]
+  );
 
   const nextStep = useCallback(() => {
     setCurrentStepIndex((prev) => {
-      const next = prev + 1;
-      if (next >= TUTORIAL_STEP_COUNT) {
-        return prev;
-      }
-      return next;
+      const transition = resolveStepTransition({
+        currentIndex: prev,
+        stepCount: TUTORIAL_STEP_COUNT,
+        direction: "next",
+      });
+      if (transition.completed) return prev;
+      const step = getTutorialStepByIndex(transition.nextIndex);
+      if (step) syncStepNavigation(step);
+      return transition.nextIndex;
     });
-  }, []);
+  }, [syncStepNavigation]);
 
   const previousStep = useCallback(() => {
-    setCurrentStepIndex((prev) => Math.max(0, prev - 1));
-  }, []);
+    setCurrentStepIndex((prev) => {
+      const transition = resolveStepTransition({
+        currentIndex: prev,
+        stepCount: TUTORIAL_STEP_COUNT,
+        direction: "previous",
+      });
+      const step = getTutorialStepByIndex(transition.nextIndex);
+      if (step) syncStepNavigation(step);
+      return transition.nextIndex;
+    });
+  }, [syncStepNavigation]);
 
-  // Completion / skip / reset
   const completeTutorial = useCallback(async () => {
     setCompleted(true);
     setSkipped(false);
     setCurrentStepIndex(TUTORIAL_STEP_COUNT - 1);
+    pendingNavigationStepIdRef.current = null;
     const skipPersist = DEV_TUTORIAL_TOOLS_ENABLED && devPreviewRef.current;
     devPreviewRef.current = false;
+    setDevPreview(false);
     if (userId && !skipPersist) {
       await persistOnboardingCompleted(userId, true);
     }
@@ -170,8 +235,10 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
   const skipTutorial = useCallback(async () => {
     setSkipped(true);
     setCompleted(true);
+    pendingNavigationStepIdRef.current = null;
     const skipPersist = DEV_TUTORIAL_TOOLS_ENABLED && devPreviewRef.current;
     devPreviewRef.current = false;
+    setDevPreview(false);
     if (userId && !skipPersist) {
       await persistOnboardingSkipped(userId, true);
     }
@@ -182,6 +249,8 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
     setSkipped(false);
     setCurrentStepIndex(0);
     devPreviewRef.current = false;
+    setDevPreview(false);
+    pendingNavigationStepIdRef.current = null;
     if (userId) {
       await resetOnboardingState(userId);
     }
@@ -190,14 +259,50 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
   const previewTutorial = useCallback(async () => {
     if (!DEV_TUTORIAL_TOOLS_ENABLED || !userId) return;
     devPreviewRef.current = true;
+    setDevPreview(true);
     await resetOnboardingState(userId);
     setCompleted(false);
     setSkipped(false);
     setCurrentStepIndex(0);
-  }, [userId]);
+    pendingNavigationStepIdRef.current = null;
+    const welcomeStep = getTutorialStepByIndex(0);
+    if (welcomeStep) syncStepNavigation(welcomeStep);
+  }, [syncStepNavigation, userId]);
+
+  const advanceStep = useCallback(async () => {
+    const transition = resolveStepTransition({
+      currentIndex: currentStepIndex,
+      stepCount: TUTORIAL_STEP_COUNT,
+      direction: "next",
+    });
+
+    if (transition.completed) {
+      await completeTutorial();
+      return;
+    }
+
+    const step = getTutorialStepByIndex(transition.nextIndex);
+    setCurrentStepIndex(transition.nextIndex);
+    if (step) syncStepNavigation(step);
+  }, [completeTutorial, currentStepIndex, syncStepNavigation]);
+
+  const notifyUserAction = useCallback(
+    (actionId) => {
+      if (!isTutorialActive || !currentStep) return false;
+      if (!canAdvanceFromUserAction(currentStep, actionId)) return false;
+      nextStep();
+      return true;
+    },
+    [currentStep, isTutorialActive, nextStep]
+  );
 
   const finishIfLastStep = useCallback(async () => {
-    if (currentStepIndex >= TUTORIAL_STEP_COUNT - 1) {
+    const transition = resolveStepTransition({
+      currentIndex: currentStepIndex,
+      stepCount: TUTORIAL_STEP_COUNT,
+      direction: "next",
+    });
+    if (transition.completed) {
       await completeTutorial();
       return true;
     }
@@ -218,10 +323,13 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
       isTutorialEligible,
       isTutorialFinished,
       isTutorialActive,
-      progress: (currentStepIndex + 1) / TUTORIAL_STEP_COUNT,
+      isDevPreview,
+      progress,
       goToStep,
       nextStep,
       previousStep,
+      advanceStep,
+      notifyUserAction,
       completeTutorial,
       skipTutorial,
       resetTutorial,
@@ -247,9 +355,13 @@ export function TutorialProvider({ children, userId = null, enabled = true }) {
       isTutorialEligible,
       isTutorialFinished,
       isTutorialActive,
+      isDevPreview,
+      progress,
       goToStep,
       nextStep,
       previousStep,
+      advanceStep,
+      notifyUserAction,
       completeTutorial,
       skipTutorial,
       resetTutorial,

@@ -25,6 +25,7 @@ export const TUTORIAL_STEPS = [
       screen: "GoalsHome",
     },
     requiresUserAction: true,
+    advanceOn: TUTORIAL_TARGET_KEYS.ADD_GOAL_FAB,
   },
   {
     id: "goal-creation",

@@ -26,6 +26,18 @@ export {
 } from "./navigation";
 
 export {
+  getTutorialProgress,
+  getStepPrimaryLabel,
+  shouldShowStepPrimaryButton,
+  getOverlayModeForStep,
+  canAdvanceFromUserAction,
+  navigateForTutorialStep,
+  isTutorialNavigationReady,
+  resolveStepTransition,
+  isLastStepIndex,
+} from "./stepEngine";
+
+export {
   TUTORIAL_OVERLAY_COLOR,
   TUTORIAL_HIGHLIGHT_PADDING,
   TUTORIAL_HIGHLIGHT_RADIUS,

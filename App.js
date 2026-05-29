@@ -6,7 +6,7 @@ import { StackActions } from '@react-navigation/native';
 import { Text, View, Image } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { AppState } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -249,6 +249,7 @@ export default function App() {
   const userRef = useRef(null);
   const unsubFirestoreRef = useRef(null);
   const appStateListenerRef = useRef(null);
+  const navigationRef = useNavigationContainerRef();
 
   // Helper to check if EnterScreen should be shown
   const checkEnterScreen = async (uid, context) => {
@@ -336,8 +337,12 @@ export default function App() {
     <FontProvider>
       <SafeAreaProvider>
         <GoalsProvider>
-          <TutorialProvider userId={user?.uid ?? null} enabled={tutorialEnabled}>
-            <NavigationContainer>
+          <TutorialProvider
+            userId={user?.uid ?? null}
+            enabled={tutorialEnabled}
+            navigationRef={navigationRef}
+          >
+            <NavigationContainer ref={navigationRef}>
               <StatusBar style="dark" />
               <RootStack.Navigator screenOptions={{ headerShown: false }}>
                 {user && hasUsername ? (
