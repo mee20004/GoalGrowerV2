@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { theme } from "../../theme";
+import { tutorialCardStyles, tutorialShadows } from "./tutorialStyles";
 
 export default function TutorialCompletionCard({
   title,
@@ -70,12 +71,16 @@ export default function TutorialCompletionCard({
       <Animated.View
         style={[
           styles.card,
+          tutorialShadows.card,
           {
             opacity: cardOpacity,
             transform: [{ scale: cardScale }],
           },
         ]}
       >
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.description}>{description}</Text>
+
         {imageSource ? (
           <View style={styles.trophyWrap}>
             <Animated.View style={[styles.trophyGlow, { opacity: glowOpacity }]} />
@@ -90,17 +95,13 @@ export default function TutorialCompletionCard({
           </View>
         ) : null}
 
-        <Text style={styles.badge}>Achievement unlocked</Text>
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.description}>{description}</Text>
-
         <Pressable
-          style={styles.primaryBtn}
+          style={[tutorialCardStyles.primaryBtn, styles.endBtn]}
           onPress={onEndTutorial}
           accessibilityRole="button"
           accessibilityLabel={primaryLabel}
         >
-          <Text style={styles.primaryText}>{primaryLabel}</Text>
+          <Text style={tutorialCardStyles.primaryText}>{primaryLabel}</Text>
         </Pressable>
       </Animated.View>
     </View>
@@ -118,67 +119,44 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 360,
     backgroundColor: theme.surface,
-    borderRadius: theme.radius,
+    borderRadius: 16,
     padding: 24,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 12,
-    borderWidth: 1,
-    borderColor: theme.outline,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#1a2b3c",
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  description: {
+    fontSize: 15,
+    color: "#5a6b7a",
+    lineHeight: 22,
+    textAlign: "center",
+    marginBottom: 16,
   },
   trophyWrap: {
     width: 140,
     height: 140,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 8,
+    marginBottom: 20,
   },
   trophyGlow: {
     position: "absolute",
     width: 130,
     height: 130,
     borderRadius: 999,
-    backgroundColor: "rgba(40, 185, 0, 0.18)",
+    backgroundColor: "rgba(201, 162, 39, 0.2)",
   },
   trophyImage: {
     width: 120,
     height: 120,
   },
-  badge: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: theme.accent,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    marginBottom: 6,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: theme.text,
-    textAlign: "center",
-    marginBottom: 10,
-  },
-  description: {
-    fontSize: 15,
-    color: theme.muted2,
-    lineHeight: 22,
-    textAlign: "center",
-    marginBottom: 22,
-  },
-  primaryBtn: {
-    width: "100%",
-    backgroundColor: theme.accent,
-    borderRadius: theme.radiusSm,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  primaryText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 16,
+  endBtn: {
+    alignSelf: "stretch",
+    minWidth: undefined,
   },
 });

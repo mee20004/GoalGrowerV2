@@ -8,10 +8,12 @@ import {
   getTutorialOverlayPresentation,
   isLastStepIndex,
   isCompletionStep,
+  isSilentTutorialStep,
   isWelcomeStep,
   shouldShowStepPrimaryButton,
   shouldUseHighlightPassthrough,
 } from "../../tutorial/stepEngine";
+import { TUTORIAL_HIGHLIGHT_PADDING } from "../../tutorial/layout";
 import TutorialCard from "./TutorialCard";
 import TutorialCompletionCard from "./TutorialCompletionCard";
 import TutorialHighlightPassthrough from "./TutorialHighlightPassthrough";
@@ -59,7 +61,9 @@ export default function TutorialHost() {
     const rawLayout = currentStep.targetKey
       ? getTargetLayout(currentStep.targetKey)
       : null;
-    const highlightRect = expandRect(rawLayout);
+    const highlightPadding =
+      currentStep.highlightPadding ?? TUTORIAL_HIGHLIGHT_PADDING;
+    const highlightRect = expandRect(rawLayout, highlightPadding);
     const hasValidTarget = isValidRect(highlightRect);
     const presentation = getTutorialOverlayPresentation(currentStep, {
       hasValidTarget,
@@ -98,12 +102,17 @@ export default function TutorialHost() {
     shouldUseHighlightPassthrough(currentStep) &&
     isValidRect(overlayConfig.highlightRect);
 
-  if (!isTutorialActive || !currentStep) {
+  if (!isTutorialActive || !currentStep || isSilentTutorialStep(currentStep)) {
     return null;
   }
 
   return (
-    <View style={styles.host} pointerEvents="box-none" accessibilityViewIsModal>
+    <View
+      style={styles.host}
+      pointerEvents="box-none"
+      accessibilityViewIsModal
+      accessibilityLabel={`Tutorial: ${currentStep.title}`}
+    >
       <TutorialOverlay
         visible
         mode={overlayConfig.mode}
@@ -127,10 +136,12 @@ export default function TutorialHost() {
 
         {showWelcome ? (
           <TutorialWelcomeCard
-            title={currentStep.title}
+            titleLine1={currentStep.titleLine1}
+            titleLine2={currentStep.titleLine2}
+            heroCaptionLine1={currentStep.heroCaptionLine1}
+            heroCaptionLine2={currentStep.heroCaptionLine2}
             description={currentStep.description}
-            imageSource={currentStep.imageSource}
-            onSkip={skipTutorial}
+            plantSource={currentStep.imageSource}
             onGetStarted={handleWelcomeCTA}
           />
         ) : showCompletion ? (
@@ -143,8 +154,14 @@ export default function TutorialHost() {
           />
         ) : (
           <TutorialCard
+            stepKey={currentStep.id}
             title={currentStep.title}
-            description={currentStep.description}
+            description={currentStep.description ?? ""}
+            descriptionParts={currentStep.descriptionParts ?? null}
+            descriptionEmphasis={currentStep.descriptionEmphasis ?? ""}
+            descriptionSuffix={currentStep.descriptionSuffix ?? ""}
+            warningText={currentStep.warningText ?? ""}
+            growthStages={currentStep.growthStages ?? null}
             imageSource={currentStep.imageSource ?? null}
             primaryLabel={getStepPrimaryLabel(currentStep, { isLastStep })}
             showPrimary={showPrimary}
@@ -153,6 +170,7 @@ export default function TutorialHost() {
             targetRect={overlayConfig.cardTargetRect}
             centered={overlayConfig.cardCentered}
             cardPlacement={currentStep.cardPlacement ?? null}
+            anchorPlacement={currentStep.anchorPlacement ?? null}
             comparisonImages={currentStep.comparisonImages ?? null}
           />
         )}

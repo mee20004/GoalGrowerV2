@@ -397,7 +397,7 @@ export default function GoalsScreen({ navigation }) {
 
   const handleAddGoal = () => {
     navigation.navigate("AddGoal");
-    notifyUserAction(TUTORIAL_TARGET_KEYS.ADD_GOAL_FAB);
+    notifyUserAction(TUTORIAL_TARGET_KEYS.ADD_GOAL_BUTTON);
   };
 
   const handleCalendar = () => {
@@ -784,9 +784,14 @@ export default function GoalsScreen({ navigation }) {
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No goals yet</Text>
           <Text style={styles.emptySubtext}>Create your first goal to get started</Text>
-          <Pressable onPress={handleAddGoal} style={styles.addBtn}>
-            <Text style={styles.addBtnText}>+ Add Goal</Text>
-          </Pressable>
+          <HighlightTarget
+            targetKey={TUTORIAL_TARGET_KEYS.ADD_GOAL_BUTTON}
+            collapsable={false}
+          >
+            <Pressable onPress={handleAddGoal} style={styles.addBtn}>
+              <Text style={styles.addBtnText}>+ Add Goal</Text>
+            </Pressable>
+          </HighlightTarget>
         </View>
       ) : (
         <FlatList
@@ -799,22 +804,15 @@ export default function GoalsScreen({ navigation }) {
         />
       )}
 
-      {/* Floating Add Button */}
-      <HighlightTarget
-        targetKey={TUTORIAL_TARGET_KEYS.ADD_GOAL_FAB}
+      <Pressable
         style={[styles.fab, { bottom: insets.bottom + 85 }]}
-        collapsable={false}
+        onPress={handleAddGoal}
+        android_ripple={{ color: "#fff" }}
+        accessibilityRole="button"
+        accessibilityLabel="Add goal"
       >
-        <Pressable
-          style={styles.fabPressable}
-          onPress={handleAddGoal}
-          android_ripple={{ color: "#fff" }}
-          accessibilityRole="button"
-          accessibilityLabel="Add goal"
-        >
-          <Ionicons name="add" size={22} color="#fff" />
-        </Pressable>
-      </HighlightTarget>
+        <Ionicons name="add" size={22} color="#fff" />
+      </Pressable>
     </Page>
   );
 }
@@ -1115,6 +1113,8 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     backgroundColor: 'rgb(82, 153, 61)',
+    justifyContent: 'center',
+    alignItems: 'center',
     zIndex: 12000,
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0)',
@@ -1123,12 +1123,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 1,
     shadowRadius: 0,
-  },
-  fabPressable: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 25,
   },
   contributorOverlayLabel: {
     textAlign: 'center',

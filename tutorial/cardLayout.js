@@ -172,6 +172,7 @@ export function computeTutorialCardLayout({
   targetRect = null,
   centered = false,
   cardPlacement = null,
+  anchorPlacement = null,
   safeInsets = { top: 0, bottom: 0, left: 0, right: 0 },
 }) {
   const width = Math.min(
@@ -226,7 +227,13 @@ export function computeTutorialCardLayout({
     return centerPosition();
   }
 
-  const placements = getPlacementOrder(targetRect, screenWidth, screenHeight);
+  const defaultPlacements = getPlacementOrder(targetRect, screenWidth, screenHeight);
+  const placements = anchorPlacement
+    ? [
+        anchorPlacement,
+        ...defaultPlacements.filter((placement) => placement !== anchorPlacement),
+      ]
+    : defaultPlacements;
 
   for (let i = 0; i < placements.length; i += 1) {
     const candidate = buildCandidate(targetRect, width, height, placements[i]);

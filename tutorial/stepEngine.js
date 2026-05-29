@@ -19,6 +19,10 @@ export function isCompletionStep(step) {
   return step?.id === "completion";
 }
 
+export function isSilentTutorialStep(step) {
+  return Boolean(step?.silent);
+}
+
 export function getStepPrimaryLabel(step, { isLastStep = false } = {}) {
   if (!step) return "Next";
   if (isWelcomeStep(step)) return "Get Started";
@@ -67,9 +71,9 @@ export function shouldUseHighlightPassthrough(step) {
 }
 
 export function canAdvanceFromUserAction(step, actionId) {
-  if (!step?.requiresUserAction || !actionId) return false;
+  if (!step || !actionId) return false;
   if (step.advanceOn === actionId) return true;
-  if (step.id === actionId) return true;
+  if (step.requiresUserAction && step.id === actionId) return true;
   return false;
 }
 

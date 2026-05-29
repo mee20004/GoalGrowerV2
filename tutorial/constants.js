@@ -13,9 +13,12 @@ export function onboardingKeysForUser(userId) {
 // Highlight target refs
 export const TUTORIAL_TARGET_KEYS = {
   ADD_GOAL_FAB: "addGoalFab",
+  ADD_GOAL_BUTTON: "addGoalButton",
   GOAL_CREATION: "goalCreationFlow",
   PLANT_GROWTH: "plantGrowthArea",
   PLANT_HEALTH: "plantHealthArea",
+  JOURNEY_TAB: "journeyTab",
+  WATER_DROP: "waterDrop",
 };
 
 // Step layout modes

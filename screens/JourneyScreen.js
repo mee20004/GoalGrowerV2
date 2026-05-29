@@ -5,9 +5,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
-import HighlightTarget from "../components/tutorial/HighlightTarget";
 import useRemeasureTutorialOnFocus from "../components/tutorial/useRemeasureTutorialOnFocus";
-import { TUTORIAL_TARGET_KEYS } from "../tutorial/constants";
 import { theme } from "../theme";
 import { getGoalTrophyRating, updateOverallScoreForUser } from "../utils/scoreUtils";
 import { getScoredGoalsForUser } from "../utils/scoreUtils";
@@ -326,10 +324,6 @@ export default function JourneyScreen() {
         </View>
       </View>
 
-      <HighlightTarget
-        targetKey={TUTORIAL_TARGET_KEYS.PLANT_GROWTH}
-        collapsable={false}
-      >
         <View>
           <View style={{ marginHorizontal: 18 }}>
             <View style={styles.heroContainer}>
@@ -432,7 +426,6 @@ export default function JourneyScreen() {
             </View>
           </View>
         </View>
-      </HighlightTarget>
 
       <View style={[styles.section, styles.insetX]}>
         <Text style={styles.sectionTitle}>Achievements</Text>

@@ -1,31 +1,35 @@
 import React, { useEffect, useRef } from "react";
 import {
   Animated,
-  Image,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { theme } from "../../theme";
+import TutorialPlantInPot from "./TutorialPlantInPot";
+import { tutorialCardStyles, tutorialShadows } from "./tutorialStyles";
 
 export default function TutorialWelcomeCard({
-  title,
+  titleLine1 = "Welcome to",
+  titleLine2 = "GoalGrower!",
+  heroCaptionLine1 = "Grow your goals,",
+  heroCaptionLine2 = "one step at a time",
   description,
-  imageSource = null,
-  onSkip,
+  plantSource = null,
   onGetStarted,
 }) {
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const cardTranslateY = useRef(new Animated.Value(18)).current;
-  const imageScale = useRef(new Animated.Value(0.88)).current;
-  const imageOpacity = useRef(new Animated.Value(0)).current;
+  const heroScale = useRef(new Animated.Value(0.92)).current;
+  const heroOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     cardOpacity.setValue(0);
     cardTranslateY.setValue(18);
-    imageScale.setValue(0.88);
-    imageOpacity.setValue(0);
+    heroScale.setValue(0.92);
+    heroOpacity.setValue(0);
 
     Animated.parallel([
       Animated.timing(cardOpacity, {
@@ -42,13 +46,13 @@ export default function TutorialWelcomeCard({
       Animated.sequence([
         Animated.delay(80),
         Animated.parallel([
-          Animated.spring(imageScale, {
+          Animated.spring(heroScale, {
             toValue: 1,
             friction: 8,
             tension: 65,
             useNativeDriver: true,
           }),
-          Animated.timing(imageOpacity, {
+          Animated.timing(heroOpacity, {
             toValue: 1,
             duration: 280,
             useNativeDriver: true,
@@ -56,54 +60,54 @@ export default function TutorialWelcomeCard({
         ]),
       ]),
     ]).start();
-  }, [cardOpacity, cardTranslateY, imageOpacity, imageScale, title]);
+  }, [cardOpacity, cardTranslateY, heroOpacity, heroScale, titleLine2]);
 
   return (
     <View style={styles.centerWrap} pointerEvents="box-none">
       <Animated.View
         style={[
           styles.card,
+          tutorialShadows.card,
           {
             opacity: cardOpacity,
             transform: [{ translateY: cardTranslateY }],
           },
         ]}
       >
-        {imageSource ? (
-          <Animated.View
-            style={[
-              styles.imageWrap,
-              {
-                opacity: imageOpacity,
-                transform: [{ scale: imageScale }],
-              },
-            ]}
-          >
-            <Image source={imageSource} style={styles.image} resizeMode="contain" />
-          </Animated.View>
-        ) : null}
+        <Text style={styles.titleLine1}>{titleLine1}</Text>
+        <Text style={styles.titleLine2}>{titleLine2}</Text>
 
-        <Text style={styles.title}>{title}</Text>
+        <Animated.View
+          style={{
+            opacity: heroOpacity,
+            transform: [{ scale: heroScale }],
+            width: "100%",
+          }}
+        >
+          <LinearGradient
+            colors={["#d9f4fc", "#f4fbff"]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={[styles.heroCard, tutorialShadows.gradientBox]}
+          >
+            {plantSource ? (
+              <TutorialPlantInPot plantSource={plantSource} size={120} />
+            ) : null}
+            <Text style={styles.heroCaptionLine1}>{heroCaptionLine1}</Text>
+            <Text style={styles.heroCaptionLine2}>{heroCaptionLine2}</Text>
+          </LinearGradient>
+        </Animated.View>
+
         <Text style={styles.description}>{description}</Text>
 
-        <View style={styles.actions}>
-          <Pressable
-            style={styles.secondaryBtn}
-            onPress={onSkip}
-            accessibilityRole="button"
-            accessibilityLabel="Skip tutorial"
-          >
-            <Text style={styles.secondaryText}>Skip</Text>
-          </Pressable>
-          <Pressable
-            style={styles.primaryBtn}
-            onPress={onGetStarted}
-            accessibilityRole="button"
-            accessibilityLabel="Get Started"
-          >
-            <Text style={styles.primaryText}>Get Started</Text>
-          </Pressable>
-        </View>
+        <Pressable
+          style={[tutorialCardStyles.primaryBtn, styles.getStartedBtn]}
+          onPress={onGetStarted}
+          accessibilityRole="button"
+          accessibilityLabel="Get Started"
+        >
+          <Text style={tutorialCardStyles.primaryText}>Get Started</Text>
+        </Pressable>
       </Animated.View>
     </View>
   );
@@ -120,66 +124,54 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 360,
     backgroundColor: theme.surface,
-    borderRadius: theme.radius,
+    borderRadius: 16,
     padding: 24,
-    shadowColor: "#000",
-    shadowOpacity: 0.14,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 10,
-    borderWidth: 1,
-    borderColor: theme.outline,
   },
-  imageWrap: {
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  image: {
-    width: 160,
-    height: 160,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: theme.text,
+  titleLine1: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#7a8a99",
     textAlign: "center",
-    marginBottom: 10,
+    marginBottom: 2,
+  },
+  titleLine2: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: "#1a2b3c",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  heroCard: {
+    borderRadius: 14,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  heroCaptionLine1: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#3d5a6e",
+    textAlign: "center",
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  heroCaptionLine2: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#3d5a6e",
+    textAlign: "center",
+    lineHeight: 20,
   },
   description: {
     fontSize: 15,
-    color: theme.muted2,
+    color: "#5a6b7a",
     lineHeight: 22,
     textAlign: "center",
     marginBottom: 20,
   },
-  actions: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  primaryBtn: {
-    flex: 1,
-    backgroundColor: theme.accent,
-    borderRadius: theme.radiusSm,
-    paddingVertical: 13,
-    alignItems: "center",
-  },
-  primaryText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 15,
-  },
-  secondaryBtn: {
-    flex: 1,
-    backgroundColor: theme.bg,
-    borderRadius: theme.radiusSm,
-    paddingVertical: 13,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: theme.outline,
-  },
-  secondaryText: {
-    color: theme.text,
-    fontWeight: "800",
-    fontSize: 15,
+  getStartedBtn: {
+    alignSelf: "stretch",
+    minWidth: undefined,
   },
 });

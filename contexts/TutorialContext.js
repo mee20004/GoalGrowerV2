@@ -350,7 +350,11 @@ export function TutorialProvider({
     (actionId) => {
       if (!actionId) return false;
 
-      if (actionId === TUTORIAL_TARGET_KEYS.ADD_GOAL_FAB && navigationRef?.current) {
+      if (
+        (actionId === TUTORIAL_TARGET_KEYS.ADD_GOAL_BUTTON ||
+          actionId === TUTORIAL_TARGET_KEYS.ADD_GOAL_FAB) &&
+        navigationRef?.current
+      ) {
         navigationRef.current.navigate("Goals", { screen: "AddGoal" });
       }
 

@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
   Image,
   Pressable,
   StyleSheet,
@@ -12,6 +13,10 @@ import { theme } from "../../theme";
 import { computeTutorialCardLayout } from "../../tutorial/cardLayout";
 import { isValidRect } from "../../tutorial/layout";
 import TutorialComparisonImages from "./TutorialComparisonImages";
+import TutorialGrowthStages from "./TutorialGrowthStages";
+import TutorialRichDescription from "./TutorialRichDescription";
+import TutorialWarningBanner from "./TutorialWarningBanner";
+import { tutorialCardStyles } from "./tutorialStyles";
 
 function CardArrow({ placement }) {
   if (!placement) return null;
@@ -24,8 +29,14 @@ function CardArrow({ placement }) {
 }
 
 export default function TutorialCard({
+  stepKey,
   title,
-  description,
+  description = "",
+  descriptionParts = null,
+  descriptionEmphasis = "",
+  descriptionSuffix = "",
+  warningText = "",
+  growthStages = null,
   imageSource = null,
   primaryLabel = "Next",
   showPrimary = true,
@@ -34,11 +45,22 @@ export default function TutorialCard({
   targetRect = null,
   centered = false,
   cardPlacement = null,
+  anchorPlacement = null,
   comparisonImages = null,
 }) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [measuredSize, setMeasuredSize] = useState(null);
+  const fadeOpacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    fadeOpacity.setValue(0);
+    Animated.timing(fadeOpacity, {
+      toValue: 1,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeOpacity, stepKey]);
 
   const layout = useMemo(() => {
     if (!measuredSize) return null;
@@ -50,11 +72,37 @@ export default function TutorialCard({
       targetRect: isValidRect(targetRect) ? targetRect : null,
       centered,
       cardPlacement,
+      anchorPlacement,
       safeInsets: insets,
     });
-  }, [cardPlacement, centered, insets, measuredSize, screenHeight, screenWidth, targetRect]);
+  }, [
+    anchorPlacement,
+    cardPlacement,
+    centered,
+    insets,
+    measuredSize,
+    screenHeight,
+    screenWidth,
+    targetRect,
+  ]);
 
   const isPositioned = Boolean(layout);
+
+  const bodyProps = {
+    title,
+    description,
+    descriptionParts,
+    descriptionEmphasis,
+    descriptionSuffix,
+    warningText,
+    growthStages,
+    imageSource,
+    comparisonImages,
+    primaryLabel,
+    showPrimary,
+    onSkip,
+    onPrimary,
+  };
 
   return (
     <>
@@ -68,20 +116,11 @@ export default function TutorialCard({
           }
         }}
       >
-        <CardBody
-          title={title}
-          description={description}
-          imageSource={imageSource}
-          comparisonImages={comparisonImages}
-          primaryLabel={primaryLabel}
-          showPrimary={showPrimary}
-          onSkip={onSkip}
-          onPrimary={onPrimary}
-        />
+        <CardBody {...bodyProps} />
       </View>
 
       {isPositioned ? (
-        <View
+        <Animated.View
           pointerEvents="box-none"
           style={[
             styles.positionedWrap,
@@ -89,21 +128,13 @@ export default function TutorialCard({
               left: layout.left,
               top: layout.top,
               width: layout.width,
+              opacity: fadeOpacity,
             },
           ]}
         >
           <CardArrow placement={layout.arrow} />
-          <CardBody
-            title={title}
-            description={description}
-            imageSource={imageSource}
-            comparisonImages={comparisonImages}
-            primaryLabel={primaryLabel}
-            showPrimary={showPrimary}
-            onSkip={onSkip}
-            onPrimary={onPrimary}
-          />
-        </View>
+          <CardBody {...bodyProps} />
+        </Animated.View>
       ) : null}
     </>
   );
@@ -112,6 +143,11 @@ export default function TutorialCard({
 function CardBody({
   title,
   description,
+  descriptionParts,
+  descriptionEmphasis,
+  descriptionSuffix,
+  warningText,
+  growthStages,
   imageSource,
   comparisonImages,
   primaryLabel,
@@ -119,40 +155,63 @@ function CardBody({
   onSkip,
   onPrimary,
 }) {
+  const hasRichCopy =
+    descriptionParts?.length || descriptionEmphasis || description;
+
   return (
-    <View style={styles.card}>
+    <View style={[tutorialCardStyles.card, styles.card]}>
+      <Text style={tutorialCardStyles.title}>{title}</Text>
+
+      {hasRichCopy ? (
+        <TutorialRichDescription
+          parts={descriptionParts}
+          description={description}
+          emphasis={descriptionEmphasis}
+          suffix={descriptionSuffix}
+        />
+      ) : null}
+
+      {warningText ? <TutorialWarningBanner text={warningText} /> : null}
+
+      {growthStages?.length ? (
+        <TutorialGrowthStages stages={growthStages} />
+      ) : null}
+
       {comparisonImages ? (
         <TutorialComparisonImages
           leftSource={comparisonImages.leftSource}
           rightSource={comparisonImages.rightSource}
           leftLabel={comparisonImages.leftLabel}
           rightLabel={comparisonImages.rightLabel}
+          variant={comparisonImages.variant}
         />
       ) : null}
+
       {imageSource ? (
         <Image source={imageSource} style={styles.image} resizeMode="contain" />
       ) : null}
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.description}>{description}</Text>
-      <View style={styles.actions}>
+
+      <View style={tutorialCardStyles.actionsRow}>
         <Pressable
-          style={styles.secondaryBtn}
+          style={tutorialCardStyles.skipLink}
           onPress={onSkip}
           accessibilityRole="button"
           accessibilityLabel="Skip tutorial"
         >
-          <Text style={styles.secondaryText}>Skip</Text>
+          <Text style={tutorialCardStyles.skipLinkText}>Skip</Text>
         </Pressable>
         {showPrimary ? (
           <Pressable
-            style={styles.primaryBtn}
+            style={tutorialCardStyles.primaryBtn}
             onPress={onPrimary}
             accessibilityRole="button"
             accessibilityLabel={primaryLabel}
           >
-            <Text style={styles.primaryText}>{primaryLabel}</Text>
+            <Text style={tutorialCardStyles.primaryText}>{primaryLabel}</Text>
           </Pressable>
-        ) : null}
+        ) : (
+          <View style={styles.primaryPlaceholder} />
+        )}
       </View>
     </View>
   );
@@ -171,63 +230,16 @@ const styles = StyleSheet.create({
     position: "absolute",
   },
   card: {
-    backgroundColor: theme.surface,
-    borderRadius: theme.radius,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: theme.outline,
+    maxWidth: 360,
+    width: "100%",
   },
   image: {
     width: "100%",
     height: 120,
     marginBottom: 12,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: theme.text,
-    marginBottom: 8,
-  },
-  description: {
-    fontSize: 15,
-    color: theme.muted2,
-    lineHeight: 21,
-    marginBottom: 16,
-  },
-  actions: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  primaryBtn: {
-    flex: 1,
-    backgroundColor: theme.accent,
-    borderRadius: theme.radiusSm,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  primaryText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 15,
-  },
-  secondaryBtn: {
-    flex: 1,
-    backgroundColor: theme.bg,
-    borderRadius: theme.radiusSm,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: theme.outline,
-  },
-  secondaryText: {
-    color: theme.text,
-    fontWeight: "800",
-    fontSize: 15,
+  primaryPlaceholder: {
+    minWidth: 108,
   },
   arrow: {
     position: "absolute",

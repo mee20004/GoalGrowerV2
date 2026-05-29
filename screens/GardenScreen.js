@@ -2586,11 +2586,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                 <View style={styles.pageDrawerUnderlayTopBandPrimary} />
                 <View style={styles.pageDrawerUnderlayTopBandSecondary} />
               </View>
-              <HighlightTarget
-                targetKey={TUTORIAL_TARGET_KEYS.PLANT_HEALTH}
-                collapsable={false}
-              >
-                <View style={styles.gardenMain} onLayout={onGardenMainLayout}>
+              <View style={styles.gardenMain} onLayout={onGardenMainLayout}>
                 {["topShelf", "middleShelf", "bottomShelf"].map((shelfName) =>
                   renderShelf(
                     page.id,
@@ -2600,8 +2596,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                     shelfName === 'bottomShelf' ? onBottomShelfLayout : undefined
                   )
                 )}
-                </View>
-              </HighlightTarget>
+              </View>
             </ImageBackground>
           </ImageBackground>
           <GardenAmbientParticles />
@@ -2949,18 +2944,31 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       {!isReadOnly && drawerShouldShow && (
         <>
           {/* Water drop button (left) */}
-          <Animated.View
-            {...waterPanResponder.panHandlers}
+          <HighlightTarget
+            targetKey={TUTORIAL_TARGET_KEYS.WATER_DROP}
+            collapsable={false}
             style={[
               styles.waterDropHandle,
               styles.waterDropHandleWater,
-              { transform: waterPan.getTranslateTransform(), left: 32, right: undefined, bottom: insets.bottom + 85 },
+              {
+                left: 32,
+                right: undefined,
+                bottom: insets.bottom + 85,
+              },
             ]}
           >
-            <Animated.View style={{ opacity: waterDropOpacity, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="water" size={22} color="#fff" />
+            <Animated.View
+              {...waterPanResponder.panHandlers}
+              style={[
+                styles.waterDropHandleInner,
+                { transform: waterPan.getTranslateTransform() },
+              ]}
+            >
+              <Animated.View style={{ opacity: waterDropOpacity, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="water" size={22} color="#fff" />
+              </Animated.View>
             </Animated.View>
-          </Animated.View>
+          </HighlightTarget>
 
           {/* Plus button (right) */}
           <TouchableOpacity
@@ -3973,6 +3981,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 1,
     shadowRadius: 0,
+  },
+  waterDropHandleInner: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   waterDropHandleAddGoal: {
     backgroundColor: 'rgb(82, 153, 61)',

@@ -42,7 +42,6 @@ import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import * as Haptics from "expo-haptics";
 import Page from "../components/Page";
-import HighlightTarget from "../components/tutorial/HighlightTarget";
 import useRemeasureTutorialOnFocus from "../components/tutorial/useRemeasureTutorialOnFocus";
 import { useTutorial } from "../contexts/TutorialContext";
 import { TUTORIAL_TARGET_KEYS } from "../tutorial/constants";
@@ -503,7 +502,7 @@ function StepProgressBar({ total = 1, index = 0 }) {
 
 export default function AddGoalScreen({ navigation }) {
   useRemeasureTutorialOnFocus();
-  const { isTutorialActive, remeasureTargets } = useTutorial();
+  const { isTutorialActive, remeasureTargets, notifyUserAction } = useTutorial();
 
   // Load the Cera Round Pro DEMO font only for this screen
   const [fontsLoaded] = useFonts({
@@ -1276,7 +1275,15 @@ export default function AddGoalScreen({ navigation }) {
         );
       }
 
-      navigation.navigate("Goals", { screen: "Goal", params: { goalId: docRef.id, source: "goals" } });
+      const didAdvanceTutorial = notifyUserAction(
+        TUTORIAL_TARGET_KEYS.GOAL_CREATION
+      );
+      if (!didAdvanceTutorial) {
+        navigation.navigate("Goals", {
+          screen: "Goal",
+          params: { goalId: docRef.id, source: "goals" },
+        });
+      }
     } catch (error) {
       Alert.alert("Error", "Could not save your goal.");
     } finally {
@@ -1300,31 +1307,25 @@ export default function AddGoalScreen({ navigation }) {
             </View>
           </View>
 
-          <HighlightTarget
-            targetKey={TUTORIAL_TARGET_KEYS.GOAL_CREATION}
+          <ScrollView
             style={styles.contentArea}
-            collapsable={false}
+            contentContainerStyle={styles.formScrollContent}
+            keyboardShouldPersistTaps="handled"
+            onScroll={() => Keyboard.dismiss()}
+            onLayout={(event) => setScrollViewHeight(event.nativeEvent.layout.height)}
+            onContentSizeChange={(_, height) => setContentHeight(height)}
+            scrollEnabled={shouldEnableScroll}
+            bounces={shouldEnableScroll}
+            alwaysBounceVertical={shouldEnableScroll}
           >
-            <ScrollView
-              style={styles.contentArea}
-              contentContainerStyle={styles.formScrollContent}
-              keyboardShouldPersistTaps="handled"
-              onScroll={() => Keyboard.dismiss()}
-              onLayout={(event) => setScrollViewHeight(event.nativeEvent.layout.height)}
-              onContentSizeChange={(_, height) => setContentHeight(height)}
-              scrollEnabled={shouldEnableScroll}
-              bounces={shouldEnableScroll}
-              alwaysBounceVertical={shouldEnableScroll}
-            >
-              {renderStepContent()}
+            {renderStepContent()}
 
-              {!!formError && (
-                <View style={styles.errorInline}>
-                  <Text style={styles.errorInlineText}>{formError}</Text>
-                </View>
-              )}
-            </ScrollView>
-          </HighlightTarget>
+            {!!formError && (
+              <View style={styles.errorInline}>
+                <Text style={styles.errorInlineText}>{formError}</Text>
+              </View>
+            )}
+          </ScrollView>
         </KeyboardAvoidingView>
 
         <View style={styles.stepFooterRow}>
