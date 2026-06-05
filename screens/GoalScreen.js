@@ -27,6 +27,8 @@ import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import Page from "../components/Page";
 import EditButtonRestriction from "./EditButtonRestriction";
 import { theme } from "../theme";
+import { cpShadow } from "../utils/shadows";
+import SwipeCalendar from '../components/SwipeCalendar';
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
 import { WALLPAPER_OPTIONS } from "../constants/WallpaperAssets";
@@ -54,6 +56,7 @@ import {
   dateFromFirestoreValue,
 } from "../utils/goalState";
 import { getBadgeImageForTrophyKey } from "./badgeImages";
+import { formatISOToDisplay, getWeekdayLabelsSync, getWeekStartSync, getShowLast6DaysSync } from '../utils/dateFormat';
 
 // Consistent frozen day blue color for streak and health bar
 const FROZEN_DAY_BLUE = '#a6e6ff';
@@ -362,7 +365,7 @@ const DAYS = [
   { label: "Fri", day: 5 },
   { label: "Sat", day: 6 },
 ];
-const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+const WEEKDAY_LABELS = getWeekdayLabelsSync();
 
 const CATEGORIES = ["Body", "Mind", "Spirit", "Work", "Custom"];
 const STORAGE_PAGE_ID = "storage";
@@ -444,7 +447,7 @@ const monthLabel = (date) =>
 const buildMonthGrid = (monthDate) => {
   const year = monthDate.getFullYear();
   const month = monthDate.getMonth();
-  const firstDayWeekIndex = new Date(year, month, 1).getDay();
+  const firstDayWeekIndex = (new Date(year, month, 1).getDay() - getWeekStartSync() + 7) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
   const cells = [];
@@ -472,10 +475,10 @@ function formatScheduleLabel(schedule) {
 function formatCompletionLabel(condition) {
   const type = condition?.type || "none";
   if (type === "none") return "No end";
-  if (type === "date") return condition?.endDate ? `Ends on ${condition.endDate}` : "End date";
+  if (type === "date") return condition?.endDate ? `Ends on ${formatISOToDisplay(condition.endDate)}` : "End date";
   if (type === "amount") return condition?.targetAmount ? `Ends at ${condition.targetAmount} ${condition?.unit || "times"}` : "End amount";
   if (type === "both") {
-    const endDate = condition?.endDate || "an end date";
+    const endDate = condition?.endDate ? formatISOToDisplay(condition.endDate) : "an end date";
     const target = condition?.targetAmount ? `${condition.targetAmount} ${condition?.unit || "times"}` : "a target amount";
     return `${endDate} and ${target}`;
   }
@@ -588,94 +591,6 @@ const IconItem = memo(({ iconName, isActive, onSelect }) => (
     <GoalIcon name={iconName} size={45} color={isActive ? "#FFFFFF" : "#111111"} />
   </Pressable>
 ));
-
-function SwipeCalendar({ month, setMonth, selectedDate, onSelectDate }) {
-  const [calendarWidth, setCalendarWidth] = useState(0);
-  const calendarPagerRef = useRef(null);
-
-  const calendarCells = useMemo(() => buildMonthGrid(month), [month]);
-  const prevMonth = useMemo(() => new Date(month.getFullYear(), month.getMonth() - 1, 1), [month]);
-  const nextMonth = useMemo(() => new Date(month.getFullYear(), month.getMonth() + 1, 1), [month]);
-  const prevMonthCells = useMemo(() => buildMonthGrid(prevMonth), [prevMonth]);
-  const nextMonthCells = useMemo(() => buildMonthGrid(nextMonth), [nextMonth]);
-
-  useEffect(() => {
-    if (!calendarWidth || !calendarPagerRef.current) return;
-    calendarPagerRef.current.scrollTo({ x: calendarWidth, animated: false });
-  }, [calendarWidth, month]);
-
-  const handleCalendarScrollEnd = (event) => {
-    if (!calendarWidth) return;
-    const offsetX = event.nativeEvent.contentOffset.x;
-    const pageIndex = Math.round(offsetX / calendarWidth);
-    if (pageIndex === 0) {
-      setMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
-    } else if (pageIndex === 2) {
-      setMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
-    }
-  };
-
-  const todayStart = toStartOfDay(new Date());
-
-  return (
-    <View style={styles.calendarCard}>
-      <Text style={styles.helperText}>Swipe the calendar left/right to move by month.</Text>
-      <ScrollView
-        ref={calendarPagerRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        bounces={false}
-        onLayout={(e) => setCalendarWidth(e.nativeEvent.layout.width)}
-        onMomentumScrollEnd={handleCalendarScrollEnd}
-        scrollEventThrottle={16}
-      >
-        {[{ month: prevMonth, cells: prevMonthCells }, { month, cells: calendarCells }, { month: nextMonth, cells: nextMonthCells }].map((entry, pageIdx) => (
-          <View key={`${entry.month.getFullYear()}-${entry.month.getMonth()}-${pageIdx}`} style={[styles.calendarPage, { width: calendarWidth || undefined }]}> 
-            <View style={styles.calendarHeader}>
-              <Text style={styles.calendarHeaderText}>{monthLabel(entry.month)}</Text>
-            </View>
-
-            <View style={styles.calendarWeekHeader}>
-              {WEEKDAY_LABELS.map((label, idx) => (
-                <Text key={`${label}-${idx}`} style={styles.calendarWeekHeaderText}>{label}</Text>
-              ))}
-            </View>
-
-            <View style={styles.calendarGridFull}>
-              {entry.cells.map((day, idx) => {
-                const dayDate = day ? new Date(entry.month.getFullYear(), entry.month.getMonth(), day) : null;
-                const isToday = !!dayDate && toStartOfDay(dayDate).getTime() === todayStart.getTime();
-                const isPast = !!dayDate && toStartOfDay(dayDate).getTime() < todayStart.getTime();
-                const iso = day ? toISODate(new Date(entry.month.getFullYear(), entry.month.getMonth(), day)) : "";
-                const isSelected = !!day && selectedDate === iso;
-
-                return (
-                  <Pressable
-                    key={`${pageIdx}-${idx}-${day || "blank"}`}
-                    onPress={() => day && !isPast && onSelectDate(iso)}
-                    disabled={!day || isPast}
-                    style={[
-                      styles.calendarCell,
-                      isPast && styles.calendarCellPast,
-                      isToday && styles.calendarCellToday,
-                      isSelected && styles.calendarCellSelected,
-                      !day && styles.calendarCellEmpty,
-                    ]}
-                  >
-                    <Text style={[styles.calendarCellText, isPast && styles.calendarCellTextPast, isSelected && styles.calendarCellTextSelected]}>
-                      {day || ""}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-    </View>
-  );
-}
 
 export default function GoalScreen({ route, navigation }) {
   // --- ICON PICKER STATE (ported from AddGoalScreen) ---
@@ -1911,11 +1826,23 @@ export default function GoalScreen({ route, navigation }) {
   const todayKey = toKey(new Date());
   const anchor = fromKey(todayKey);
   anchor.setHours(0, 0, 0, 0);
+  const showLast6Days = getShowLast6DaysSync();
+  const weekStart = getWeekStartSync();
+  const rangeStartDate = new Date(anchor);
+  if (showLast6Days) {
+    rangeStartDate.setDate(anchor.getDate() - 6);
+  } else {
+    const weekOffset = (anchor.getDay() - weekStart + 7) % 7;
+    rangeStartDate.setDate(anchor.getDate() - weekOffset);
+  }
+  const rangeEndDate = new Date(rangeStartDate);
+  rangeEndDate.setDate(rangeStartDate.getDate() + 6);
+  const weekRangeLabel = `${rangeStartDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${rangeEndDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
   const recentHistory = [];
 
-  for (let offset = 6; offset >= 0; offset -= 1) {
-    const date = new Date(anchor);
-    date.setDate(anchor.getDate() - offset);
+  for (let offset = 0; offset < 7; offset += 1) {
+    const date = new Date(rangeStartDate);
+    date.setDate(rangeStartDate.getDate() + offset);
     const dateKey = toKey(date);
     const scheduled = isGoalScheduledOnDate(goalForDerivedState, date);
     // For group-level history, use group mode for shared multi-user quantity
@@ -2292,7 +2219,10 @@ export default function GoalScreen({ route, navigation }) {
           <Text style={styles.sectionTitle}>Weekly streak</Text>
           <View style={styles.historyCardDuolingo}>
             <View style={styles.historyTopRowSimple}>
-              <Text style={styles.historyHeadline}>This week</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.historyHeadline}>{showLast6Days ? 'Last 7 days' : 'This week'}</Text>
+                <Text style={styles.historySubhead}>{weekRangeLabel}</Text>
+              </View>
               <View style={styles.historyStreakBadge}>
                 <Image source={FIRE_STREAK_ICON} style={styles.historyStreakIcon} resizeMode="contain" />
                 <Text style={styles.historyStreakValue}>
@@ -2905,11 +2835,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 0,
     borderColor: '#d9e6f4',
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 3,
+    ...cpShadow({ color: '#4c6782', offset: { width: 0, height: 6 }, opacity: 0.16, radius: 0, elevation: 3 }),
     marginTop: 8,
     marginBottom: 12,
   },
@@ -2928,11 +2854,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: '#e7edf5',
-    shadowColor: '#c3cfdb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 1,
+    ...cpShadow({ color: '#c3cfdb', offset: { width: 0, height: 4 }, opacity: 1, radius: 0, elevation: 1 }),
   },
   headerBtnDanger: {
     backgroundColor: '#fde6e3',
@@ -2951,11 +2873,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: "center",
     marginBottom: 18,
-    shadowColor: '#cdcdcd',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...cpShadow({ color: '#cdcdcd', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   goalPlantPreviewWrap: {
     width: 56,
@@ -3265,6 +3183,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   historyHeadline: { fontSize: 15, fontWeight: '900', color: theme.text, fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1 },
+  historySubhead: { fontSize: 12, color: '#7d8a97', marginTop: 2, fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1 },
   historyStreakBadge: {
     backgroundColor: '#fcae49',
     paddingHorizontal: 14,

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useCallback } from "react";
 import { Asset } from 'expo-asset';
 import { StackActions } from '@react-navigation/native';
-import { Text, View, Image } from "react-native";
+import { Text, View, Image, Alert } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { AppState } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
@@ -26,6 +26,7 @@ import { initializeNotifications } from "./utils/notifications";
 import GoalsScreen from "./screens/GoalsScreen";
 import AddGoalScreen from "./screens/AddGoalScreen";
 import GoalScreen from "./screens/GoalScreen";
+import { hasAddGoalDirty } from './utils/addGoalGuard';
 import ProfileScreen from "./screens/ProfileScreen";
 import AddFriendsScreen from "./screens/AddFriendsScreen";
 import UserProfileScreen from './screens/UserProfileScreen';
@@ -146,6 +147,36 @@ function GardenStack() {
 function MainTabs() {
   const insets = useSafeAreaInsets();
 
+  const getActiveNestedRoute = (route) => {
+    if (!route?.state || !route.state.routes?.length) return route;
+    return getActiveNestedRoute(route.state.routes[route.state.index]);
+  };
+
+  const isAddGoalScreenActive = (navigation) => {
+    const state = navigation.getState();
+    const activeTab = state?.routes?.[state.index];
+    const activeRoute = getActiveNestedRoute(activeTab);
+    return activeRoute?.name === 'AddGoal';
+  };
+
+  const handleTabPress = (e, navigation, targetActivity) => {
+    if (hasAddGoalDirty() && isAddGoalScreenActive(navigation)) {
+      e.preventDefault();
+      Alert.alert(
+        'Discard changes?',
+        'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
+        [
+          { text: 'Stay', style: 'cancel' },
+          { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate(...targetActivity) },
+        ]
+      );
+      return;
+    }
+
+    e.preventDefault();
+    navigation.navigate(...targetActivity);
+  };
+
   return (
     <Tab.Navigator
       tabBar={props => <CenteredTabBar {...props} />}
@@ -180,14 +211,66 @@ function MainTabs() {
               name="Shop"
               component={ShopScreen}
               options={{ tabBarLabel: "Shop" }}
+              listeners={({ navigation }) => ({
+                tabPress: e => {
+                  if (hasAddGoalDirty()) {
+                    e.preventDefault();
+                    Alert.alert(
+                      'Discard changes?',
+                      'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
+                      [
+                        { text: 'Stay', style: 'cancel' },
+                        { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('Shop') },
+                      ]
+                    );
+                    return;
+                  }
+                  e.preventDefault();
+                  navigation.navigate('Shop');
+                },
+              })}
             />
-      <Tab.Screen name="Rank" component={RankStack} options={{ tabBarLabel: "Rank" }} />
+      <Tab.Screen
+        name="Rank"
+        component={RankStack}
+        options={{ tabBarLabel: "Rank" }}
+        listeners={({ navigation }) => ({
+          tabPress: e => {
+            if (hasAddGoalDirty()) {
+              e.preventDefault();
+              Alert.alert(
+                'Discard changes?',
+                'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
+                [
+                  { text: 'Stay', style: 'cancel' },
+                  { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('Rank') },
+                ]
+              );
+              return;
+            }
+            e.preventDefault();
+            navigation.navigate('Rank');
+          },
+        })}
+      />
       <Tab.Screen
         name="Goals"
         component={GoalsStack}
         options={{ tabBarLabel: "Goals" }}
         listeners={({ navigation }) => ({
           tabPress: e => {
+            if (hasAddGoalDirty()) {
+              e.preventDefault();
+              Alert.alert(
+                'Discard changes?',
+                'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
+                [
+                  { text: 'Stay', style: 'cancel' },
+                  { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('Goals', { screen: 'GoalsHome', params: {} }) },
+                ]
+              );
+              return;
+            }
             e.preventDefault();
             navigation.navigate('Goals', {
               screen: 'GoalsHome',
@@ -209,17 +292,45 @@ function MainTabs() {
             />
           ),
         }}
+        listeners={({ navigation }) => ({
+          tabPress: e => {
+            if (hasAddGoalDirty()) {
+              e.preventDefault();
+              Alert.alert(
+                'Discard changes?',
+                'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
+                [
+                  { text: 'Stay', style: 'cancel' },
+                  { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('Journey') },
+                ]
+              );
+              return;
+            }
+            e.preventDefault();
+            navigation.navigate('Journey');
+          },
+        })}
       />
-      {/* <-- 3. WIRE UP THE GARDEN TAB */}
+      {/* <-- 3. WIRE UP THE GARDEN TAB --> */}
       <Tab.Screen
         name="Garden"
         component={GardenStack}
         options={{ tabBarLabel: "Garden", unmountOnBlur: false }}
         listeners={({ navigation }) => ({
           tabPress: e => {
-            // Prevent default behavior
+            if (hasAddGoalDirty()) {
+              e.preventDefault();
+              Alert.alert(
+                'Discard changes?',
+                'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
+                [
+                  { text: 'Stay', style: 'cancel' },
+                  { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('Garden', { screen: 'GardenHome', params: {} }) },
+                ]
+              );
+              return;
+            }
             e.preventDefault();
-            // Always navigate to the root of the Garden stack
             navigation.navigate('Garden', {
               screen: 'GardenHome',
               params: {},
@@ -227,7 +338,29 @@ function MainTabs() {
           },
         })}
       />
-      <Tab.Screen name="ProfileTab" component={ProfileStack} options={{ tabBarLabel: "Profile" }} />
+      <Tab.Screen
+        name="ProfileTab"
+        component={ProfileStack}
+        options={{ tabBarLabel: "Profile" }}
+        listeners={({ navigation }) => ({
+          tabPress: e => {
+            if (hasAddGoalDirty()) {
+              e.preventDefault();
+              Alert.alert(
+                'Discard changes?',
+                'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
+                [
+                  { text: 'Stay', style: 'cancel' },
+                  { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('ProfileTab') },
+                ]
+              );
+              return;
+            }
+            e.preventDefault();
+            navigation.navigate('ProfileTab');
+          },
+        })}
+      />
     </Tab.Navigator>
   );
 }

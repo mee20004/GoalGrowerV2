@@ -10,6 +10,7 @@ import { theme } from "../theme";
 import Page from "../components/Page";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import FireStreakIcon from "../assets/Icons/FireStreakIcon";
+import { cpShadow } from "../utils/shadows";
 
 const FILTERS = [
   { key: "global", label: "Global" },
@@ -237,11 +238,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 0,
     borderColor: '#d9e6f4',
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 3,
+    ...cpShadow({ color: '#4c6782', offset: { width: 0, height: 6 }, opacity: 0.16, radius: 0, elevation: 3 }),
     marginTop: 8,
     marginBottom: 12,
   },
@@ -311,16 +308,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 0,
     borderColor: "#cdcdcd",
-    shadowColor: '#cdcdcd',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...cpShadow({ color: '#cdcdcd', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   currentUserCard: {
     borderColor: '#28b900',
     backgroundColor: '#ffffff',
-    shadowColor: '#28b900',
+    ...cpShadow({ color: '#28b900', offset: { width: 0, height: 6 }, opacity: 0.9, radius: 0, elevation: 3 }),
   },
 
   rankContainer: { width: 40, alignItems: "center", justifyContent: "center", marginRight: 8 },

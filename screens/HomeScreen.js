@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Page from "../components/Page";
+import { cpShadow } from "../utils/shadows";
 import { useGoals } from "../components/GoalsStore";
 
 const BG = "#F5F0E8";
@@ -101,11 +102,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderRadius: 24,
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 3,
+    ...cpShadow({ color: '#4c6782', offset: { width: 0, height: 6 }, opacity: 0.16, radius: 0, elevation: 3 }),
     marginTop: 8,
     marginBottom: 12,
     paddingLeft: 16,

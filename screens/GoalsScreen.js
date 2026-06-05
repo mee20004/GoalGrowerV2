@@ -11,6 +11,7 @@ import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
 import { Ionicons } from "@expo/vector-icons";
 import Page from "../components/Page";
 import { theme } from "../theme";
+import { cpShadow } from "../utils/shadows";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
 import { WALLPAPER_OPTIONS } from "../constants/WallpaperAssets";
@@ -843,11 +844,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 0,
     borderColor: '#d9e6f4',
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 3,
+    ...cpShadow({ color: '#4c6782', offset: { width: 0, height: 6 }, opacity: 0.16, radius: 0, elevation: 3 }),
     marginTop: 8,
     marginBottom: 12,
   },
@@ -909,20 +906,13 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     //borderWidth: 3,
     borderColor: '#cdcdcd',
-    shadowColor: '#cdcdcd',
-    //borderColor: '#28b900',
-    //shadowColor: '#28b900',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...cpShadow({ color: '#cdcdcd', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   sharedGoalCard: {
     backgroundColor: '#ffffff', // subtle accent tint for shared goals
     //borderColor: '#a7efd4',
     //shadowColor: '#a7efd0',
-    shadowColor: '#36ab44',
-    elevation: 2,
+    ...cpShadow({ color: '#36ab44', elevation: 2 }),
   },
   goalMainPressable: {
     flex: 1,

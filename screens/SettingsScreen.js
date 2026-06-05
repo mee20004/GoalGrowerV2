@@ -6,6 +6,7 @@ import { updateEmail, updatePassword, signOut } from "firebase/auth";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { theme } from "../theme";
+import { cpShadow } from "../utils/shadows";
 import { 
   sendGoalReminderNotification,
   sendTestNotification,
@@ -17,9 +18,12 @@ import {
   getNotificationMode,
   setNotificationMode,
 } from "../utils/notifications";
+import { getDateFormatSync, setDateFormat, FORMATS, getWeekStartSync, setWeekStart, WEEK_START_OPTIONS, getShowLast6DaysSync, setShowLast6Days } from '../utils/dateFormat';
 
 export default function SettingsScreen({ navigation }) {
   const [username, setUsername] = useState("");
+  const [weekStart, setWeekStartState] = useState(getWeekStartSync());
+  const [showLast6Days, setShowLast6DaysState] = useState(getShowLast6DaysSync());
   const [email, setEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [privateAccount, setPrivateAccount] = useState(false);
@@ -33,6 +37,7 @@ export default function SettingsScreen({ navigation }) {
   const [notificationMinute, setNotificationMinute] = useState(0);
   const [sendingTest, setSendingTest] = useState(false);
   const [showTimeModal, setShowTimeModal] = useState(false);
+  const [dateFormat, setDateFormatState] = useState(getDateFormatSync());
 
   // Fetch current user info and notification settings when screen loads
   useEffect(() => {
@@ -107,6 +112,27 @@ export default function SettingsScreen({ navigation }) {
     const success = await updateGlobalNotificationTime(hour, minute);
     if (!success) {
       Alert.alert("Error", "Failed to update notification time");
+    }
+  };
+
+  const handleDateFormatChange = async (next) => {
+    setDateFormatState(next);
+    const ok = await setDateFormat(next);
+    if (!ok) Alert.alert('Error', 'Failed to save date format');
+  };
+
+  const handleWeekStartChange = async (next) => {
+    setWeekStartState(next);
+    const ok = await setWeekStart(next);
+    if (!ok) Alert.alert('Error', 'Failed to save week start preference');
+  };
+
+  const handleShowLast6DaysToggle = async (value) => {
+    setShowLast6DaysState(value);
+    const ok = await setShowLast6Days(value);
+    if (!ok) {
+      setShowLast6DaysState(!value);
+      Alert.alert('Error', 'Failed to save weekly streak history preference');
     }
   };
 
@@ -415,6 +441,56 @@ export default function SettingsScreen({ navigation }) {
           </View>
         </View>
 
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Preferences</Text>
+          <View style={styles.card}>
+            <Text style={styles.label}>Date format</Text>
+            <View style={styles.optionButtonRow}>
+              {FORMATS.map((fmt) => (
+                <Pressable
+                  key={fmt}
+                  onPress={() => handleDateFormatChange(fmt)}
+                  style={[
+                    styles.optionButton,
+                    dateFormat === fmt ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: '#e2e8f0' }
+                  ]}
+                >
+                  <Text style={{ color: dateFormat === fmt ? '#fff' : theme.text, fontWeight: '700' }}>{fmt}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={[styles.label, { marginTop: 20 }]}>Week starts on</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+              {WEEK_START_OPTIONS.map((option) => (
+                <Pressable
+                  key={option.value}
+                  onPress={() => handleWeekStartChange(option.value)}
+                  style={[
+                    { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1 },
+                    weekStart === option.value ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: '#e2e8f0' }
+                  ]}
+                >
+                  <Text style={{ color: weekStart === option.value ? '#fff' : theme.text, fontWeight: '700' }}>{option.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 }}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={styles.label}>Show last 6 days before today</Text>
+                <Text style={{ color: '#7d8a97', marginTop: 4, fontSize: 12 }}>Use a rolling 7-day history window in goal details.</Text>
+              </View>
+              <Switch
+                value={showLast6Days}
+                onValueChange={handleShowLast6DaysToggle}
+                trackColor={{ false: '#d1d5db', true: theme.accent }}
+                thumbColor={showLast6Days ? '#ffffff' : '#f8fafc'}
+              />
+            </View>
+          </View>
+        </View>
+
         <View style={styles.actionButtonWrap}>
           <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
           <Pressable
@@ -558,11 +634,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 0,
     borderColor: '#d9e6f4',
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 3,
+    ...cpShadow({ color: '#4c6782', offset: { width: 0, height: 6 }, opacity: 0.16, radius: 0, elevation: 3 }),
     marginTop: 8,
     marginBottom: 12,
   },
@@ -581,11 +653,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: '#e7edf5',
-    shadowColor: '#c3cfdb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 1,
+    ...cpShadow({ color: '#c3cfdb', offset: { width: 0, height: 4 }, opacity: 1, radius: 0, elevation: 1 }),
   },
   headerBtnPlaceholder: {
     width: 42,
@@ -607,14 +675,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderRadius: 24,
     padding: 16,
-    shadowColor: '#cdcdcd',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...cpShadow({ color: '#cdcdcd', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   label: { fontSize: 13, fontWeight: "900", color: theme.text2, marginBottom: 8, fontFamily: 'CeraRoundProDEMO-Black' },
   labelNoMargin: { fontSize: 13, fontWeight: "900", color: theme.text2, fontFamily: 'CeraRoundProDEMO-Black' },
+  optionButtonRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  optionButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexShrink: 1,
+    minWidth: 90,
+    alignItems: 'center',
+  },
   inputTopGap: { marginTop: 14 },
   input: {
     backgroundColor: '#f7fafc',

@@ -701,6 +701,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
   latestProps.current = { plant, onDragStart, onDragEnd, onDelete, onPlantTap, isEditing, instantDrag };
 
   const longPressTriggeredRef = useRef(false);
+  const responderClaimedRef = useRef(false);
   const longPressTimeoutRef = useRef(null);
   const dragStartedRef = useRef(false);
   const dragFinalizedRef = useRef(false);
@@ -764,8 +765,11 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => {
+        // Do NOT claim the responder immediately on touch start unless
+        // `instantDrag` is enabled. Let the parent navigator handle
+        // horizontal swipe gestures that begin on top of a plant.
         if (disabled || globalDragRef.current) return false;
-        return !latestProps.current.instantDrag;
+        return !!latestProps.current.instantDrag;
       },
       onMoveShouldSetPanResponder: (_, gesture) => {
         if (disabled) return false;
@@ -778,6 +782,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
       },
       onPanResponderGrant: (evt) => {
         evt.persist?.();
+        responderClaimedRef.current = true;
         const { pageX, pageY, locationX, locationY } = evt.nativeEvent;
         lastTouchRef.current = { x: pageX, y: pageY, lx: locationX, ly: locationY };
 
@@ -813,12 +818,17 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
         if (dragStartedRef.current) {
           finalizeDrag(gesture.moveX ?? lastTouchRef.current.x, gesture.moveY ?? lastTouchRef.current.y);
         } else if (!longPressTriggeredRef.current && !latestProps.current.isEditing) {
-          latestProps.current.onPlantTap?.(latestProps.current.plant);
+          // If the gesture moved significantly, treat it as a swipe/drag cancel
+          const moved = Math.abs(gesture.dx || 0) > 10 || Math.abs(gesture.dy || 0) > 10;
+          if (!moved) {
+            latestProps.current.onPlantTap?.(latestProps.current.plant);
+          }
         } else if (isHidden) {
           setIsHidden(false);
         }
         longPressTriggeredRef.current = false;
         dragStartedRef.current = false;
+        responderClaimedRef.current = false;
       },
       onPanResponderTerminate: () => {
         if (longPressTimeoutRef.current) {
@@ -828,6 +838,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
         finalizeDrag(lastTouchRef.current.x, lastTouchRef.current.y);
         longPressTriggeredRef.current = false;
         dragStartedRef.current = false;
+        responderClaimedRef.current = false;
         if (isHidden) setIsHidden(false);
       }
     })
@@ -840,6 +851,21 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
       ref={(node) => onCompletionTargetRef && onCompletionTargetRef(plant.id, node)}
       collapsable={false}
       {...panHandlers}
+      onTouchStart={(e) => {
+        const { pageX, pageY, locationX, locationY } = e.nativeEvent;
+        lastTouchRef.current = { x: pageX, y: pageY, lx: locationX, ly: locationY };
+      }}
+      onTouchEnd={(e) => {
+        // If a responder was claimed (dragging) or a long-press triggered, skip
+        if (responderClaimedRef.current || dragStartedRef.current || longPressTriggeredRef.current) return;
+        if (latestProps.current.isEditing || globalDragRef.current) return;
+        const { pageX, pageY } = e.nativeEvent;
+        const TAP_THRESHOLD = 10; // px
+        const moved = Math.abs(pageX - (lastTouchRef.current.x || 0)) > TAP_THRESHOLD || Math.abs(pageY - (lastTouchRef.current.y || 0)) > TAP_THRESHOLD;
+        if (!moved) {
+          latestProps.current.onPlantTap?.(latestProps.current.plant);
+        }
+      }}
       style={[
         styles.plantContainer,
         isEditing && !isHidden && { transform: [{ rotate: wiggleAnim.interpolate({ inputRange: [-1, 1], outputRange: ['-2deg', '2deg'] }) }] },

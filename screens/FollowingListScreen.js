@@ -4,6 +4,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { collection, getDocs, doc, getDoc, deleteDoc } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { theme } from "../theme";
+import { cpShadow } from "../utils/shadows";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 export default function FollowingListScreen({ route, navigation }) {
@@ -115,11 +116,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 0,
     borderColor: '#d9e6f4',
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 3,
+    ...cpShadow({ color: '#4c6782', offset: { width: 0, height: 6 }, opacity: 0.16, radius: 0, elevation: 3 }),
     marginTop: 8,
     marginBottom: 12,
   },
@@ -138,11 +135,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: '#e7edf5',
-    shadowColor: '#c3cfdb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 1,
+    ...cpShadow({ color: '#c3cfdb', offset: { width: 0, height: 4 }, opacity: 1, radius: 0, elevation: 1 }),
   },
   headerBtnPlaceholder: {
     width: 42,
@@ -159,11 +152,7 @@ const styles = StyleSheet.create({
   userCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 3,
+    ...cpShadow({ color: '#4c6782', offset: { width: 0, height: 6 }, opacity: 0.16, radius: 0, elevation: 3 }),
     marginBottom: 14,
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -198,11 +187,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    shadowColor: '#28b900',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    elevation: 2,
+    ...cpShadow({ color: '#28b900', offset: { width: 0, height: 2 }, opacity: 0.12, radius: 4, elevation: 2 }),
     marginRight: 4,
     minWidth: 56,
     flexDirection: 'row',
@@ -223,11 +208,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    shadowColor: '#4B9CD3',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.10,
-    shadowRadius: 4,
-    elevation: 2,
+    ...cpShadow({ color: '#4B9CD3', offset: { width: 0, height: 2 }, opacity: 0.10, radius: 4, elevation: 2 }),
     marginLeft: 4,
     minWidth: 80,
     justifyContent: 'center',
