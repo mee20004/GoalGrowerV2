@@ -13,7 +13,7 @@ const normalizeQuantityTargetInput = (value) => {
   return String(clampNum(Number(digits), 1, MAX_QUANTITY_TARGET));
 };
 // screens/AddGoalScreen.js
-import React, { useEffect, useMemo, useRef, useState, memo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import { useFonts } from 'expo-font';
 import {
     ActivityIndicator,
@@ -36,6 +36,7 @@ import {
   Animated,
   Easing,
   Image,
+  BackHandler,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
@@ -46,6 +47,11 @@ import { theme } from "../theme";
 import { useGoals, fromKey } from "../components/GoalsStore";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { setAddGoalDirty } from '../utils/addGoalGuard';
+import SwipeCalendar from '../components/SwipeCalendar';
+import { formatISOToDisplay, parseDisplayToISO, getDateFormatSync, formatPartialDisplay, formatPartialFromDigits, getWeekStartSync } from '../utils/dateFormat';
 
 // FIREBASE IMPORTS
 import { collection, addDoc, serverTimestamp, onSnapshot, query, where, doc, setDoc, getDoc } from "firebase/firestore";
@@ -93,6 +99,11 @@ const CUE_SUGGEST = ["After brushing teeth", "After scripture study", "After bre
 const REWARD_SUGGEST = ["Tea", "5-minute break", "Music", "Stretching"];
 
 const DAY_LABELS = ["S", "M", "T", "W", "Th", "F", "Sa"];
+
+const getScheduleDays = () => {
+  const weekStart = getWeekStartSync();
+  return [...DAYS.slice(weekStart), ...DAYS.slice(0, weekStart)];
+};
 
 function Chip({ label, active, onPress, variant = "default" }) {
   const isFilter = variant === "filter";
@@ -498,6 +509,7 @@ function StepProgressBar({ total = 1, index = 0 }) {
 }
 
 export default function AddGoalScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   // Load the Cera Round Pro DEMO font only for this screen
   const [fontsLoaded] = useFonts({
     'CeraRoundProDEMO-Black': require('../assets/fonts/CeraRoundProDEMOBlack.otf'),
@@ -547,18 +559,86 @@ export default function AddGoalScreen({ navigation }) {
   const [whyStr, setWhyStr] = useState("");
   const [completionMode, setCompletionMode] = useState("none");
   const [completionEndDate, setCompletionEndDate] = useState("");
+  const [completionEndDisplay, setCompletionEndDisplay] = useState("");
+  const prevDigitsRef = useRef("");
+  const lastKeyRef = useRef(null);
+  const lastTextInputAtRef = useRef(0);
+  const pendingNavigationRef = useRef(null);
+  const isLeavingAfterSaveRef = useRef(false);
+  const isFocused = useIsFocused();
+
+  const promptDiscard = useCallback(() => {
+  Alert.alert(
+    "Leave add goal?",
+    "Your goal is not saved yet. Do you want to leave and lose your progress?",
+    [
+      {
+        text: "Keep editing",
+        style: "cancel",
+        onPress: () => {
+          pendingNavigationRef.current = null;
+        },
+      },
+      {
+        text: "Leave",
+        style: "destructive",
+        onPress: () => {
+          const leaveAction = pendingNavigationRef.current;
+          pendingNavigationRef.current = null;
+
+          setAddGoalDirty(false);
+          isLeavingAfterSaveRef.current = true;
+
+          if (typeof leaveAction === "function") {
+            leaveAction();
+          } else {
+            navigation.goBack();
+          }
+        },
+      },
+    ]
+  );
+}, [navigation]);
+
+  const handleInsertDigits = (insertedRaw) => {
+    const now = Date.now();
+    lastTextInputAtRef.current = now;
+    const insertedDigits = String(insertedRaw || '').replace(/\D/g, '').slice(0, 8);
+
+    let digitsToUse = prevDigitsRef.current || '';
+    if (!insertedDigits) {
+      // nothing to add
+    } else if (insertedDigits.length === 1) {
+      digitsToUse = (digitsToUse + insertedDigits).slice(0, 8);
+    } else {
+      // multi-char insertion (paste or autofill)
+      // If it contains separators (likely paste), accept all digits from it
+      if (/[^0-9]/.test(insertedRaw)) {
+        digitsToUse = (digitsToUse + insertedDigits).slice(0, 8);
+      } else {
+        // likely autofill: append only the last char so user can continue typing
+        digitsToUse = (digitsToUse + insertedDigits.slice(-1)).slice(0, 8);
+      }
+    }
+    prevDigitsRef.current = digitsToUse;
+    const formatted = formatPartialFromDigits(digitsToUse);
+    setCompletionEndDisplay(formatted);
+    const iso = parseDisplayToISO(formatted);
+    if (isValidISODate(iso)) setCompletionEndDate(iso);
+  };
   const [completionEndAmount, setCompletionEndAmount] = useState("");
   const [completionEndUnit, setCompletionEndUnit] = useState("times");
   const [multiUserWateringEnabled, setMultiUserWateringEnabled] = useState(false);
   const [requiredContributors, setRequiredContributors] = useState("2");
   const [calendarMonth, setCalendarMonth] = useState(toStartOfDay(new Date()));
-  const [calendarWidth, setCalendarWidth] = useState(0);
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
-  const calendarPagerRef = useRef(null);
 
 
   // Reset form state on screen focus
+        isLeavingAfterSaveRef.current = false;
+
+        
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       setStep(0);
@@ -588,6 +668,159 @@ export default function AddGoalScreen({ navigation }) {
     });
     return unsubscribe;
   }, [navigation, selectedDay]);
+
+  // Warn on navigation if the form has unsaved changes
+  const isFormDirty = () => {
+    if (isLeavingAfterSaveRef.current) return false;
+    if (name.trim()) return true;
+    if (isPrivate) return true;
+    if (selectedIcon !== 'target') return true;
+    if (selectedPlantSpecies !== 'fern') return true;
+    if (selectedPotType !== 'default') return true;
+    if (type !== 'completion') return true;
+    if (target && target !== '1') return true;
+    if (unit && unit !== 'times') return true;
+    if (mode !== 'days' && !(mode === 'days' && days.length === 1 && days[0] === selectedDay)) return mode !== 'days';
+    if (whenStr.trim()) return true;
+    if (whereStr.trim()) return true;
+    if (whyStr.trim()) return true;
+    if (completionMode !== 'none') return true;
+    if (completionEndDate.trim()) return true;
+    if (completionEndAmount.trim()) return true;
+    if (completionEndUnit && completionEndUnit !== 'times') return true;
+    if (multiUserWateringEnabled) return true;
+    if (requiredContributors && requiredContributors !== '2') return true;
+    if (selectedGardenId && selectedGardenId !== 'personal') return true;
+    return false;
+  };
+
+  useEffect(() => {
+    if (!isFocused) {
+      setAddGoalDirty(false);
+      return;
+    }
+    setAddGoalDirty(isFormDirty());
+    return () => setAddGoalDirty(false);
+  }, [
+    isFocused,
+    name,
+    isPrivate,
+    selectedIcon,
+    selectedPlantSpecies,
+    selectedPotType,
+    type,
+    target,
+    unit,
+    mode,
+    days,
+    whenStr,
+    whereStr,
+    whyStr,
+    completionMode,
+    completionEndDate,
+    completionEndAmount,
+    completionEndUnit,
+    multiUserWateringEnabled,
+    requiredContributors,
+    selectedGardenId,
+    selectedDay,
+  ]);
+
+  useFocusEffect(
+  useCallback(() => {
+    const blockIfDirty = (leaveAction) => {
+      if (!isFormDirty()) return false;
+
+      pendingNavigationRef.current = leaveAction;
+      promptDiscard();
+      return true;
+    };
+
+    const beforeRemoveSub = navigation.addListener("beforeRemove", (e) => {
+      if (!isFormDirty()) return;
+
+      e.preventDefault();
+      blockIfDirty(() => navigation.dispatch(e.data.action));
+    });
+
+    const parentSubs = [];
+    let parent = navigation.getParent?.();
+
+    while (parent) {
+      const currentParent = parent;
+
+      if (typeof currentParent.addListener === "function") {
+        parentSubs.push(
+          currentParent.addListener("tabPress", (e) => {
+            if (!isFormDirty()) return;
+
+            e.preventDefault();
+
+            const state = currentParent.getState?.();
+            const route = state?.routes?.find((r) => r.key === e.target);
+
+            blockIfDirty(() => {
+              if (route?.name) currentParent.navigate(route.name);
+            });
+          })
+        );
+
+        parentSubs.push(
+          currentParent.addListener("drawerItemPress", (e) => {
+            if (!isFormDirty()) return;
+
+            e.preventDefault();
+
+            const state = currentParent.getState?.();
+            const route = state?.routes?.find((r) => r.key === e.target);
+
+            blockIfDirty(() => {
+              if (route?.name) currentParent.navigate(route.name);
+            });
+          })
+        );
+      }
+
+      parent = currentParent.getParent?.();
+    }
+
+    const androidBackSub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (!isFormDirty()) return false;
+
+      blockIfDirty(() => navigation.goBack());
+      return true;
+    });
+
+    return () => {
+      beforeRemoveSub?.();
+      parentSubs.forEach((sub) => sub?.());
+      androidBackSub?.remove();
+    };
+  }, [
+    navigation,
+    promptDiscard,
+    name,
+    isPrivate,
+    selectedIcon,
+    selectedPlantSpecies,
+    selectedPotType,
+    type,
+    target,
+    unit,
+    mode,
+    days,
+    whenStr,
+    whereStr,
+    whyStr,
+    completionMode,
+    completionEndDate,
+    completionEndAmount,
+    completionEndUnit,
+    multiUserWateringEnabled,
+    requiredContributors,
+    selectedGardenId,
+  ])
+);
 
   // Filtered Icons Logic
   // Ensure FEATURED_ICONS are not repeated if already in pickerIconNames
@@ -790,60 +1023,63 @@ export default function AddGoalScreen({ navigation }) {
 
   const calendarCells = useMemo(() => buildMonthGrid(calendarMonth), [calendarMonth]);
 
-  const prevMonth = useMemo(
-    () => new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1),
-    [calendarMonth]
-  );
-  const nextMonth = useMemo(
-    () => new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1),
-    [calendarMonth]
-  );
-  const prevMonthCells = useMemo(() => buildMonthGrid(prevMonth), [prevMonth]);
-  const nextMonthCells = useMemo(() => buildMonthGrid(nextMonth), [nextMonth]);
-
   useEffect(() => {
     if (isValidISODate(completionEndDate.trim())) {
       const [year, month] = completionEndDate.trim().split("-").map(Number);
       setCalendarMonth(new Date(year, month - 1, 1));
     }
+    // keep displayed input synced to ISO and chosen format
+    setCompletionEndDisplay(formatISOToDisplay(completionEndDate));
   }, [completionEndDate]);
-
-  useEffect(() => {
-    if (!calendarWidth || !calendarPagerRef.current) return;
-    calendarPagerRef.current.scrollTo({ x: calendarWidth, animated: false });
-  }, [calendarWidth, calendarMonth]);
-
-  const selectCalendarDay = (day) => {
-    if (!day) return;
-    const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day);
-    setCompletionEndDate(toISODate(date));
-  };
-
-  const goPrevMonth = () => {
-    setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
-  };
-
-  const goNextMonth = () => {
-    setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
-  };
 
   const changeCompletionMode = (nextMode) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setCompletionMode(nextMode);
   };
 
-  const handleCalendarScrollEnd = (event) => {
-    if (!calendarWidth) return;
-    const offsetX = event.nativeEvent.contentOffset.x;
-    const pageIndex = Math.round(offsetX / calendarWidth);
-    if (pageIndex === 0) {
-      goPrevMonth();
-    } else if (pageIndex === 2) {
-      goNextMonth();
-    }
+  const getScheduleModeFromDays = (dayList) => {
+    const uniqueDays = [...new Set(dayList)].sort((a, b) => a - b);
+    if (uniqueDays.length === 7) return 'everyday';
+    const weekdays = [1, 2, 3, 4, 5];
+    if (uniqueDays.length === 5 && weekdays.every((day, idx) => day === uniqueDays[idx])) return 'weekdays';
+    return 'days';
   };
 
-  const toggleDay = (d) => setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
+  const handleDayPress = (d) => {
+    // Behavior:
+    // - In 'everyday': pressing a day deselects it and switches to custom with all days except that one
+    // - In 'weekdays': pressing a weekend day adds it and switches to custom; pressing a weekday removes it and switches to custom
+    // - In 'days': toggle the day and auto-upgrade to weekdays/everyday when the set matches
+    triggerSelectionHaptic();
+    if (mode === 'everyday') {
+      const all = [0,1,2,3,4,5,6];
+      const newDays = all.filter((x) => x !== d);
+      const nextMode = getScheduleModeFromDays(newDays);
+      setDays(newDays);
+      setMode(nextMode);
+      return;
+    }
+    if (mode === 'weekdays') {
+      const weekdays = [1,2,3,4,5];
+      let newDays;
+      if (d >= 1 && d <= 5) {
+        newDays = weekdays.filter((x) => x !== d);
+      } else {
+        newDays = [...weekdays, d].sort();
+      }
+      const nextMode = getScheduleModeFromDays(newDays);
+      setDays(newDays);
+      setMode(nextMode);
+      return;
+    }
+    // custom
+    setDays((prev) => {
+      const newDays = prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d];
+      const nextMode = getScheduleModeFromDays(newDays);
+      setMode(nextMode);
+      return newDays;
+    });
+  };
 
   const formError = useMemo(() => {
     if (name.trim().length < 3) return "Give it a short name (at least 3 characters).";
@@ -1108,26 +1344,40 @@ export default function AddGoalScreen({ navigation }) {
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Schedule</Text>
           <View style={styles.row}>
-            <Chip label="Every day" variant="filter" active={mode === "everyday"} onPress={() => setMode("everyday")} />
-            <Chip label="Weekdays" variant="filter" active={mode === "weekdays"} onPress={() => setMode("weekdays")} />
+            <Chip
+              label="Every day"
+              variant="filter"
+              active={mode === "everyday"}
+              onPress={() => {
+                setMode("everyday");
+                setDays([0,1,2,3,4,5,6]);
+              }}
+            />
+            <Chip
+              label="Weekdays"
+              variant="filter"
+              active={mode === "weekdays"}
+              onPress={() => {
+                setMode("weekdays");
+                setDays([1,2,3,4,5]);
+              }}
+            />
             <Chip label="Custom" variant="filter" active={mode === "days"} onPress={() => setMode("days")} />
           </View>
-          {mode === "days" && (
-            <View style={styles.daysGrid}>
-              {DAYS.map((d) => (
+          <View style={styles.daysGrid}>
+            {getScheduleDays().map((d) => {
+              const isSelected = mode === 'everyday' ? true : mode === 'weekdays' ? (d.day >= 1 && d.day <= 5) : days.includes(d.day);
+              return (
                 <Pressable
                   key={d.label}
-                  onPress={() => {
-                    triggerSelectionHaptic();
-                    toggleDay(d.day);
-                  }}
-                  style={[styles.dayPill, days.includes(d.day) && styles.dayPillActive]}
+                  onPress={() => handleDayPress(d.day)}
+                  style={[styles.dayPill, isSelected && styles.dayPillActive]}
                 >
-                  <Text style={[styles.dayText, days.includes(d.day) && styles.dayTextActive]}>{d.label}</Text>
+                  <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>{d.label}</Text>
                 </Pressable>
-              ))}
-            </View>
-          )}
+              );
+            })}
+          </View>
         </View>
       );
     }
@@ -1143,13 +1393,61 @@ export default function AddGoalScreen({ navigation }) {
           {completionMode === "date" && (
             <>
               <TextInput
-                value={completionEndDate}
-                onChangeText={(text) => setCompletionEndDate(formatDateInput(text))}
-                placeholder="YYYY-MM-DD"
-                keyboardType="number-pad"
+                value={completionEndDisplay}
+                onKeyPress={({ nativeEvent }) => {
+                  const k = nativeEvent && nativeEvent.key;
+                  if (/^\d$/.test(k)) lastKeyRef.current = k;
+                  else lastKeyRef.current = null;
+                }}
+                onTextInput={(e) => {
+                  const inserted = e?.nativeEvent?.text || '';
+                  if (!inserted) return;
+                  handleInsertDigits(inserted);
+                }}
+                onChangeText={(text) => {
+                  // Fallback for platforms that may not fire onTextInput consistently (or for paste)
+                  const timeSince = Date.now() - (lastTextInputAtRef.current || 0);
+                  // If an onTextInput was just handled, ignore this onChangeText to avoid double-processing
+                  if (timeSince < 30) return;
+                  // Otherwise, reconstruct from full text
+                  const digits = String(text).replace(/\D/g, '').slice(0, 8);
+                  const prev = prevDigitsRef.current || '';
+                  let digitsToUse = digits;
+                  // If a large auto-insert happened but the previous buffer was very short,
+                  // assume autofill and only append the last digit so the user can continue typing.
+                  if (digits.length - prev.length > 1 && prev.length < 2) {
+                    digitsToUse = (prev + digits.slice(-1)).slice(0, 8);
+                  }
+                  prevDigitsRef.current = digitsToUse;
+                  const formatted = formatPartialFromDigits(digitsToUse);
+                  setCompletionEndDisplay(formatted);
+                  const iso = parseDisplayToISO(formatted);
+                  if (isValidISODate(iso)) setCompletionEndDate(iso);
+                }}
+                onBlur={() => setCompletionEndDisplay(formatISOToDisplay(completionEndDate))}
+                placeholder={getDateFormatSync()}
+                keyboardType={Platform.OS === 'ios' ? 'number-pad' : 'numeric'}
+                autoCorrect={false}
+                autoComplete={"off"}
+                spellCheck={false}
+                textContentType="none"
+                importantForAutofill="no"
                 maxLength={10}
                 style={[styles.input, styles.completionInput]}
               />
+              {completionDateMeta && completionDateMeta.daysLeft < 0 && (
+                <View style={[styles.errorInline, { marginTop: 8 }]}>
+                  <Text style={styles.errorInlineText}>End date cannot be in the past.</Text>
+                </View>
+              )}
+              <View style={{ marginTop: 8 }}>
+                <SwipeCalendar
+                  month={calendarMonth}
+                  setMonth={setCalendarMonth}
+                  selectedDate={completionEndDate}
+                  onSelectDate={setCompletionEndDate}
+                />
+              </View>
               {!!completionDateMeta && <Text style={styles.helperText}>Ends {completionDateMeta.readable}</Text>}
             </>
           )}
@@ -1186,7 +1484,11 @@ export default function AddGoalScreen({ navigation }) {
   const goNextStep = () => setStep((prev) => Math.min(prev + 1, stepLabels.length - 1));
   const goBackStep = () => {
     if (step === 0) {
-      navigation.goBack();
+      if (!isFormDirty()) {
+        navigation.goBack();
+      } else {
+        promptDiscard(undefined);
+      }
     } else {
       setStep((prev) => Math.max(prev - 1, 0));
     }
@@ -1195,12 +1497,13 @@ export default function AddGoalScreen({ navigation }) {
   const isOwner = selectedGardenId !== "personal" && sharedGardenSettings.ownerId && auth.currentUser && sharedGardenSettings.ownerId === auth.currentUser.uid;
   const canEditPlants = selectedGardenId === "personal" || isOwner || !sharedGardenSettings.restrictEditPlants;
 
-  const save = async () => {
+   const save = async () => {
     if (!auth.currentUser || isSaving || !canSave) return;
     if (selectedGardenId !== "personal" && !canEditPlants) {
       Alert.alert("Restricted", "Only the owner can add goals to this shared garden.");
       return;
     }
+    
     setIsSaving(true);
     try {
       const goalData = {
@@ -1261,6 +1564,8 @@ export default function AddGoalScreen({ navigation }) {
         );
       }
 
+      setAddGoalDirty(false);
+      isLeavingAfterSaveRef.current = true;
       navigation.navigate("Goals", { screen: "Goal", params: { goalId: docRef.id, source: "goals" } });
     } catch (error) {
       Alert.alert("Error", "Could not save your goal.");
@@ -1287,7 +1592,7 @@ export default function AddGoalScreen({ navigation }) {
 
           <ScrollView
             style={styles.contentArea}
-            contentContainerStyle={styles.formScrollContent}
+            contentContainerStyle={[styles.formScrollContent, { paddingBottom: Math.max(24, insets.bottom + 240) }]}
             keyboardShouldPersistTaps="handled"
             onScroll={() => Keyboard.dismiss()}
             onLayout={(event) => setScrollViewHeight(event.nativeEvent.layout.height)}
@@ -1298,7 +1603,7 @@ export default function AddGoalScreen({ navigation }) {
           >
             {renderStepContent()}
 
-            {!!formError && (
+            {!!formError && !(completionDateMeta && completionDateMeta.daysLeft < 0) && (
               <View style={styles.errorInline}>
                 <Text style={styles.errorInlineText}>{formError}</Text>
               </View>
@@ -1306,7 +1611,7 @@ export default function AddGoalScreen({ navigation }) {
           </ScrollView>
         </KeyboardAvoidingView>
 
-        <View style={styles.stepFooterRow}>
+        <View style={[styles.stepFooterRow, { position: 'absolute', left: 12, right: 12, bottom: insets.bottom + 88, zIndex: 1000, elevation: 20 }]}> 
           <View style={styles.footerProgressWrap}>
             <StepProgressBar total={stepLabels.length} index={step} />
           </View>
@@ -1463,7 +1768,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     width: "100%",
     gap: 12,
-    marginBottom: 100,
   },
   stepButton: { flex: 1 },
   sectionLabel: { fontSize: 13, color: theme.text, marginBottom: 8, fontFamily: 'CeraRoundProDEMO-Black' },
@@ -2130,7 +2434,7 @@ const styles = StyleSheet.create({
   errorInline: { marginTop: 10, backgroundColor: theme.dangerBg, borderRadius: theme.radius, padding: 12 },
   errorInlineText: { color: theme.dangerText, fontSize: 12, fontWeight: "700", fontFamily: 'CeraRoundProDEMO-Black' },
   coachOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "center", alignItems: "center", padding: 20 },
-  coachBox: { width: "100%", maxWidth: 400, backgroundColor: theme.surface, borderRadius: theme.radius, padding: 18, shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 6 },
+  coachBox: { width: "100%", maxWidth: 400, backgroundColor: theme.surface, borderRadius: theme.radius, padding: 18, ...require('../utils/shadows').cpShadow({ color: '#000', offset: { width: 0, height: 3 }, opacity: 0.2, radius: 6, elevation: 6 }) },
   coachTitle: { fontSize: 16, fontWeight: "800", marginBottom: 8, color: theme.text },
   coachBody: { fontSize: 13, color: theme.text, marginBottom: 14 },
   coachCloseBtn: { marginTop: 4, alignSelf: "flex-end", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, backgroundColor: theme.accent },
@@ -2140,3 +2444,4 @@ const styles = StyleSheet.create({
   stepCount: { fontSize: 12, fontWeight: "800", color: theme.muted },
 
 });
+

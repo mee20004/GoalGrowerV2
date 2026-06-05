@@ -61,7 +61,7 @@ async function findFirstOpenSharedStorageSlot(gardenId, goalId) {
 import React, { useState, useCallback, useRef, useEffect, memo } from "react";
 import { 
   View, Text, StyleSheet, ActivityIndicator, ScrollView, FlatList, 
-  Animated, TouchableOpacity, Platform, UIManager, LayoutAnimation, PanResponder, Image, ImageBackground, useWindowDimensions, TouchableWithoutFeedback, Pressable, Alert, Easing 
+  Animated, TouchableOpacity, Platform, UIManager, LayoutAnimation, PanResponder, Image, ImageBackground, useWindowDimensions, TouchableWithoutFeedback, Pressable, Modal, TextInput, Alert, Easing 
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StackActions } from "@react-navigation/native";
@@ -701,6 +701,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
   latestProps.current = { plant, onDragStart, onDragEnd, onDelete, onPlantTap, isEditing, instantDrag };
 
   const longPressTriggeredRef = useRef(false);
+  const responderClaimedRef = useRef(false);
   const longPressTimeoutRef = useRef(null);
   const dragStartedRef = useRef(false);
   const dragFinalizedRef = useRef(false);
@@ -764,8 +765,11 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => {
+        // Do NOT claim the responder immediately on touch start unless
+        // `instantDrag` is enabled. Let the parent navigator handle
+        // horizontal swipe gestures that begin on top of a plant.
         if (disabled || globalDragRef.current) return false;
-        return !latestProps.current.instantDrag;
+        return !!latestProps.current.instantDrag;
       },
       onMoveShouldSetPanResponder: (_, gesture) => {
         if (disabled) return false;
@@ -778,6 +782,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
       },
       onPanResponderGrant: (evt) => {
         evt.persist?.();
+        responderClaimedRef.current = true;
         const { pageX, pageY, locationX, locationY } = evt.nativeEvent;
         lastTouchRef.current = { x: pageX, y: pageY, lx: locationX, ly: locationY };
 
@@ -813,12 +818,17 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
         if (dragStartedRef.current) {
           finalizeDrag(gesture.moveX ?? lastTouchRef.current.x, gesture.moveY ?? lastTouchRef.current.y);
         } else if (!longPressTriggeredRef.current && !latestProps.current.isEditing) {
-          latestProps.current.onPlantTap?.(latestProps.current.plant);
+          // If the gesture moved significantly, treat it as a swipe/drag cancel
+          const moved = Math.abs(gesture.dx || 0) > 10 || Math.abs(gesture.dy || 0) > 10;
+          if (!moved) {
+            latestProps.current.onPlantTap?.(latestProps.current.plant);
+          }
         } else if (isHidden) {
           setIsHidden(false);
         }
         longPressTriggeredRef.current = false;
         dragStartedRef.current = false;
+        responderClaimedRef.current = false;
       },
       onPanResponderTerminate: () => {
         if (longPressTimeoutRef.current) {
@@ -828,6 +838,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
         finalizeDrag(lastTouchRef.current.x, lastTouchRef.current.y);
         longPressTriggeredRef.current = false;
         dragStartedRef.current = false;
+        responderClaimedRef.current = false;
         if (isHidden) setIsHidden(false);
       }
     })
@@ -840,6 +851,21 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
       ref={(node) => onCompletionTargetRef && onCompletionTargetRef(plant.id, node)}
       collapsable={false}
       {...panHandlers}
+      onTouchStart={(e) => {
+        const { pageX, pageY, locationX, locationY } = e.nativeEvent;
+        lastTouchRef.current = { x: pageX, y: pageY, lx: locationX, ly: locationY };
+      }}
+      onTouchEnd={(e) => {
+        // If a responder was claimed (dragging) or a long-press triggered, skip
+        if (responderClaimedRef.current || dragStartedRef.current || longPressTriggeredRef.current) return;
+        if (latestProps.current.isEditing || globalDragRef.current) return;
+        const { pageX, pageY } = e.nativeEvent;
+        const TAP_THRESHOLD = 10; // px
+        const moved = Math.abs(pageX - (lastTouchRef.current.x || 0)) > TAP_THRESHOLD || Math.abs(pageY - (lastTouchRef.current.y || 0)) > TAP_THRESHOLD;
+        if (!moved) {
+          latestProps.current.onPlantTap?.(latestProps.current.plant);
+        }
+      }}
       style={[
         styles.plantContainer,
         isEditing && !isHidden && { transform: [{ rotate: wiggleAnim.interpolate({ inputRange: [-1, 1], outputRange: ['-2deg', '2deg'] }) }] },
@@ -955,6 +981,8 @@ export default function GardenScreen({ route, navigation }) {
   const [sharedGardenInvites, setSharedGardenInvites] = useState([]);
   const [followingUsers, setFollowingUsers] = useState([]);
   const [creatingSharedGarden, setCreatingSharedGarden] = useState(false);
+  const [showCreateSharedGardenModal, setShowCreateSharedGardenModal] = useState(false);
+  const [newSharedGardenName, setNewSharedGardenName] = useState('');
   const [expandedInviteGardenId, setExpandedInviteGardenId] = useState(null);
   const [activeInviteKey, setActiveInviteKey] = useState('');
   const [acceptingInviteId, setAcceptingInviteId] = useState('');
@@ -2068,10 +2096,15 @@ export default function GardenScreen({ route, navigation }) {
     }
   };
 
+  const closeCreateSharedGardenModal = () => {
+    setShowCreateSharedGardenModal(false);
+    setNewSharedGardenName('');
+  };
+
   const handleCreateSharedGarden = () => {
     if (isReadOnly || !auth.currentUser || creatingSharedGarden) return;
 
-    if (typeof Alert.prompt === 'function') {
+    if (Platform.OS === 'ios' && typeof Alert.prompt === 'function') {
       Alert.prompt(
         'New Garden',
         'Name your new garden',
@@ -2094,7 +2127,19 @@ export default function GardenScreen({ route, navigation }) {
       return;
     }
 
-    Alert.alert('Name required', 'Please enter a garden name before creating.');
+    setNewSharedGardenName('');
+    setShowSharedGardensModal(false);
+    setShowCreateSharedGardenModal(true);
+  };
+
+  const handleConfirmCreateSharedGarden = () => {
+    const trimmed = String(newSharedGardenName || '').trim();
+    if (!trimmed) {
+      Alert.alert('Name required', 'Please enter a garden name before creating.');
+      return;
+    }
+    closeCreateSharedGardenModal();
+    createSharedGardenWithName(trimmed);
   };
 
   const handleSendSharedGardenInvite = async (garden, targetUser) => {
@@ -2800,6 +2845,33 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
               </ScrollView>
           </Animated.View>
         </View>
+
+        <Modal visible={showCreateSharedGardenModal} transparent animationType="fade" onRequestClose={closeCreateSharedGardenModal}>
+          <View style={styles.createGardenModalOverlay}>
+            <View style={styles.createGardenModalCard}>
+              <Text style={styles.createGardenModalTitle}>New Garden</Text>
+              <Text style={styles.createGardenModalHint}>Enter a name for your shared garden.</Text>
+              <TextInput
+                value={newSharedGardenName}
+                onChangeText={setNewSharedGardenName}
+                placeholder="Garden name"
+                placeholderTextColor="#9CA3AF"
+                style={styles.createGardenModalInput}
+                autoCapitalize="words"
+                returnKeyType="done"
+                onSubmitEditing={handleConfirmCreateSharedGarden}
+              />
+              <View style={styles.createGardenModalActions}>
+                <TouchableOpacity style={[styles.createGardenModalButton, styles.createGardenModalButtonSecondary]} onPress={closeCreateSharedGardenModal}>
+                  <Text style={styles.createGardenModalButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.createGardenModalButton, styles.createGardenModalButtonPrimary]} onPress={handleConfirmCreateSharedGarden}>
+                  <Text style={[styles.createGardenModalButtonText, styles.createGardenModalButtonTextPrimary]}>Create</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </>
     )}
 
@@ -3397,6 +3469,71 @@ const styles = StyleSheet.create({
   sharedPrimaryButtonText: {
     color: '#fff',
     fontWeight: '900',
+  },
+  createGardenModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  createGardenModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 22,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  createGardenModalTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  createGardenModalHint: {
+    color: '#6B7280',
+    marginBottom: 14,
+    fontSize: 13,
+  },
+  createGardenModalInput: {
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 16,
+    color: '#111827',
+    fontWeight: '700',
+  },
+  createGardenModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 18,
+  },
+  createGardenModalButton: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  createGardenModalButtonSecondary: {
+    backgroundColor: '#E5E7EB',
+  },
+  createGardenModalButtonPrimary: {
+    backgroundColor: '#2D5A27',
+  },
+  createGardenModalButtonText: {
+    color: '#111827',
+    fontWeight: '900',
+  },
+  createGardenModalButtonTextPrimary: {
+    color: '#fff',
   },
   sharedGardenRowCard: {
     borderRadius: 14,
