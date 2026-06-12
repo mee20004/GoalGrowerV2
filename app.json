@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "garden-your-goals",
-    "slug": "garden-your-goals",
+    "name": "Goal Grower",
+    "slug": "goal-grower",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/Goal_Grower_Logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/Goal_Grower_Logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -22,7 +22,7 @@
     "android": {
       "package": "com.ziyu.goalgrower",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/Goal_Grower_Logo.png",
         "backgroundColor": "#ffffff"
       },
       "enableProguardInReleaseBuilds": true,
@@ -34,7 +34,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/Goal_Grower_Logo.png"
     },
     "plugins": [
       "expo-web-browser",
