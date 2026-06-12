@@ -2,10 +2,11 @@ import React, { useMemo, useState } from "react";
 import { View, Text, StyleSheet, Pressable, Dimensions } from "react-native";
 import Page from "../components/Page";
 import { theme } from "../theme";
+import { getWeekdayLabelsSync, getWeekStartSync } from '../utils/dateFormat';
 import { useGoals, fromKey, toKey } from "../components/GoalsStore";
 import { isScheduledOn, isWithinActiveRange } from "../components/GoalsStore";
 
-const DAYS = ["sun","mon","tue","wed","thu","fri","sat"];
+const getWeekdayLabels = () => getWeekdayLabelsSync();
 
 function isGoalDoneForDate(goal, dateKey) {
   if (!goal) return false;
@@ -30,8 +31,9 @@ function isGoalDoneForDate(goal, dateKey) {
 }
 
 function getWeekDays(date) {
+  const offset = (date.getDay() - getWeekStartSync() + 7) % 7;
   const startOfWeek = new Date(date);
-  startOfWeek.setDate(date.getDate() - date.getDay());
+  startOfWeek.setDate(date.getDate() - offset);
 
   const days = [];
   for (let i = 0; i < 7; i++) {
@@ -49,7 +51,7 @@ function getWeekDays(date) {
 
 function getMonthDays(year, month) {
   const first = new Date(year, month, 1);
-  const startDay = first.getDay();
+  const startDay = (first.getDay() - getWeekStartSync() + 7) % 7;
 
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const prevMonthDays = new Date(year, month, 0).getDate();
@@ -132,8 +134,9 @@ export default function CalendarScreen() {
 };
 
   const weekLabel = () => {
+  const offset = (date.getDay() - getWeekStartSync() + 7) % 7;
   const start = new Date(date);
-  start.setDate(date.getDate() - date.getDay());
+  start.setDate(date.getDate() - offset);
 
   const end = new Date(start);
   end.setDate(start.getDate() + 6);
@@ -209,9 +212,7 @@ export default function CalendarScreen() {
         {/* WEEK DAYS */}
         {mode !== "today" && (
           <View style={styles.weekRow}>
-            {DAYS.map((d,i) => (
-              <View key={d} style={[styles.weekPill,(i+1)%7===0 && { marginRight:0 }]}>
-                <Text style={styles.weekText}>{d}</Text>
+            {getWeekdayLabels().map((d,i) => (
               </View>
             ))}
           </View>

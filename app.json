@@ -14,17 +14,18 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.garden-your-goals",
+      "bundleIdentifier": "com.ziyu.goalgrower",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.anonymous.gardenyourgoals",
+      "package": "com.ziyu.goalgrower",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "enableProguardInReleaseBuilds": true,
       "edgeToEdgeEnabled": true,
       "permissions": [
         "NOTIFICATIONS",

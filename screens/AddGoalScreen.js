@@ -13,7 +13,7 @@ const normalizeQuantityTargetInput = (value) => {
   return String(clampNum(Number(digits), 1, MAX_QUANTITY_TARGET));
 };
 // screens/AddGoalScreen.js
-import React, { useEffect, useMemo, useRef, useState, memo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import { useFonts } from 'expo-font';
 import {
     ActivityIndicator,
@@ -36,6 +36,7 @@ import {
   Animated,
   Easing,
   Image,
+  BackHandler,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
@@ -45,10 +46,15 @@ import Page from "../components/Page";
 import useRemeasureTutorialOnFocus from "../components/tutorial/useRemeasureTutorialOnFocus";
 import { useTutorial } from "../contexts/TutorialContext";
 import { TUTORIAL_TARGET_KEYS } from "../tutorial/constants";
-import { theme } from "../theme";
+import theme, { useTheme } from "../theme";
 import { useGoals, fromKey } from "../components/GoalsStore";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { setAddGoalDirty } from '../utils/addGoalGuard';
+import SwipeCalendar from '../components/SwipeCalendar';
+import { formatISOToDisplay, parseDisplayToISO, getDateFormatSync, formatPartialDisplay, formatPartialFromDigits, getWeekStartSync } from '../utils/dateFormat';
 
 // FIREBASE IMPORTS
 import { collection, addDoc, serverTimestamp, onSnapshot, query, where, doc, setDoc, getDoc } from "firebase/firestore";
@@ -97,7 +103,12 @@ const REWARD_SUGGEST = ["Tea", "5-minute break", "Music", "Stretching"];
 
 const DAY_LABELS = ["S", "M", "T", "W", "Th", "F", "Sa"];
 
-function Chip({ label, active, onPress, variant = "default" }) {
+const getScheduleDays = () => {
+  const weekStart = getWeekStartSync();
+  return [...DAYS.slice(weekStart), ...DAYS.slice(0, weekStart)];
+};
+
+function Chip({ label, active, onPress, variant = "default", accent }) {
   const isFilter = variant === "filter";
 
   return (
@@ -109,8 +120,8 @@ function Chip({ label, active, onPress, variant = "default" }) {
       style={[
         styles.chip,
         isFilter && styles.filterStyleChip,
-        active && styles.chipActive,
-        active && isFilter && styles.filterStyleChipActive,
+        active && [styles.chipActive, { backgroundColor: accent, borderColor: accent }],
+        active && isFilter && [styles.filterStyleChipActive, { backgroundColor: accent, borderColor: accent }],
       ]}
     >
       <Text
@@ -127,7 +138,7 @@ function Chip({ label, active, onPress, variant = "default" }) {
   );
 }
 
-function Segmented({ left, right, value, onChange }) {
+function Segmented({ left, right, value, onChange, accent }) {
   return (
     <View style={styles.segmentWrap}>
       <Pressable
@@ -135,7 +146,7 @@ function Segmented({ left, right, value, onChange }) {
           triggerSelectionHaptic();
           onChange(left.value);
         }}
-        style={[styles.segment, value === left.value && styles.segmentActive]}
+        style={[styles.segment, value === left.value && [styles.segmentActive, { backgroundColor: accent, borderColor: accent }]]}
       >
         <Text style={[styles.segmentText, value === left.value && styles.segmentTextActive]}>{left.label}</Text>
       </Pressable>
@@ -144,7 +155,7 @@ function Segmented({ left, right, value, onChange }) {
           triggerSelectionHaptic();
           onChange(right.value);
         }}
-        style={[styles.segment, value === right.value && styles.segmentActive]}
+        style={[styles.segment, value === right.value && [styles.segmentActive, { backgroundColor: accent, borderColor: accent }]]}
       >
         <Text style={[styles.segmentText, value === right.value && styles.segmentTextActive]}>{right.label}</Text>
       </Pressable>
@@ -399,10 +410,10 @@ function Pill({ label, active, onPress }) {
   );
 }
 
-function PrimaryButton({ label, onPress, disabled, style }) {
+function PrimaryButton({ label, onPress, disabled, style, accent }) {
   return (
     <View style={[styles.actionButtonWrap, style]}>
-      <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
+      <View pointerEvents="none" style={[styles.actionButtonShadow, { backgroundColor: accent }]} />
       <Pressable
         onPress={() => {
           if (disabled) return;
@@ -413,6 +424,7 @@ function PrimaryButton({ label, onPress, disabled, style }) {
         style={({ pressed }) => [
           styles.actionButtonFace,
           styles.actionButtonPrimary,
+          { backgroundColor: accent },
           pressed && styles.actionButtonPressed,
           disabled && styles.actionButtonPrimaryDisabled,
         ]}
@@ -423,7 +435,7 @@ function PrimaryButton({ label, onPress, disabled, style }) {
   );
 }
 
-function GhostButton({ label, onPress, disabled, style }) {
+function GhostButton({ label, onPress, disabled, style, accent }) {
   return (
     <View style={[styles.actionButtonWrap, style]}>
       <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowSecondary]} />
@@ -441,17 +453,17 @@ function GhostButton({ label, onPress, disabled, style }) {
           disabled && styles.actionButtonSecondaryDisabled,
         ]}
       >
-        <Text style={[styles.actionButtonText, styles.actionButtonTextSecondary, disabled && styles.actionButtonTextDisabled]}>{label}</Text>
+        <Text style={[styles.actionButtonText, styles.actionButtonTextSecondary, { color: accent }, disabled && styles.actionButtonTextDisabled]}>{label}</Text>
       </Pressable>
     </View>
   );
 }
 
-function Button({ variant = "primary", label, onPress, disabled, style }) {
+function Button({ variant = "primary", label, onPress, disabled, style, accent }) {
   if (variant === "secondary") {
-    return <GhostButton label={label} onPress={onPress} disabled={disabled} style={style} />;
+    return <GhostButton label={label} onPress={onPress} disabled={disabled} style={style} accent={accent} />;
   }
-  return <PrimaryButton label={label} onPress={onPress} disabled={disabled} style={style} />;
+  return <PrimaryButton label={label} onPress={onPress} disabled={disabled} style={style} accent={accent} />;
 }
 
 function CoachMark({ visible, title, body, onClose }) {
@@ -471,7 +483,7 @@ function CoachMark({ visible, title, body, onClose }) {
   );
 }
 
-function StepProgressBar({ total = 1, index = 0 }) {
+function StepProgressBar({ total = 1, index = 0, accent }) {
   const progress = Math.min(1, Math.max(0, (index + 1) / Math.max(total, 1)));
   const animatedProgress = useRef(new Animated.Value(progress)).current;
 
@@ -495,7 +507,7 @@ function StepProgressBar({ total = 1, index = 0 }) {
       accessibilityRole="progressbar"
       accessibilityValue={{ min: 0, max: total, now: index + 1 }}
     >
-       <Animated.View style={[styles.progressBarFill, { width: animatedWidth, fontFamily: 'CeraRoundProDEMO-Black' }]} />
+       <Animated.View style={[styles.progressBarFill, { width: animatedWidth, backgroundColor: accent, fontFamily: 'CeraRoundProDEMO-Black' }]} />
     </View>
   );
 }
@@ -510,6 +522,8 @@ export default function AddGoalScreen({ navigation }) {
     returnToGoalCreationChoice,
   } = useTutorial();
 
+  const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   // Load the Cera Round Pro DEMO font only for this screen
   const [fontsLoaded] = useFonts({
     'CeraRoundProDEMO-Black': require('../assets/fonts/CeraRoundProDEMOBlack.otf'),
@@ -590,18 +604,86 @@ export default function AddGoalScreen({ navigation }) {
   const [whyStr, setWhyStr] = useState("");
   const [completionMode, setCompletionMode] = useState("none");
   const [completionEndDate, setCompletionEndDate] = useState("");
+  const [completionEndDisplay, setCompletionEndDisplay] = useState("");
+  const prevDigitsRef = useRef("");
+  const lastKeyRef = useRef(null);
+  const lastTextInputAtRef = useRef(0);
+  const pendingNavigationRef = useRef(null);
+  const isLeavingAfterSaveRef = useRef(false);
+  const isFocused = useIsFocused();
+
+  const promptDiscard = useCallback(() => {
+  Alert.alert(
+    "Leave add goal?",
+    "Your goal is not saved yet. Do you want to leave and lose your progress?",
+    [
+      {
+        text: "Keep editing",
+        style: "cancel",
+        onPress: () => {
+          pendingNavigationRef.current = null;
+        },
+      },
+      {
+        text: "Leave",
+        style: "destructive",
+        onPress: () => {
+          const leaveAction = pendingNavigationRef.current;
+          pendingNavigationRef.current = null;
+
+          setAddGoalDirty(false);
+          isLeavingAfterSaveRef.current = true;
+
+          if (typeof leaveAction === "function") {
+            leaveAction();
+          } else {
+            navigation.goBack();
+          }
+        },
+      },
+    ]
+  );
+}, [navigation]);
+
+  const handleInsertDigits = (insertedRaw) => {
+    const now = Date.now();
+    lastTextInputAtRef.current = now;
+    const insertedDigits = String(insertedRaw || '').replace(/\D/g, '').slice(0, 8);
+
+    let digitsToUse = prevDigitsRef.current || '';
+    if (!insertedDigits) {
+      // nothing to add
+    } else if (insertedDigits.length === 1) {
+      digitsToUse = (digitsToUse + insertedDigits).slice(0, 8);
+    } else {
+      // multi-char insertion (paste or autofill)
+      // If it contains separators (likely paste), accept all digits from it
+      if (/[^0-9]/.test(insertedRaw)) {
+        digitsToUse = (digitsToUse + insertedDigits).slice(0, 8);
+      } else {
+        // likely autofill: append only the last char so user can continue typing
+        digitsToUse = (digitsToUse + insertedDigits.slice(-1)).slice(0, 8);
+      }
+    }
+    prevDigitsRef.current = digitsToUse;
+    const formatted = formatPartialFromDigits(digitsToUse);
+    setCompletionEndDisplay(formatted);
+    const iso = parseDisplayToISO(formatted);
+    if (isValidISODate(iso)) setCompletionEndDate(iso);
+  };
   const [completionEndAmount, setCompletionEndAmount] = useState("");
   const [completionEndUnit, setCompletionEndUnit] = useState("times");
   const [multiUserWateringEnabled, setMultiUserWateringEnabled] = useState(false);
   const [requiredContributors, setRequiredContributors] = useState("2");
   const [calendarMonth, setCalendarMonth] = useState(toStartOfDay(new Date()));
-  const [calendarWidth, setCalendarWidth] = useState(0);
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
-  const calendarPagerRef = useRef(null);
 
 
   // Reset form state on screen focus
+        isLeavingAfterSaveRef.current = false;
+
+        
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       setStep(0);
@@ -631,6 +713,159 @@ export default function AddGoalScreen({ navigation }) {
     });
     return unsubscribe;
   }, [navigation, selectedDay]);
+
+  // Warn on navigation if the form has unsaved changes
+  const isFormDirty = () => {
+    if (isLeavingAfterSaveRef.current) return false;
+    if (name.trim()) return true;
+    if (isPrivate) return true;
+    if (selectedIcon !== 'target') return true;
+    if (selectedPlantSpecies !== 'fern') return true;
+    if (selectedPotType !== 'default') return true;
+    if (type !== 'completion') return true;
+    if (target && target !== '1') return true;
+    if (unit && unit !== 'times') return true;
+    if (mode !== 'days' && !(mode === 'days' && days.length === 1 && days[0] === selectedDay)) return mode !== 'days';
+    if (whenStr.trim()) return true;
+    if (whereStr.trim()) return true;
+    if (whyStr.trim()) return true;
+    if (completionMode !== 'none') return true;
+    if (completionEndDate.trim()) return true;
+    if (completionEndAmount.trim()) return true;
+    if (completionEndUnit && completionEndUnit !== 'times') return true;
+    if (multiUserWateringEnabled) return true;
+    if (requiredContributors && requiredContributors !== '2') return true;
+    if (selectedGardenId && selectedGardenId !== 'personal') return true;
+    return false;
+  };
+
+  useEffect(() => {
+    if (!isFocused) {
+      setAddGoalDirty(false);
+      return;
+    }
+    setAddGoalDirty(isFormDirty());
+    return () => setAddGoalDirty(false);
+  }, [
+    isFocused,
+    name,
+    isPrivate,
+    selectedIcon,
+    selectedPlantSpecies,
+    selectedPotType,
+    type,
+    target,
+    unit,
+    mode,
+    days,
+    whenStr,
+    whereStr,
+    whyStr,
+    completionMode,
+    completionEndDate,
+    completionEndAmount,
+    completionEndUnit,
+    multiUserWateringEnabled,
+    requiredContributors,
+    selectedGardenId,
+    selectedDay,
+  ]);
+
+  useFocusEffect(
+  useCallback(() => {
+    const blockIfDirty = (leaveAction) => {
+      if (!isFormDirty()) return false;
+
+      pendingNavigationRef.current = leaveAction;
+      promptDiscard();
+      return true;
+    };
+
+    const beforeRemoveSub = navigation.addListener("beforeRemove", (e) => {
+      if (!isFormDirty()) return;
+
+      e.preventDefault();
+      blockIfDirty(() => navigation.dispatch(e.data.action));
+    });
+
+    const parentSubs = [];
+    let parent = navigation.getParent?.();
+
+    while (parent) {
+      const currentParent = parent;
+
+      if (typeof currentParent.addListener === "function") {
+        parentSubs.push(
+          currentParent.addListener("tabPress", (e) => {
+            if (!isFormDirty()) return;
+
+            e.preventDefault();
+
+            const state = currentParent.getState?.();
+            const route = state?.routes?.find((r) => r.key === e.target);
+
+            blockIfDirty(() => {
+              if (route?.name) currentParent.navigate(route.name);
+            });
+          })
+        );
+
+        parentSubs.push(
+          currentParent.addListener("drawerItemPress", (e) => {
+            if (!isFormDirty()) return;
+
+            e.preventDefault();
+
+            const state = currentParent.getState?.();
+            const route = state?.routes?.find((r) => r.key === e.target);
+
+            blockIfDirty(() => {
+              if (route?.name) currentParent.navigate(route.name);
+            });
+          })
+        );
+      }
+
+      parent = currentParent.getParent?.();
+    }
+
+    const androidBackSub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (!isFormDirty()) return false;
+
+      blockIfDirty(() => navigation.goBack());
+      return true;
+    });
+
+    return () => {
+      beforeRemoveSub?.();
+      parentSubs.forEach((sub) => sub?.());
+      androidBackSub?.remove();
+    };
+  }, [
+    navigation,
+    promptDiscard,
+    name,
+    isPrivate,
+    selectedIcon,
+    selectedPlantSpecies,
+    selectedPotType,
+    type,
+    target,
+    unit,
+    mode,
+    days,
+    whenStr,
+    whereStr,
+    whyStr,
+    completionMode,
+    completionEndDate,
+    completionEndAmount,
+    completionEndUnit,
+    multiUserWateringEnabled,
+    requiredContributors,
+    selectedGardenId,
+  ])
+);
 
   // Filtered Icons Logic
   // Ensure FEATURED_ICONS are not repeated if already in pickerIconNames
@@ -833,60 +1068,63 @@ export default function AddGoalScreen({ navigation }) {
 
   const calendarCells = useMemo(() => buildMonthGrid(calendarMonth), [calendarMonth]);
 
-  const prevMonth = useMemo(
-    () => new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1),
-    [calendarMonth]
-  );
-  const nextMonth = useMemo(
-    () => new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1),
-    [calendarMonth]
-  );
-  const prevMonthCells = useMemo(() => buildMonthGrid(prevMonth), [prevMonth]);
-  const nextMonthCells = useMemo(() => buildMonthGrid(nextMonth), [nextMonth]);
-
   useEffect(() => {
     if (isValidISODate(completionEndDate.trim())) {
       const [year, month] = completionEndDate.trim().split("-").map(Number);
       setCalendarMonth(new Date(year, month - 1, 1));
     }
+    // keep displayed input synced to ISO and chosen format
+    setCompletionEndDisplay(formatISOToDisplay(completionEndDate));
   }, [completionEndDate]);
-
-  useEffect(() => {
-    if (!calendarWidth || !calendarPagerRef.current) return;
-    calendarPagerRef.current.scrollTo({ x: calendarWidth, animated: false });
-  }, [calendarWidth, calendarMonth]);
-
-  const selectCalendarDay = (day) => {
-    if (!day) return;
-    const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day);
-    setCompletionEndDate(toISODate(date));
-  };
-
-  const goPrevMonth = () => {
-    setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
-  };
-
-  const goNextMonth = () => {
-    setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
-  };
 
   const changeCompletionMode = (nextMode) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setCompletionMode(nextMode);
   };
 
-  const handleCalendarScrollEnd = (event) => {
-    if (!calendarWidth) return;
-    const offsetX = event.nativeEvent.contentOffset.x;
-    const pageIndex = Math.round(offsetX / calendarWidth);
-    if (pageIndex === 0) {
-      goPrevMonth();
-    } else if (pageIndex === 2) {
-      goNextMonth();
-    }
+  const getScheduleModeFromDays = (dayList) => {
+    const uniqueDays = [...new Set(dayList)].sort((a, b) => a - b);
+    if (uniqueDays.length === 7) return 'everyday';
+    const weekdays = [1, 2, 3, 4, 5];
+    if (uniqueDays.length === 5 && weekdays.every((day, idx) => day === uniqueDays[idx])) return 'weekdays';
+    return 'days';
   };
 
-  const toggleDay = (d) => setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
+  const handleDayPress = (d) => {
+    // Behavior:
+    // - In 'everyday': pressing a day deselects it and switches to custom with all days except that one
+    // - In 'weekdays': pressing a weekend day adds it and switches to custom; pressing a weekday removes it and switches to custom
+    // - In 'days': toggle the day and auto-upgrade to weekdays/everyday when the set matches
+    triggerSelectionHaptic();
+    if (mode === 'everyday') {
+      const all = [0,1,2,3,4,5,6];
+      const newDays = all.filter((x) => x !== d);
+      const nextMode = getScheduleModeFromDays(newDays);
+      setDays(newDays);
+      setMode(nextMode);
+      return;
+    }
+    if (mode === 'weekdays') {
+      const weekdays = [1,2,3,4,5];
+      let newDays;
+      if (d >= 1 && d <= 5) {
+        newDays = weekdays.filter((x) => x !== d);
+      } else {
+        newDays = [...weekdays, d].sort();
+      }
+      const nextMode = getScheduleModeFromDays(newDays);
+      setDays(newDays);
+      setMode(nextMode);
+      return;
+    }
+    // custom
+    setDays((prev) => {
+      const newDays = prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d];
+      const nextMode = getScheduleModeFromDays(newDays);
+      setMode(nextMode);
+      return newDays;
+    });
+  };
 
   const formError = useMemo(() => {
     if (name.trim().length < 3) return "Give it a short name (at least 3 characters).";
@@ -967,6 +1205,7 @@ export default function AddGoalScreen({ navigation }) {
                 label="Personal"
                 variant="filter"
                 active={selectedGardenId === "personal"}
+                accent={theme.accent}
                 onPress={() => setSelectedGardenId("personal")}
               />
               {sharedGardens.map((garden) => (
@@ -975,6 +1214,7 @@ export default function AddGoalScreen({ navigation }) {
                   label={garden.name || "Shared Garden"}
                   variant="filter"
                   active={selectedGardenId === garden.id}
+                  accent={theme.accent}
                   onPress={() => setSelectedGardenId(garden.id)}
                 />
               ))}
@@ -1136,7 +1376,7 @@ export default function AddGoalScreen({ navigation }) {
       return (
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Tracking</Text>
-          <Segmented left={{ label: "Checkmark", value: "completion" }} right={{ label: "Quantity", value: "quantity" }} value={type} onChange={setType} />
+          <Segmented left={{ label: "Checkmark", value: "completion" }} right={{ label: "Quantity", value: "quantity" }} value={type} onChange={setType} accent={theme.accent} />
           {type === "quantity" && (
             <View style={styles.row}>
               <TextInput value={target} onChangeText={(value) => setTarget(normalizeQuantityTargetInput(value))} keyboardType="numeric" style={[styles.input, { flex: 1, marginRight: 10 }]} placeholder="Target (max 6)" placeholderTextColor={theme.muted2} />
@@ -1151,26 +1391,42 @@ export default function AddGoalScreen({ navigation }) {
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Schedule</Text>
           <View style={styles.row}>
-            <Chip label="Every day" variant="filter" active={mode === "everyday"} onPress={() => setMode("everyday")} />
-            <Chip label="Weekdays" variant="filter" active={mode === "weekdays"} onPress={() => setMode("weekdays")} />
-            <Chip label="Custom" variant="filter" active={mode === "days"} onPress={() => setMode("days")} />
+            <Chip
+              label="Every day"
+              variant="filter"
+              active={mode === "everyday"}
+              accent={theme.accent}
+              onPress={() => {
+                setMode("everyday");
+                setDays([0,1,2,3,4,5,6]);
+              }}
+            />
+            <Chip
+              label="Weekdays"
+              variant="filter"
+              active={mode === "weekdays"}
+              accent={theme.accent}
+              onPress={() => {
+                setMode("weekdays");
+                setDays([1,2,3,4,5]);
+              }}
+            />
+            <Chip label="Custom" variant="filter" active={mode === "days"} accent={theme.accent} onPress={() => setMode("days")} />
           </View>
-          {mode === "days" && (
-            <View style={styles.daysGrid}>
-              {DAYS.map((d) => (
+          <View style={styles.daysGrid}>
+            {getScheduleDays().map((d) => {
+              const isSelected = mode === 'everyday' ? true : mode === 'weekdays' ? (d.day >= 1 && d.day <= 5) : days.includes(d.day);
+              return (
                 <Pressable
                   key={d.label}
-                  onPress={() => {
-                    triggerSelectionHaptic();
-                    toggleDay(d.day);
-                  }}
-                  style={[styles.dayPill, days.includes(d.day) && styles.dayPillActive]}
+                  onPress={() => handleDayPress(d.day)}
+                  style={[styles.dayPill, isSelected && [styles.dayPillActive, { backgroundColor: theme.accent, borderColor: theme.accent }]]}
                 >
-                  <Text style={[styles.dayText, days.includes(d.day) && styles.dayTextActive]}>{d.label}</Text>
+                  <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>{d.label}</Text>
                 </Pressable>
-              ))}
-            </View>
-          )}
+              );
+            })}
+          </View>
         </View>
       );
     }
@@ -1179,20 +1435,68 @@ export default function AddGoalScreen({ navigation }) {
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Goal completion</Text>
           <View style={styles.completionModeRow}>
-            <Chip label="No end" variant="filter" active={completionMode === "none"} onPress={() => changeCompletionMode("none")} />
-            <Chip label="End date" variant="filter" active={completionMode === "date"} onPress={() => changeCompletionMode("date")} />
-            <Chip label="End amount" variant="filter" active={completionMode === "amount"} onPress={() => changeCompletionMode("amount")} />
+            <Chip label="No end" variant="filter" accent={theme.accent} active={completionMode === "none"} onPress={() => changeCompletionMode("none")} />
+            <Chip label="End date" variant="filter" accent={theme.accent} active={completionMode === "date"} onPress={() => changeCompletionMode("date")} />
+            <Chip label="End amount" variant="filter" accent={theme.accent} active={completionMode === "amount"} onPress={() => changeCompletionMode("amount")} />
           </View>
           {completionMode === "date" && (
             <>
               <TextInput
-                value={completionEndDate}
-                onChangeText={(text) => setCompletionEndDate(formatDateInput(text))}
-                placeholder="YYYY-MM-DD"
-                keyboardType="number-pad"
+                value={completionEndDisplay}
+                onKeyPress={({ nativeEvent }) => {
+                  const k = nativeEvent && nativeEvent.key;
+                  if (/^\d$/.test(k)) lastKeyRef.current = k;
+                  else lastKeyRef.current = null;
+                }}
+                onTextInput={(e) => {
+                  const inserted = e?.nativeEvent?.text || '';
+                  if (!inserted) return;
+                  handleInsertDigits(inserted);
+                }}
+                onChangeText={(text) => {
+                  // Fallback for platforms that may not fire onTextInput consistently (or for paste)
+                  const timeSince = Date.now() - (lastTextInputAtRef.current || 0);
+                  // If an onTextInput was just handled, ignore this onChangeText to avoid double-processing
+                  if (timeSince < 30) return;
+                  // Otherwise, reconstruct from full text
+                  const digits = String(text).replace(/\D/g, '').slice(0, 8);
+                  const prev = prevDigitsRef.current || '';
+                  let digitsToUse = digits;
+                  // If a large auto-insert happened but the previous buffer was very short,
+                  // assume autofill and only append the last digit so the user can continue typing.
+                  if (digits.length - prev.length > 1 && prev.length < 2) {
+                    digitsToUse = (prev + digits.slice(-1)).slice(0, 8);
+                  }
+                  prevDigitsRef.current = digitsToUse;
+                  const formatted = formatPartialFromDigits(digitsToUse);
+                  setCompletionEndDisplay(formatted);
+                  const iso = parseDisplayToISO(formatted);
+                  if (isValidISODate(iso)) setCompletionEndDate(iso);
+                }}
+                onBlur={() => setCompletionEndDisplay(formatISOToDisplay(completionEndDate))}
+                placeholder={getDateFormatSync()}
+                keyboardType={Platform.OS === 'ios' ? 'number-pad' : 'numeric'}
+                autoCorrect={false}
+                autoComplete={"off"}
+                spellCheck={false}
+                textContentType="none"
+                importantForAutofill="no"
                 maxLength={10}
                 style={[styles.input, styles.completionInput]}
               />
+              {completionDateMeta && completionDateMeta.daysLeft < 0 && (
+                <View style={[styles.errorInline, { marginTop: 8 }]}>
+                  <Text style={styles.errorInlineText}>End date cannot be in the past.</Text>
+                </View>
+              )}
+              <View style={{ marginTop: 8 }}>
+                <SwipeCalendar
+                  month={calendarMonth}
+                  setMonth={setCalendarMonth}
+                  selectedDate={completionEndDate}
+                  onSelectDate={setCompletionEndDate}
+                />
+              </View>
               {!!completionDateMeta && <Text style={styles.helperText}>Ends {completionDateMeta.readable}</Text>}
             </>
           )}
@@ -1233,6 +1537,11 @@ export default function AddGoalScreen({ navigation }) {
         returnToGoalCreationChoice();
       }
       navigation.goBack();
+      if (!isFormDirty()) {
+        navigation.goBack();
+      } else {
+        promptDiscard(undefined);
+      }
     } else {
       setStep((prev) => Math.max(prev - 1, 0));
     }
@@ -1241,12 +1550,13 @@ export default function AddGoalScreen({ navigation }) {
   const isOwner = selectedGardenId !== "personal" && sharedGardenSettings.ownerId && auth.currentUser && sharedGardenSettings.ownerId === auth.currentUser.uid;
   const canEditPlants = selectedGardenId === "personal" || isOwner || !sharedGardenSettings.restrictEditPlants;
 
-  const save = async () => {
+   const save = async () => {
     if (!auth.currentUser || isSaving || !canSave) return;
     if (selectedGardenId !== "personal" && !canEditPlants) {
       Alert.alert("Restricted", "Only the owner can add goals to this shared garden.");
       return;
     }
+    
     setIsSaving(true);
     try {
       const goalData = {
@@ -1316,6 +1626,9 @@ export default function AddGoalScreen({ navigation }) {
           params: { goalId: docRef.id, source: "goals" },
         });
       }
+      setAddGoalDirty(false);
+      isLeavingAfterSaveRef.current = true;
+      navigation.navigate("Goals", { screen: "Goal", params: { goalId: docRef.id, source: "goals" } });
     } catch (error) {
       Alert.alert("Error", "Could not save your goal.");
     } finally {
@@ -1341,7 +1654,7 @@ export default function AddGoalScreen({ navigation }) {
 
           <ScrollView
             style={styles.contentArea}
-            contentContainerStyle={styles.formScrollContent}
+            contentContainerStyle={[styles.formScrollContent, { paddingBottom: Math.max(24, insets.bottom + 240) }]}
             keyboardShouldPersistTaps="handled"
             onScroll={() => Keyboard.dismiss()}
             onLayout={(event) => setScrollViewHeight(event.nativeEvent.layout.height)}
@@ -1352,7 +1665,7 @@ export default function AddGoalScreen({ navigation }) {
           >
             {renderStepContent()}
 
-            {!!formError && (
+            {!!formError && !(completionDateMeta && completionDateMeta.daysLeft < 0) && (
               <View style={styles.errorInline}>
                 <Text style={styles.errorInlineText}>{formError}</Text>
               </View>
@@ -1360,9 +1673,9 @@ export default function AddGoalScreen({ navigation }) {
           </ScrollView>
         </KeyboardAvoidingView>
 
-        <View style={styles.stepFooterRow}>
+        <View style={[styles.stepFooterRow, { position: 'absolute', left: 12, right: 12, bottom: insets.bottom + 88, zIndex: 1000, elevation: 20 }]}> 
           <View style={styles.footerProgressWrap}>
-            <StepProgressBar total={stepLabels.length} index={step} />
+            <StepProgressBar total={stepLabels.length} index={step} accent={theme.accent} />
           </View>
           <View style={styles.stepButtonGroup}>
             <Button
@@ -1371,6 +1684,7 @@ export default function AddGoalScreen({ navigation }) {
               onPress={goBackStep}
               disabled={isSaving}
               style={styles.stepButton}
+              accent={theme.accent}
             />
             {step < stepLabels.length - 1 ? (
               <Button
@@ -1379,9 +1693,10 @@ export default function AddGoalScreen({ navigation }) {
                 onPress={goNextStep}
                 disabled={isSaving || (step === 0 && name.trim().length < 3)}
                 style={styles.stepButton}
+                accent={theme.accent}
               />
             ) : (
-              <Button variant="primary" label={isSaving ? "Saving..." : "Save Goal"} onPress={save} disabled={isSaving || !canSave || (selectedGardenId !== "personal" && !canEditPlants)} style={styles.stepButton} />
+              <Button variant="primary" accent={theme.accent} label={isSaving ? "Saving..." : "Save Goal"} onPress={save} disabled={isSaving || !canSave || (selectedGardenId !== "personal" && !canEditPlants)} style={styles.stepButton} />
             )}
           </View>
         </View>
@@ -1411,7 +1726,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderRadius: 20,
   },
-  actionButtonShadowPrimary: { backgroundColor: "#4aa93a" },
+  actionButtonShadowPrimary: { backgroundColor: "#c3cfdb" },
   actionButtonShadowSecondary: { backgroundColor: "#c3cfdb" },
   actionButtonFace: {
     height: 52,
@@ -1420,9 +1735,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 16,
   },
-  actionButtonPrimary: { backgroundColor: "#59d700" },
+  actionButtonPrimary: { backgroundColor: theme.accent },
   actionButtonSecondary: { backgroundColor: "#e7edf5" },
-  actionButtonPrimaryDisabled: { backgroundColor: "#97cd71"},
+  actionButtonPrimaryDisabled: { backgroundColor: "#c3cfdb" },
   actionButtonSecondaryDisabled: { backgroundColor: "#dde3ea" },
   actionButtonPressed: { transform: [{ translateY: 4 }] },
   actionButtonText: { fontSize: 15, fontFamily: 'CeraRoundProDEMO-Black' },
@@ -1432,7 +1747,7 @@ const styles = StyleSheet.create({
   headerWrapper: {
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderRadius: 24,
-    shadowColor: '#4c6782',
+    shadowColor: theme.accent,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.16,
     shadowRadius: 0,
@@ -1517,7 +1832,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     width: "100%",
     gap: 12,
-    marginBottom: 100,
   },
   stepButton: { flex: 1 },
   sectionLabel: { fontSize: 13, color: theme.text, marginBottom: 8, fontFamily: 'CeraRoundProDEMO-Black' },
@@ -1647,9 +1961,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#c9c9c9',
     borderColor: 'transparent',
   },
-  chipActive: { backgroundColor: "#28b900", borderColor: theme.accent },
+  chipActive: { backgroundColor: theme.accent, borderColor: theme.accent },
   filterStyleChipActive: {
-    backgroundColor: '#28b900',
+    backgroundColor: theme.accent,
     borderColor: theme.accent,
   },
   chipText: { fontSize: 12, color: "#4c5f75", fontFamily: 'CeraRoundProDEMO-Black' },
@@ -1679,7 +1993,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  segmentActive: { backgroundColor: '#28b900', borderColor: theme.accent },
+  segmentActive: { backgroundColor: theme.accent, borderColor: theme.accent },
   segmentText: { fontSize: 14, fontWeight: '900', color: '#ffffff', fontFamily: 'CeraRoundProDEMO-Black' },
   segmentTextActive: { color: '#ffffff', fontFamily: 'CeraRoundProDEMO-Black' },
   row: { flexDirection: "row", marginTop: 10, gap: 10 },
@@ -1694,7 +2008,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  dayPillActive: { backgroundColor: '#28b900', borderColor: theme.accent },
+  dayPillActive: { backgroundColor: theme.accent, borderColor: theme.accent },
   dayText: { fontSize: 14, fontWeight: '900', color: '#ffffff', fontFamily: 'CeraRoundProDEMO-Black' },
   dayTextActive: { color: '#ffffff', fontFamily: 'CeraRoundProDEMO-Black' },
   iconPickerButton: {
@@ -1802,7 +2116,7 @@ const styles = StyleSheet.create({
   iconSelectedPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#59d700',
+    backgroundColor: theme.accent,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -1864,7 +2178,7 @@ const styles = StyleSheet.create({
     height: 76,
     borderRadius: 16,
     borderWidth: 2,
-    borderColor: "#59d700",
+    borderColor: theme.accent,
     backgroundColor: "rgba(89, 215, 0, 0.08)",
     zIndex: -1,
   },
@@ -2016,7 +2330,7 @@ const styles = StyleSheet.create({
     borderColor: "#d6e4f2",
   },
   selectorCardActive: {
-    borderColor: "#59d700",
+    borderColor: theme.accent,
     backgroundColor: "#f8fff2",
   },
   selectorControlRow: {
@@ -2063,7 +2377,7 @@ const styles = StyleSheet.create({
     borderColor: "#d6e4f2",
   },
   plantCardActive: {
-    borderColor: "#59d700",
+    borderColor: theme.accent,
     backgroundColor: "#f8fff2",
   },
   previewAssemblyWrap: {
@@ -2107,7 +2421,7 @@ const styles = StyleSheet.create({
   plantDotActive: {
     width: 20,
     borderRadius: 999,
-    backgroundColor: "#59d700",
+    backgroundColor: theme.accent,
   },
   potPagerWrap: {
     marginTop: 4,
@@ -2134,7 +2448,7 @@ const styles = StyleSheet.create({
     borderColor: "#d6e4f2",
   },
   potCardActive: {
-    borderColor: "#59d700",
+    borderColor: theme.accent,
     backgroundColor: "#f8fff2",
   },
   potPreviewName: {
@@ -2158,7 +2472,7 @@ const styles = StyleSheet.create({
   potDotActive: {
     width: 20,
     borderRadius: 999,
-    backgroundColor: "#59d700",
+    backgroundColor: theme.accent,
   },
   loadMoreIconsBtn: {
     alignSelf: 'center',
@@ -2184,7 +2498,7 @@ const styles = StyleSheet.create({
   errorInline: { marginTop: 10, backgroundColor: theme.dangerBg, borderRadius: theme.radius, padding: 12 },
   errorInlineText: { color: theme.dangerText, fontSize: 12, fontWeight: "700", fontFamily: 'CeraRoundProDEMO-Black' },
   coachOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "center", alignItems: "center", padding: 20 },
-  coachBox: { width: "100%", maxWidth: 400, backgroundColor: theme.surface, borderRadius: theme.radius, padding: 18, shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 6 },
+  coachBox: { width: "100%", maxWidth: 400, backgroundColor: theme.surface, borderRadius: theme.radius, padding: 18, ...require('../utils/shadows').cpShadow({ color: '#000', offset: { width: 0, height: 3 }, opacity: 0.2, radius: 6, elevation: 6 }) },
   coachTitle: { fontSize: 16, fontWeight: "800", marginBottom: 8, color: theme.text },
   coachBody: { fontSize: 13, color: theme.text, marginBottom: 14 },
   coachCloseBtn: { marginTop: 4, alignSelf: "flex-end", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, backgroundColor: theme.accent },
@@ -2194,3 +2508,4 @@ const styles = StyleSheet.create({
   stepCount: { fontSize: 12, fontWeight: "800", color: theme.muted },
 
 });
+
