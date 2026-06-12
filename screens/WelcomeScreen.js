@@ -63,7 +63,7 @@ export default function WelcomeScreen({ navigation, onContinue, onLogin }) {
         <View style={styles.card}>
           <Text style={styles.welcomeTitle}>Welcome to Goal Grower</Text>
           <Text style={styles.welcomeBody}>
-            Build healthy habits and watch your garden grow at your own pace.
+
           </Text>
         </View>
       </View>

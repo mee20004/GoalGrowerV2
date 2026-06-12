@@ -206,6 +206,18 @@ function GoalPlantPreview({ goal, getPlantHealthState, backdropColor = DEFAULT_P
   );
 }
 
+function getStoredHealthLogEntry(logs, dateKey) {
+  const entry = logs?.health?.[dateKey];
+  if (
+    entry &&
+    typeof entry.health === "number" &&
+    typeof entry.done === "boolean"
+  ) {
+    return entry;
+  }
+  return null;
+}
+
 function AnimatedTodayHealthBar({ healthLevel, color }) {
   const clampedLevel = Math.max(1, Math.min(5, Number(healthLevel) || 1));
   const targetRatio = clampedLevel / 5;
@@ -1929,11 +1941,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     date.setDate(anchor.getDate() - offset);
     const dateKey = toKey(date);
     const scheduled = isGoalScheduledOnDate(goalForDerivedState, date);
-    // For group-level history, use group mode for shared multi-user quantity
-    const doneForDate = scheduled && (isSharedMultiUserQuantity
-      ? isGoalDoneForDate(goal, dateKey)
-      : isGoalDoneForDate(goalForDerivedState, dateKey, currentUserId)
-    );
     const isTodayDate = dateKey === todayKey;
     const isPastDay = date.getTime() < anchor.getTime();
 
@@ -1943,14 +1950,30 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
       isFrozenDay = true;
     }
 
+    const healthLog = getStoredHealthLogEntry(goal?.logs, dateKey);
+    if (!isFrozenDay && healthLog?.frozen) {
+      isFrozenDay = true;
+    }
+
+    const doneFromState = isSharedMultiUserQuantity
+      ? isGoalDoneForDate(goal, dateKey)
+      : isGoalDoneForDate(goalForDerivedState, dateKey, currentUserId);
+    const doneForDate = scheduled && (
+      isTodayDate
+        ? doneFromState
+        : (typeof healthLog?.done === "boolean" ? healthLog.done : doneFromState)
+    );
 
     let healthLevel;
     if (isFrozenDay) {
       healthLevel = Number(goal?.frozenHealthLevel) || 5;
-    } else if (typeof goal?.logs?.healthHistory?.[dateKey] === 'number') {
+    } else if (isTodayDate) {
+      healthLevel = getPlantHealthState(goalForDerivedState, date).healthLevel;
+    } else if (healthLog) {
+      healthLevel = healthLog.health;
+    } else if (typeof goal?.logs?.healthHistory?.[dateKey] === "number") {
       healthLevel = goal.logs.healthHistory[dateKey];
     } else {
-      // Fallback: simulate health for this day if not present in healthHistory
       healthLevel = getPlantHealthState(goalForDerivedState, date).healthLevel;
     }
 
@@ -2307,7 +2330,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
               <View style={styles.historyStreakBadge}>
                 <Image source={FIRE_STREAK_ICON} style={styles.historyStreakIcon} resizeMode="contain" />
                 <Text style={styles.historyStreakValue}>
-                  {goal.currentStreak || 0} day streak
+                  {getStoredHealthLogEntry(goal?.logs, todayKey)?.streak ?? goal.currentStreak ?? 0} day streak
                 </Text>
               </View>
             </View>

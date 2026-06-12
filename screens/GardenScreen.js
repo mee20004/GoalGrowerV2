@@ -2896,7 +2896,30 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       </View>
     )}
     {showGardenTutorialCard && (
-      <View style={[styles.tutorialNextWrap, { right: 24, bottom: insets.bottom + 82 }]}> 
+      <View style={[styles.tutorialNextWrap, { left: 24, bottom: insets.bottom + 10 }]}>
+        <View style={styles.tutorialNextButtonWrap}>
+          <View pointerEvents="none" style={[styles.tutorialNextButtonShadow, styles.tutorialSkipButtonShadowColor]} />
+          <Pressable
+            onPress={() => {
+              if (nextTutorialTask?.key) {
+                onOnboardingAction?.(nextTutorialTask.key);
+              }
+            }}
+            disabled={!nextTutorialTask}
+            style={({ pressed }) => [
+              styles.tutorialNextButtonFace,
+              styles.tutorialSkipButtonFaceColor,
+              !nextTutorialTask && styles.tutorialSkipButtonFaceDisabled,
+              pressed && !!nextTutorialTask && styles.tutorialNextButtonPressed,
+            ]}
+          >
+            <Text style={[styles.tutorialSkipBtnText, !nextTutorialTask && styles.tutorialSkipBtnTextDisabled]}>Skip</Text>
+          </Pressable>
+        </View>
+      </View>
+    )}
+    {showGardenTutorialCard && (
+      <View style={[styles.tutorialNextWrap, { right: 24, bottom: insets.bottom + 10 }]}> 
         <View style={styles.tutorialNextButtonWrap}>
           <View pointerEvents="none" style={[styles.tutorialNextButtonShadow, styles.tutorialNextButtonShadowColor]} />
           <Pressable
@@ -3277,6 +3300,9 @@ const styles = StyleSheet.create({
   tutorialNextButtonShadowColor: {
     backgroundColor: '#4aa93a',
   },
+  tutorialSkipButtonShadowColor: {
+    backgroundColor: '#bebebe',
+  },
   tutorialNextButtonFace: {
     height: 52,
     borderRadius: 20,
@@ -3286,6 +3312,12 @@ const styles = StyleSheet.create({
   },
   tutorialNextButtonFaceColor: {
     backgroundColor: '#59d700',
+  },
+  tutorialSkipButtonFaceColor: {
+    backgroundColor: '#ffffff',
+  },
+  tutorialSkipButtonFaceDisabled: {
+    backgroundColor: '#f0f0f0',
   },
   tutorialNextButtonFaceDisabled: {
     backgroundColor: '#97cd71',
@@ -3302,6 +3334,16 @@ const styles = StyleSheet.create({
   },
   tutorialNextBtnTextDisabled: {
     color: '#f7fbf3',
+  },
+  tutorialSkipBtnText: {
+    fontSize: 15,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    color: '#3d3d3d',
+    fontWeight: '900',
+    letterSpacing: 0.1,
+  },
+  tutorialSkipBtnTextDisabled: {
+    color: '#b0b0b0',
   },
   readOnlyHeader: {
     position: 'absolute',

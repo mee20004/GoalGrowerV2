@@ -41,6 +41,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import * as Haptics from "expo-haptics";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Page from "../components/Page";
 import { theme } from "../theme";
 import { useGoals, fromKey } from "../components/GoalsStore";
@@ -497,7 +498,7 @@ function StepProgressBar({ total = 1, index = 0 }) {
   );
 }
 
-export default function AddGoalScreen({ navigation, onGoalSaved, onBack, onboardingMode = false }) {
+export default function AddGoalScreen({ navigation, onGoalSaved, onBack, onSkipOnboarding, onboardingMode = false }) {
   // Load the Cera Round Pro DEMO font only for this screen
   const [fontsLoaded] = useFonts({
     'CeraRoundProDEMO-Black': require('../assets/fonts/CeraRoundProDEMOBlack.otf'),
@@ -505,6 +506,7 @@ export default function AddGoalScreen({ navigation, onGoalSaved, onBack, onboard
 
   // Step state for multi-step form
   const [step, setStep] = useState(0);
+  const insets = useSafeAreaInsets();
   // Early return after all hooks
   if (!fontsLoaded) {
     return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" /></View>;
@@ -1314,7 +1316,30 @@ export default function AddGoalScreen({ navigation, onGoalSaved, onBack, onboard
           </ScrollView>
         </KeyboardAvoidingView>
 
-        <View style={[styles.stepFooterRow, onboardingMode && styles.stepFooterRowOnboarding]}>
+        <View style={[
+          styles.stepFooterRow,
+          onboardingMode && styles.stepFooterRowOnboarding,
+          onboardingMode && { paddingBottom: insets.bottom + 8 },
+        ]}>
+          {onboardingMode && typeof onSkipOnboarding === "function" && (
+            <View style={styles.onboardingSkipRow}>
+              <View style={styles.onboardingSkipButtonWrap}>
+                <View pointerEvents="none" style={[styles.onboardingSkipButtonShadow, styles.onboardingSkipButtonShadowColor]} />
+                <Pressable
+                  onPress={onSkipOnboarding}
+                  disabled={isSaving}
+                  style={({ pressed }) => [
+                    styles.onboardingSkipButtonFace,
+                    styles.onboardingSkipButtonFaceColor,
+                    isSaving && styles.onboardingSkipButtonFaceDisabled,
+                    pressed && !isSaving && styles.actionButtonPressed,
+                  ]}
+                >
+                  <Text style={[styles.onboardingSkipBtnText, isSaving && styles.onboardingSkipBtnTextDisabled]}>Skip</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
           <View style={[styles.footerProgressWrap, onboardingMode && styles.footerProgressWrapOnboarding]}>
             <StepProgressBar total={stepLabels.length} index={step} />
           </View>
@@ -1476,7 +1501,50 @@ const styles = StyleSheet.create({
     marginBottom: 100,
   },
   stepButtonGroupOnboarding: {
-    marginBottom: 44,
+    marginBottom: 0,
+  },
+  onboardingSkipRow: {
+    alignSelf: "flex-end",
+    marginBottom: 10,
+  },
+  onboardingSkipButtonWrap: {
+    height: 44,
+    position: "relative",
+    minWidth: 88,
+  },
+  onboardingSkipButtonShadow: {
+    position: "absolute",
+    top: 3,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 16,
+  },
+  onboardingSkipButtonShadowColor: {
+    backgroundColor: "#bebebe",
+  },
+  onboardingSkipButtonFace: {
+    height: 40,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  onboardingSkipButtonFaceColor: {
+    backgroundColor: "#ffffff",
+  },
+  onboardingSkipButtonFaceDisabled: {
+    backgroundColor: "#f0f0f0",
+  },
+  onboardingSkipBtnText: {
+    fontSize: 13,
+    fontFamily: "CeraRoundProDEMO-Black",
+    color: "#3d3d3d",
+    fontWeight: "900",
+    letterSpacing: 0.1,
+  },
+  onboardingSkipBtnTextDisabled: {
+    color: "#b0b0b0",
   },
   stepButton: { flex: 1 },
   sectionLabel: { fontSize: 13, color: theme.text, marginBottom: 8, fontFamily: 'CeraRoundProDEMO-Black' },

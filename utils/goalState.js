@@ -1,4 +1,4 @@
-import { fromKey, toKey } from "../components/GoalsStore";
+import { fromKey, isScheduledOn, toKey } from "../components/GoalsStore";
 import { logHealthForDay } from "./logHealthForDay";
 
 // --- Trophy/Storage State Freeze Helpers ---
@@ -92,18 +92,7 @@ export function isGoalDoneForDate(goal, dateKey, currentUserId = null) {
 }
 
 export function isGoalScheduledOnDate(goal, date) {
-  const scheduleType = goal?.schedule?.type;
-  const dayOfWeek = new Date(date).getDay();
-
-  if (scheduleType === "everyday") return true;
-  if (scheduleType === "weekdays") return dayOfWeek >= 1 && dayOfWeek <= 5;
-  if (scheduleType === "days") return !!goal?.schedule?.days?.includes(dayOfWeek);
-
-  if (Array.isArray(goal?.schedule?.days) && goal.schedule.days.length > 0) {
-    return goal.schedule.days.includes(dayOfWeek);
-  }
-
-  return true;
+  return isScheduledOn(goal, date);
 }
 
 export function dateFromFirestoreValue(value) {

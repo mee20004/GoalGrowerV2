@@ -12,10 +12,12 @@ const TASKBAR_ICON_MAP = {
   Shop: require('../assets/Icons/Taskbar/Shop.png'),
 };
 
-export default function CenteredTabBar({ state, descriptors, navigation, disabled = false }) {
+export default function CenteredTabBar({ state, descriptors, navigation, disabled = false, hidden = false }) {
   const width = '90%'; // Set your desired width
   const tapScalesRef = useRef({});
   const insets = useSafeAreaInsets();
+
+  if (hidden) return null;
 
   const getTapScale = (routeKey) => {
     if (!tapScalesRef.current[routeKey]) {

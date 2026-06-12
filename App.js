@@ -161,7 +161,7 @@ function MainTabs({ onboardingStep, onboardingActions, onOnboardingAction, onGar
   return (
     <Tab.Navigator
       initialRouteName={lockTaskbar ? 'Garden' : 'Shop'}
-      tabBar={props => <CenteredTabBar {...props} disabled={lockTaskbar} />}
+      tabBar={props => <CenteredTabBar {...props} disabled={lockTaskbar} hidden={lockTaskbar} />}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarShowLabel: false, // Hide text under icons
@@ -626,7 +626,7 @@ function CreateGoalIntroScreen({ onNext, onBack }) {
             First, let's create a goal
           </Text>
           <Text style={{ fontSize: 18, fontWeight: '700', color: '#6b6560', textAlign: 'center', lineHeight: 26, maxWidth: 320, fontFamily: 'CeraRoundProDEMO-Black' }}>
-            Start with one simple goal so you can see how your garden grows as you make progress.
+
           </Text>
         </View>
       </View>
@@ -868,6 +868,7 @@ export default function App() {
                         onboardingMode={true}
                         onBack={() => updateOnboardingStep(ONBOARDING_STEP.CREATE_GOAL_INTRO)}
                         onGoalSaved={(goalId) => updateOnboardingStep(ONBOARDING_STEP.GARDEN_TUTORIAL, { goalId })}
+                        onSkipOnboarding={handleGardenTutorialNext}
                       />
                     )}
                   </RootStack.Screen>
