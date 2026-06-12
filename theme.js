@@ -50,6 +50,26 @@ const baseTheme = {
   topGap: 10,
 };
 
+export function getDarkerAccentColor(accentHex, factor = 0.65) {
+  const normalized = String(accentHex || baseTheme.accent).trim();
+  const hex = normalized.startsWith("#") ? normalized.slice(1) : normalized;
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return "#d6d6d6";
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return `rgb(${Math.round(r * factor)}, ${Math.round(g * factor)}, ${Math.round(b * factor)})`;
+}
+
+export function getLighterAccentColor(accentHex, blend = 0.5) {
+  const normalized = String(accentHex || baseTheme.accent).trim();
+  const hex = normalized.startsWith("#") ? normalized.slice(1) : normalized;
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return "#f1f1f1";
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return `rgb(${Math.round(r + (255 - r) * blend)}, ${Math.round(g + (255 - g) * blend)}, ${Math.round(b + (255 - b) * blend)})`;
+}
+
 function createTheme(accent) {
   return {
     ...baseTheme,

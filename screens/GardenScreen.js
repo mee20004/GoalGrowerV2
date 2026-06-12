@@ -3356,21 +3356,15 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
               styles.waterDropHandle,
               styles.waterDropHandleWater,
               {
+                transform: waterPan.getTranslateTransform(),
                 left: 32,
                 right: undefined,
                 bottom: insets.bottom + 85,
               },
             ]}
           >
-            <Animated.View
-              style={[
-                styles.waterDropHandleInner,
-                { transform: waterPan.getTranslateTransform() },
-              ]}
-            >
-              <Animated.View style={{ opacity: waterDropOpacity, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="water" size={22} color="#fff" />
-              </Animated.View>
+            <Animated.View style={{ opacity: waterDropOpacity, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="water" size={22} color="#fff" />
             </Animated.View>
           </Animated.View>
 
@@ -4565,12 +4559,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 1,
     shadowRadius: 0,
-  },
-  waterDropHandleInner: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   waterDropHandleAddGoal: {
     backgroundColor: 'rgb(82, 153, 61)',

@@ -26,7 +26,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import Page from "../components/Page";
 import EditButtonRestriction from "./EditButtonRestriction";
-import theme, { useTheme } from "../theme";
+import theme, { getDarkerAccentColor, getLighterAccentColor, useTheme } from "../theme";
 import { cpShadow } from "../utils/shadows";
 import SwipeCalendar from '../components/SwipeCalendar';
 import { PLANT_ASSETS } from "../constants/PlantAssets";
@@ -2007,8 +2007,10 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     Haptics.impactAsync(style).catch(() => {});
   };
 
+  const accentShadowColor = getDarkerAccentColor(theme.accent);
+  const uncheckedButtonShadowColor = "#cdcdcd";
   let statusButtonBgColor = "#f1f1f1";
-  let statusButtonShadowColor = "#d6d6d6";
+  let statusButtonShadowColor = uncheckedButtonShadowColor;
   let statusButtonIconColor = theme.accent;
 
   if (isTrophy) {
@@ -2016,50 +2018,31 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     statusButtonShadowColor = "#b7c0c9";
     statusButtonIconColor = "#7b8794";
   } else if (isSharedMultiUserCompletion || isSharedMultiUserQuantity) {
-    // Handle shared goals with new styling
     if (isDone) {
-      // Complete: full accent background with grey shadow and white text
       statusButtonBgColor = theme.accent;
-      statusButtonShadowColor = "#d6d6d6";
+      statusButtonShadowColor = accentShadowColor;
       statusButtonIconColor = "#ffffff";
     } else if (isSharedMultiUserCompletion && currentUserClicked) {
-      // Partial (clicked): lighter solid accent background with darker accent shadow and white text
-      const r = parseInt(theme.accent.slice(1,3), 16);
-      const g = parseInt(theme.accent.slice(3,5), 16);
-      const b = parseInt(theme.accent.slice(5,7), 16);
-      // Create lighter solid color by blending toward white (50% lighter)
-      const lighterR = Math.round(r + (255 - r) * 0.5);
-      const lighterG = Math.round(g + (255 - g) * 0.5);
-      const lighterB = Math.round(b + (255 - b) * 0.5);
-      statusButtonBgColor = `rgb(${lighterR}, ${lighterG}, ${lighterB})`;
-      statusButtonShadowColor = `rgba(${Math.round(r * 0.65)}, ${Math.round(g * 0.65)}, ${Math.round(b * 0.65)}, 0.8)`;
+      statusButtonBgColor = getLighterAccentColor(theme.accent);
+      statusButtonShadowColor = accentShadowColor;
       statusButtonIconColor = "#ffffff";
     } else if (isSharedMultiUserQuantity && Number(currentValue) >= (quantityTargetValue || 1)) {
-      // Partial (clicked): lighter solid accent background with darker accent shadow and white text
-      const r = parseInt(theme.accent.slice(1,3), 16);
-      const g = parseInt(theme.accent.slice(3,5), 16);
-      const b = parseInt(theme.accent.slice(5,7), 16);
-      // Create lighter solid color by blending toward white (50% lighter)
-      const lighterR = Math.round(r + (255 - r) * 0.5);
-      const lighterG = Math.round(g + (255 - g) * 0.5);
-      const lighterB = Math.round(b + (255 - b) * 0.5);
-      statusButtonBgColor = `rgb(${lighterR}, ${lighterG}, ${lighterB})`;
-      statusButtonShadowColor = `rgba(${Math.round(r * 0.65)}, ${Math.round(g * 0.65)}, ${Math.round(b * 0.65)}, 0.8)`;
+      statusButtonBgColor = getLighterAccentColor(theme.accent);
+      statusButtonShadowColor = accentShadowColor;
       statusButtonIconColor = "#ffffff";
     } else {
-      // Default: blank background with colored text
       statusButtonBgColor = "#f1f1f1";
-      statusButtonShadowColor = "#d6d6d6";
+      statusButtonShadowColor = uncheckedButtonShadowColor;
       statusButtonIconColor = theme.accent;
     }
   } else if (isDone) {
     statusButtonBgColor = theme.accent;
-    statusButtonShadowColor = "#d6d6d6";
+    statusButtonShadowColor = accentShadowColor;
     statusButtonIconColor = "#ffffff";
   } else if (isQuantity && Number(currentValue) >= (quantityTargetValue || 1)) {
-    statusButtonBgColor = "#eef6e8";
-    statusButtonShadowColor = "#c6d6b9";
-    statusButtonIconColor = "#2f7d12";
+    statusButtonBgColor = getLighterAccentColor(theme.accent);
+    statusButtonShadowColor = accentShadowColor;
+    statusButtonIconColor = "#ffffff";
   }
 
   const primaryActionBgColor = isTrophy ? "#6d9eff" : theme.accent;

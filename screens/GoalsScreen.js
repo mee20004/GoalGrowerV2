@@ -10,7 +10,7 @@ import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
 // import { getAuth } from "firebase/auth";
 import { Ionicons } from "@expo/vector-icons";
 import Page from "../components/Page";
-import theme, { useTheme } from "../theme";
+import theme, { getDarkerAccentColor, getLighterAccentColor, useTheme } from "../theme";
 import { cpShadow } from "../utils/shadows";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
@@ -167,6 +167,17 @@ export default function GoalsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const { isDoneForDay, selectedDateKey } = useGoals();
+  const sharedGoalCardShadow = useMemo(
+    () =>
+      cpShadow({
+        color: getLighterAccentColor(theme.accent, 0),
+        offset: { width: 0, height: 6 },
+        opacity: 1,
+        radius: 0,
+        elevation: 2,
+      }),
+    [theme.accent]
+  );
 
   const getOptimisticGoalKey = (goalId, sharedGardenId) => `${sharedGardenId ? `shared-${sharedGardenId}` : 'personal'}-${goalId}`;
 
@@ -549,55 +560,39 @@ export default function GoalsScreen({ navigation }) {
       : 0;
 
     // --- Button coloring (match GoalScreen) ---
+    const accentShadowColor = getDarkerAccentColor(theme.accent);
+    const uncheckedButtonShadowColor = '#cdcdcd';
     let buttonBgColor = '#f1f1f1';
-    let buttonShadowColor = '#d6d6d6';
+    let buttonShadowColor = uncheckedButtonShadowColor;
     let buttonIconColor = theme.accent;
-    
+
     // Handle shared goals (completion and quantity)
     if (isSharedMultiUserCompletion || isSharedMultiUserQuantity) {
       if (isDone) {
-        // Complete: full accent background with grey shadow and white text
         buttonBgColor = theme.accent;
-        buttonShadowColor = '#d6d6d6';
+        buttonShadowColor = accentShadowColor;
         buttonIconColor = '#ffffff';
       } else if (isSharedMultiUserCompletion && currentUserClicked) {
-        // Partial (clicked): lighter solid accent background with darker accent shadow and white text
-        const r = parseInt(theme.accent.slice(1,3), 16);
-        const g = parseInt(theme.accent.slice(3,5), 16);
-        const b = parseInt(theme.accent.slice(5,7), 16);
-        // Create lighter solid color by blending toward white (50% lighter)
-        const lighterR = Math.round(r + (255 - r) * 0.5);
-        const lighterG = Math.round(g + (255 - g) * 0.5);
-        const lighterB = Math.round(b + (255 - b) * 0.5);
-        buttonBgColor = `rgb(${lighterR}, ${lighterG}, ${lighterB})`;
-        buttonShadowColor = `rgba(${Math.round(r * 0.65)}, ${Math.round(g * 0.65)}, ${Math.round(b * 0.65)}, 0.8)`;
+        buttonBgColor = getLighterAccentColor(theme.accent);
+        buttonShadowColor = accentShadowColor;
         buttonIconColor = '#ffffff';
       } else if (isSharedMultiUserQuantity && Number(currentValue) >= (quantityTargetValue || 1)) {
-        // Partial (clicked): lighter solid accent background with darker accent shadow and white text
-        const r = parseInt(theme.accent.slice(1,3), 16);
-        const g = parseInt(theme.accent.slice(3,5), 16);
-        const b = parseInt(theme.accent.slice(5,7), 16);
-        // Create lighter solid color by blending toward white (50% lighter)
-        const lighterR = Math.round(r + (255 - r) * 0.5);
-        const lighterG = Math.round(g + (255 - g) * 0.5);
-        const lighterB = Math.round(b + (255 - b) * 0.5);
-        buttonBgColor = `rgb(${lighterR}, ${lighterG}, ${lighterB})`;
-        buttonShadowColor = `rgba(${Math.round(r * 0.65)}, ${Math.round(g * 0.65)}, ${Math.round(b * 0.65)}, 0.8)`;
+        buttonBgColor = getLighterAccentColor(theme.accent);
+        buttonShadowColor = accentShadowColor;
         buttonIconColor = '#ffffff';
       } else {
-        // Default: blank background like other unclicked goals, with colored text
         buttonBgColor = '#f1f1f1';
-        buttonShadowColor = '#d6d6d6';
+        buttonShadowColor = uncheckedButtonShadowColor;
         buttonIconColor = theme.accent;
       }
     } else if (isDone) {
       buttonBgColor = theme.accent;
-      buttonShadowColor = '#d6d6d6';
+      buttonShadowColor = accentShadowColor;
       buttonIconColor = '#ffffff';
     } else if (isQuantity && Number(currentValue) >= (quantityTargetValue || 1)) {
-      buttonBgColor = '#eef6e8';
-      buttonShadowColor = '#c6d6b9';
-      buttonIconColor = '#2f7d12';
+      buttonBgColor = getLighterAccentColor(theme.accent);
+      buttonShadowColor = accentShadowColor;
+      buttonIconColor = '#ffffff';
     }
 
     // Determine if this goal is scheduled for the selected day
@@ -612,6 +607,7 @@ export default function GoalsScreen({ navigation }) {
       <View style={[
         styles.goalCard,
         item.sharedGardenId ? styles.sharedGoalCard : null,
+        item.sharedGardenId ? sharedGoalCardShadow : null,
         !isForSelectedDay && styles.goalCardDimmed,
       ]}>
         <Pressable
@@ -949,13 +945,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     //borderWidth: 3,
     borderColor: '#cdcdcd',
-    ...cpShadow({ color: theme.accent, offset: { width: 0, height: 6 }, opacity: 0.12, radius: 0, elevation: 2 }),
+    ...cpShadow({ color: '#cdcdcd', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   sharedGoalCard: {
-    backgroundColor: '#ffffff', // subtle accent tint for shared goals
-    //borderColor: '#a7efd4',
-    //shadowColor: '#a7efd0',
-    ...cpShadow({ color: '#36ab44', elevation: 2 }),
+    backgroundColor: '#ffffff',
   },
   goalMainPressable: {
     flex: 1,
