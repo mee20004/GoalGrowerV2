@@ -42,6 +42,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import * as Haptics from "expo-haptics";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Page from "../components/Page";
 import useRemeasureTutorialOnFocus from "../components/tutorial/useRemeasureTutorialOnFocus";
 import { useTutorial } from "../contexts/TutorialContext";
@@ -512,16 +513,13 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
   );
 }
 
-export default function AddGoalScreen({ navigation }) {
-  useRemeasureTutorialOnFocus();
-  const {
-    isTutorialActive,
-    currentStep,
-    remeasureTargets,
-    notifyUserAction,
-    returnToGoalCreationChoice,
-  } = useTutorial();
-
+  export default function AddGoalScreen({
+    navigation,
+    onGoalSaved,
+    onBack,
+    onSkipOnboarding,
+    onboardingMode = false,
+  }) {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   // Load the Cera Round Pro DEMO font only for this screen
@@ -531,37 +529,7 @@ export default function AddGoalScreen({ navigation }) {
 
   // Step state for multi-step form
   const [step, setStep] = useState(0);
-  const formStepRef = useRef(step);
-  formStepRef.current = step;
-
-  useEffect(() => {
-    if (!isTutorialActive) return undefined;
-    const frame = requestAnimationFrame(() => {
-      remeasureTargets();
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [isTutorialActive, remeasureTargets, step]);
-
-  useEffect(() => {
-    if (!isTutorialActive || currentStep?.id !== "goal-creation") {
-      return undefined;
-    }
-
-    return navigation.addListener("beforeRemove", (e) => {
-      const action = e.data?.action;
-      const isBack =
-        action?.type === "GO_BACK" ||
-        (action?.type === "POP" &&
-          (action?.payload?.count === undefined || action?.payload?.count <= 1));
-      if (!isBack || formStepRef.current !== 0) return;
-      returnToGoalCreationChoice();
-    });
-  }, [
-    navigation,
-    isTutorialActive,
-    currentStep?.id,
-    returnToGoalCreationChoice,
-  ]);
+  const insets = useSafeAreaInsets();
   // Early return after all hooks
   if (!fontsLoaded) {
     return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" /></View>;
@@ -1533,14 +1501,10 @@ export default function AddGoalScreen({ navigation }) {
   const goNextStep = () => setStep((prev) => Math.min(prev + 1, stepLabels.length - 1));
   const goBackStep = () => {
     if (step === 0) {
-      if (isTutorialActive && currentStep?.id === "goal-creation") {
-        returnToGoalCreationChoice();
-      }
-      navigation.goBack();
-      if (!isFormDirty()) {
-        navigation.goBack();
+      if (typeof onBack === "function") {
+        onBack();
       } else {
-        promptDiscard(undefined);
+        navigation.goBack();
       }
     } else {
       setStep((prev) => Math.max(prev - 1, 0));
@@ -1617,18 +1581,11 @@ export default function AddGoalScreen({ navigation }) {
         );
       }
 
-      const didAdvanceTutorial = notifyUserAction(
-        TUTORIAL_TARGET_KEYS.GOAL_CREATION
-      );
-      if (!didAdvanceTutorial) {
-        navigation.navigate("Goals", {
-          screen: "Goal",
-          params: { goalId: docRef.id, source: "goals" },
-        });
+      if (typeof onGoalSaved === "function") {
+        onGoalSaved(docRef.id);
+      } else {
+        navigation.navigate("Goals", { screen: "Goal", params: { goalId: docRef.id, source: "goals" } });
       }
-      setAddGoalDirty(false);
-      isLeavingAfterSaveRef.current = true;
-      navigation.navigate("Goals", { screen: "Goal", params: { goalId: docRef.id, source: "goals" } });
     } catch (error) {
       Alert.alert("Error", "Could not save your goal.");
     } finally {
@@ -1673,11 +1630,59 @@ export default function AddGoalScreen({ navigation }) {
           </ScrollView>
         </KeyboardAvoidingView>
 
-        <View style={[styles.stepFooterRow, { position: 'absolute', left: 12, right: 12, bottom: insets.bottom + 88, zIndex: 1000, elevation: 20 }]}> 
-          <View style={styles.footerProgressWrap}>
-            <StepProgressBar total={stepLabels.length} index={step} accent={theme.accent} />
+        <View
+          style={[
+            styles.stepFooterRow,
+            onboardingMode && styles.stepFooterRowOnboarding,
+            onboardingMode && { paddingBottom: insets.bottom + 8 },
+          ]}
+        >
+          {onboardingMode && typeof onSkipOnboarding === "function" && (
+            <View style={styles.onboardingSkipRow}>
+              <View style={styles.onboardingSkipButtonWrap}>
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.onboardingSkipButtonShadow,
+                    styles.onboardingSkipButtonShadowColor,
+                  ]}
+                />
+                <Pressable
+                  onPress={onSkipOnboarding}
+                  disabled={isSaving}
+                  style={({ pressed }) => [
+                    styles.onboardingSkipButtonFace,
+                    styles.onboardingSkipButtonFaceColor,
+                    isSaving && styles.onboardingSkipButtonFaceDisabled,
+                    pressed && !isSaving && styles.actionButtonPressed,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.onboardingSkipBtnText,
+                      isSaving && styles.onboardingSkipBtnTextDisabled,
+                    ]}
+                  >
+                    Skip
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+
+          <View
+            style={[
+              styles.footerProgressWrap,
+              onboardingMode && styles.footerProgressWrapOnboarding,
+            ]}
+          >
+            <StepProgressBar
+              total={stepLabels.length}
+              index={step}
+              accent={theme.accent}
+            />
           </View>
-          <View style={styles.stepButtonGroup}>
+          <View style={[styles.stepButtonGroup, onboardingMode && styles.stepButtonGroupOnboarding]}>
             <Button
               variant="secondary"
               label="Back"
@@ -1825,13 +1830,61 @@ const styles = StyleSheet.create({
   privateSectionGap: { height: 8 },
   footer: { flexDirection: "row", paddingTop: 10, paddingBottom: 8 },
   stepFooterRow: { paddingTop: 8, paddingBottom: 12, paddingHorizontal: 2 },
+  stepFooterRowOnboarding: { paddingBottom: 4 },
   footerProgressWrap: { marginBottom: 12 },
+  footerProgressWrapOnboarding: { marginBottom: 8 },
   stepButtonGroup: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     width: "100%",
     gap: 12,
+  },
+  stepButtonGroupOnboarding: {
+    marginBottom: 0,
+  },
+  onboardingSkipRow: {
+    alignSelf: "flex-end",
+    marginBottom: 10,
+  },
+  onboardingSkipButtonWrap: {
+    height: 44,
+    position: "relative",
+    minWidth: 88,
+  },
+  onboardingSkipButtonShadow: {
+    position: "absolute",
+    top: 3,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 16,
+  },
+  onboardingSkipButtonShadowColor: {
+    backgroundColor: "#bebebe",
+  },
+  onboardingSkipButtonFace: {
+    height: 40,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  onboardingSkipButtonFaceColor: {
+    backgroundColor: "#ffffff",
+  },
+  onboardingSkipButtonFaceDisabled: {
+    backgroundColor: "#f0f0f0",
+  },
+  onboardingSkipBtnText: {
+    fontSize: 13,
+    fontFamily: "CeraRoundProDEMO-Black",
+    color: "#3d3d3d",
+    fontWeight: "900",
+    letterSpacing: 0.1,
+  },
+  onboardingSkipBtnTextDisabled: {
+    color: "#b0b0b0",
   },
   stepButton: { flex: 1 },
   sectionLabel: { fontSize: 13, color: theme.text, marginBottom: 8, fontFamily: 'CeraRoundProDEMO-Black' },

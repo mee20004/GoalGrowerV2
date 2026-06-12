@@ -10,8 +10,9 @@ import { doc, setDoc } from 'firebase/firestore';
  * @param {number} health - The health level for the day.
  * @param {boolean} frozen - Whether the plant is frozen on this day.
  * @param {boolean} done - Whether the goal was completed on this day.
+ * @param {number} [streak] - Optional per-goal streak at write time.
  */
-export async function logHealthForDay(userId, goalId, dateKey, health, frozen, done) {
+export async function logHealthForDay(userId, goalId, dateKey, health, frozen, done, streak) {
   if (!userId || !goalId || !dateKey) {
     console.error('[logHealthForDay] Missing parameter:', { userId, goalId, dateKey });
     return;
@@ -29,13 +30,18 @@ export async function logHealthForDay(userId, goalId, dateKey, health, frozen, d
   const ref = doc(db, 'users', userId, 'goals', goalId);
   const { updateDoc } = require('firebase/firestore');
   try {
+    const healthEntry = {
+      health,
+      frozen,
+      done,
+      timestamp: new Date(),
+    };
+    if (typeof streak === "number") {
+      healthEntry.streak = streak;
+    }
     await updateDoc(ref, {
-      [`logs.health.${dateKey}`]: {
-        health,
-        frozen,
-        done,
-        timestamp: new Date(),
-      }
+      [`logs.health.${dateKey}`]: healthEntry,
+      [`logs.healthHistory.${dateKey}`]: health,
     });
     console.log('[logHealthForDay] updateDoc completed', { userId, goalId, dateKey });
   } catch (err) {

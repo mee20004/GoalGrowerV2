@@ -25,8 +25,24 @@ function PlantMark({ big }) {
   );
 }
 
-export default function WelcomeScreen({ navigation }) {
-  const [page, setPage] = useState(0);
+export default function WelcomeScreen({ navigation, onContinue, onLogin }) {
+  const [page, setPage] = useState(1);
+
+  const handleContinue = () => {
+    if (onContinue) {
+      onContinue();
+      return;
+    }
+    navigation.replace("Tabs");
+  };
+
+  const handleLogin = () => {
+    if (onLogin) {
+      onLogin();
+      return;
+    }
+    navigation.replace("Login");
+  };
 
   if (page === 0) {
     return (
@@ -40,90 +56,208 @@ export default function WelcomeScreen({ navigation }) {
   }
 
   return (
-    <View style={[styles.full, { backgroundColor: BG, paddingHorizontal: 24, paddingVertical: 36 }]}>
-      <View style={{ flex: 1 }} />
-      <View style={{ alignItems: "center" }}>
-        <PlantMark />
-        <Text style={[styles.brandOverline, { marginTop: 12 }]}>GOAL GROWER</Text>
+    <View style={styles.container}>
 
-        <Text style={styles.welcomeTitle}>
-          Welcome to{"\n"}
-          <Text style={{ fontSize: 34 }}>Goal Grower</Text>
-        </Text>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}></Text>
+        <View style={styles.card}>
+          <Text style={styles.welcomeTitle}>Welcome to Goal Grower</Text>
+          <Text style={styles.welcomeBody}>
 
-        <Text style={styles.welcomeBody}>
-          Build healthy habits and watch your garden grow at your own pace.
-        </Text>
+          </Text>
+        </View>
       </View>
-      <View style={{ flex: 1 }} />
 
-      <View style={{ width: "100%", maxWidth: 320, alignSelf: "center", gap: 12 }}>
-        <Pressable
-          style={[styles.primaryBtn, { backgroundColor: ACCENT }]}
-          onPress={() => navigation.replace("Tabs")}
-        >
-          <Text style={styles.primaryBtnText}>Get Started</Text>
-        </Pressable>
+      <View style={styles.ctaBlock}>
+        <Text style={styles.ctaPrompt}>Already have an account?</Text>
+        <View style={styles.actionButtonWrap}>
+          <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowSecondary]} />
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionButtonFace,
+              styles.secondaryBtn,
+              pressed && styles.actionButtonPressed,
+            ]}
+            onPress={handleLogin}
+          >
+            <Text style={styles.secondaryBtnText}>Log in</Text>
+          </Pressable>
+        </View>
+      </View>
 
-        <Pressable
-          style={[styles.primaryBtn, { backgroundColor: BG1_BOT }]}
-          onPress={() => navigation.replace("Tabs")}
-        >
-          <Text style={[styles.primaryBtnText, { color: INK }]}>Sign In</Text>
-        </Pressable>
+      <View style={styles.ctaDivider} />
 
-        <Pressable onPress={() => navigation.replace("Tabs")} style={{ alignItems: "center", marginTop: 4 }}>
-          <Text style={styles.guestLink}>Continue as Guest</Text>
-        </Pressable>
+      <View style={styles.ctaBlock}>
+        <Text style={styles.ctaPrompt}>New to Goal Grower?</Text>
+        <View style={styles.actionButtonWrap}>
+          <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionButtonFace,
+              styles.primaryBtn,
+              pressed && styles.actionButtonPressed,
+            ]}
+            onPress={handleContinue}
+          >
+            <Text style={styles.primaryBtnText}>Get Started</Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: theme.bg,
+  full: { flex: 1 },
+  container: { flex: 1, backgroundColor: theme.bg, paddingHorizontal: 16 },
+  headerTopSpacer: { height: 65 },
+  headerWrapper: {
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderRadius: 24,
+    shadowColor: "#4c6782",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 0,
+    elevation: 3,
+    marginTop: 8,
+    marginBottom: 12,
   },
-  container: {
-    flex: 1,
+  headerRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
+    justifyContent: "space-between",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 10,
   },
-  title: {
-    fontSize: 28,
+  headerTitle: {
+    fontSize: 22,
     fontWeight: "900",
     color: theme.text,
+    flexShrink: 1,
+    fontFamily: "CeraRoundProDEMO-Black",
+  },
+  headerBtnPlaceholder: { width: 42, height: 42 },
+  section: { marginBottom: 40 },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: "#000000",
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    fontFamily: "CeraRoundProDEMO-Black",
+  },
+  card: {
+    borderRadius: 24,
+    padding: 16,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 2,
+    alignItems: "center",
+  },
+  heroIconWrap: {
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f7fafc",
+    borderWidth: 1.5,
+    borderColor: "#d9e6f4",
     marginBottom: 12,
-    textAlign: "center",
   },
-  subtitle: {
-    fontSize: 16,
-    color: theme.accent,
-    textAlign: "center",
-    marginBottom: 32,
-  },
-  button: {
-    backgroundColor: theme.surface,
-    paddingVertical: 14,
-    paddingHorizontal: 40,
-    borderRadius: 10,
-  },
-  buttonText: {
-    fontWeight: "800",
-    color: theme.muted,
+  gradWrap: {
+    backgroundColor: BG1_TOP,
   },
   fullCenter: { flex: 1, alignItems: "center", justifyContent: "center", gap: 18, paddingHorizontal: 24 },
   plantCircle: { alignItems: "center", justifyContent: "center", shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 10 }, elevation: 8 },
   soil: { backgroundColor: SOIL, borderBottomLeftRadius: 999, borderBottomRightRadius: 999, marginTop: -6 },
   brandOverline: { fontSize: 12, fontWeight: "800", color: ACCENT, letterSpacing: 2, textTransform: "uppercase" },
 
-  welcomeTitle: { marginTop: 10, fontSize: 26, fontWeight: "900", color: INK, textAlign: "center", lineHeight: 34 },
-  welcomeBody: { marginTop: 10, fontSize: 14, fontWeight: "600", color: MUTED, textAlign: "center", lineHeight: 20, maxWidth: 270 },
+  welcomeTitle: {
+    marginTop: 150,
+    fontSize: 36,
+    fontWeight: "900",
+    color: INK,
+    textAlign: "center",
+    lineHeight: 42,
+    fontFamily: "CeraRoundProDEMO-Black",
+  },
+  welcomeBody: {
+    marginTop: 10,
+    fontSize: 18,
+    fontWeight: "700",
+    color: MUTED,
+    textAlign: "center",
+    lineHeight: 26,
+    maxWidth: 320,
+    fontFamily: "CeraRoundProDEMO-Black",
+  },
 
-  primaryBtn: { borderRadius: 14, paddingVertical: 14, alignItems: "center", justifyContent: "center", shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
-  primaryBtnText: { fontSize: 14, fontWeight: "900", color: "#fff" },
+  ctaBlock: {
+    marginBottom: 22,
+  },
+  ctaDivider: {
+    height: 3,
+    backgroundColor: "#cfcfcf",
+    marginTop: 10,
+    marginBottom: 30,
+    marginHorizontal: 14,
+    borderRadius: 100,
+  },
+  actionButtonWrap: {
+    height: 56,
+    position: "relative",
+  },
+  ctaPrompt: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#363636",
+    marginBottom: 14,
+    textAlign: "center",
+    fontFamily: "CeraRoundProDEMO-Black",
+  },
+  actionButtonShadow: {
+    position: "absolute",
+    top: 4,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 20,
+  },
+  actionButtonShadowPrimary: {
+    backgroundColor: "#bebebe",
+  },
+  actionButtonShadowSecondary: {
+    backgroundColor: "#509a18",
+  },
+  actionButtonFace: {
+    height: 52,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  actionButtonPressed: {
+    transform: [{ translateY: 4 }],
+  },
+  primaryBtn: { backgroundColor: "#ffffff" },
+  secondaryBtn: { backgroundColor: "#58cc02" },
+  primaryBtnText: {
+    fontSize: 19,
+    fontWeight: "800",
+    color: "#3d3d3d",
+    textAlign: "center",
+    fontFamily: "CeraRoundProDEMO-Black",
+  },
+  secondaryBtnText: {
+    fontSize: 19,
+    fontWeight: "800",
+    color: "#ffffff",
+    textAlign: "center",
+    fontFamily: "CeraRoundProDEMO-Black",
+  },
 
   guestLink: { fontSize: 12, fontWeight: "700", color: MUTED, textDecorationLine: "underline" },
 });

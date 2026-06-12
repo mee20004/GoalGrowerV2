@@ -1,44 +1,28 @@
 
 import React, { useState } from "react";
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { View, Text, StyleSheet, Pressable, SafeAreaView, ActivityIndicator, Alert } from "react-native";
-import { doc, setDoc } from 'firebase/firestore';
-import { db } from '../firebaseConfig';
+import { View, Text, StyleSheet, Pressable, SafeAreaView, ActivityIndicator } from "react-native";
 import { useGoals } from "../components/GoalsStore";
 import { auth } from "../firebaseConfig";
-import { logHealthForDay } from "../utils/logHealthForDay";
-import { toKey, addDaysKey, isScheduledOn } from "../components/GoalsStore";
+import { toKey } from "../components/GoalsStore";
 import { updateAppStreak } from "../utils/updateAppStreak";
-import { isGoalDoneForDate } from "../utils/goalState";
+import { backfillGoalHealthLogs } from "../utils/backfillGoalHealthLogs";
 
 export default function EnterScreen({ onDone }) {
   const { goals } = useGoals();
   const [loading, setLoading] = useState(false);
   console.log('[EnterScreen] goals:', goals);
 
-  // Helper to find the last dateKey in logs for a goal
-  function getLastLoggedDateKey(goal) {
-    const logKeys = Object.keys(goal?.logs?.health || {});
-    if (logKeys.length === 0) {
-      // Fallback to createdAt
-      if (goal.createdAt) return toKey(new Date(goal.createdAt));
-      return toKey(new Date());
-    }
-    return logKeys.sort().pop();
-  }
-
   async function handleStartToday() {
     setLoading(true);
     try {
-      // Removed Alert popups for a smoother experience
       const userId = auth.currentUser?.uid;
       if (!userId) {
         setLoading(false);
         if (onDone) await onDone();
         return;
       }
-      // Use local date in YYYY-MM-DD format for todayKey
-      const todayKey = new Date().toLocaleDateString('en-CA');
+      const todayKey = toKey(new Date());
       const storageKey = `lastEnterScreenDate_${userId}`;
       const lastDate = await AsyncStorage.getItem(storageKey);
       if (lastDate === todayKey) {
@@ -47,72 +31,33 @@ export default function EnterScreen({ onDone }) {
         return;
       }
       await AsyncStorage.setItem(storageKey, todayKey);
-      let anyGoalProcessed = false;
-      console.log('[EnterScreen] handleStartToday: goals for processing:', goals.map(g => ({ id: g.id, name: g.name, schedule: g.schedule, kind: g.kind, isFrozenTrophyState: g.isFrozenTrophyState })));
+
+      let goalsBackfilled = 0;
       for (const goal of goals) {
-        // Debug: print schedule and today check
-        const todayDate = new Date();
-        const scheduledToday = isScheduledOn(goal, todayDate);
-        const scheduleMode = goal.schedule?.mode || goal.schedule?.type;
-        const frozen = goal.isFrozenTrophyState || false;
-        if (!goal.schedule) {
-          console.log(`[EnterScreen] Skipping goal (no schedule)`, { goalId: goal.id, name: goal.name });
-          continue;
+        if (!goal?.id) continue;
+        try {
+          const result = await backfillGoalHealthLogs(userId, goal, todayKey);
+          if (result?.wrote) goalsBackfilled += 1;
+        } catch (err) {
+          console.error('[EnterScreen] backfill failed for goal', {
+            goalId: goal.id,
+            error: err?.message || String(err),
+          });
         }
-        if (scheduleMode === "floating") {
-          console.log(`[EnterScreen] Skipping goal (floating schedule)`, { goalId: goal.id, name: goal.name });
-          continue;
-        }
-        if (!scheduledToday) {
-          console.log(`[EnterScreen] Skipping goal (not scheduled today)`, { goalId: goal.id, name: goal.name, schedule: goal.schedule });
-          continue;
-        }
-        if (frozen) {
-          console.log(`[EnterScreen] Skipping goal (frozen trophy state)`, { goalId: goal.id, name: goal.name });
-          continue;
-        }
-        // If we reach here, this goal should be processed
-        anyGoalProcessed = true;
-        let lastKey = getLastLoggedDateKey(goal);
-        let cursor = lastKey;
-        // Loop from the day after lastKey up to today (exclusive)
-        while (cursor < todayKey) {
-          cursor = addDaysKey(cursor, 1);
-          // ...existing code for missed days...
-          // (for brevity, keep original missed day logic here)
-        }
-        // Always log today as not done (false) if scheduled for today
-        // ...existing code for today log...
       }
-      if (!anyGoalProcessed) {
-        console.log('[EnterScreen] No goals processed for today.');
-      }
-      // ...existing code for updateAppStreak and finish...
+      console.log('[EnterScreen] Backfill complete', { goalsBackfilled, totalGoals: goals.length });
+
       try {
         console.log('[EnterScreen] Awaiting updateAppStreak', { userId, todayKey });
         const streak = await updateAppStreak(userId, todayKey);
         console.log('[EnterScreen] updateAppStreak complete, streak:', streak);
-        // Patch health log for today to include streak
-        for (const goal of goals) {
-          if (!goal.id) continue;
-          const ref = require('firebase/firestore').doc(db, 'users', userId, 'goals', goal.id);
-          const { updateDoc } = require('firebase/firestore');
-          // Read the current health log for today if it exists
-          const healthLog = goal.logs?.health?.[todayKey] || {};
-          await updateDoc(ref, {
-            [`logs.health.${todayKey}`]: {
-              ...healthLog,
-              streak,
-              timestamp: new Date(),
-            }
-          });
-        }
       } catch (err) {
-        // Removed Alert for app streak error
+        console.error('[EnterScreen] updateAppStreak error', err?.message || String(err));
       }
+
       if (onDone) await onDone();
     } catch (err) {
-      // Removed Alert for unexpected error
+      console.error('[EnterScreen] handleStartToday error', err?.message || String(err));
     } finally {
       setLoading(false);
       console.log('[EnterScreen] handleStartToday finished');
@@ -135,7 +80,6 @@ export default function EnterScreen({ onDone }) {
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.title}>Welcome!</Text>
-        {/* Add your content here */}
       </View>
       <View style={styles.buttonContainer}>
         <View style={styles.actionButtonWrap}>

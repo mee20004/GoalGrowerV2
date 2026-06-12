@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigation } from '@react-navigation/native';
-import { View, Text, TextInput, Pressable, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, Alert, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { auth, db } from './firebaseConfig';
 import { theme } from './theme';
-import { onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-// NEW: Imported query, where, and getDocs
+import { onAuthStateChanged, signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 
 export default function Login() {
@@ -22,6 +22,19 @@ export default function Login() {
     signInWithEmailAndPassword(auth, email, password).catch((error) => {
       Alert.alert('Login failed', error.message || 'Unable to login.');
     });
+  };
+
+  const handleBackPress = () => {
+    if (view === 'needsUsername') {
+      signOut(auth).catch(() => {
+        setView('loggedOut');
+      });
+      return;
+    }
+
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    }
   };
 
   useEffect(() => {
@@ -102,51 +115,109 @@ export default function Login() {
   // --- STRICT RENDERING ---
   if (view === 'loading') {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#2D5A27" />
-        <Text style={{marginTop: 10}}>Loading Garden...</Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#58cc02" />
+        <Text style={styles.loadingText}>Loading Garden...</Text>
       </View>
     );
   }
 
   if (view === 'loggedOut') {
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Goal Grower</Text>
-        <TextInput style={styles.input} placeholder="Email" onChangeText={setEmail} value={email} autoCapitalize="none" />
-        <TextInput style={styles.input} placeholder="Password" onChangeText={setPassword} value={password} secureTextEntry returnKeyType="go" onSubmitEditing={handleLogin} />
-        <Pressable style={styles.button} onPress={handleLogin}>
-          <Text style={styles.buttonText}>Login</Text>
-        </Pressable>
-        <Pressable style={[styles.button, styles.buttonSecondary]} onPress={() => createUserWithEmailAndPassword(auth, email, password)}>
-          <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Register</Text>
-        </Pressable>
-        <Pressable style={[styles.button, styles.buttonSecondary]} onPress={() => setGuest(true)}>
-          <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Continue as Guest</Text>
-        </Pressable>
-      </View>
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.backButtonWrap}>
+          <Pressable onPress={handleBackPress} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={26} color={theme.accent} />
+          </Pressable>
+        </View>
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={styles.inner}>
+            <Text style={styles.title}>Welcome back!</Text>
+            <Text style={styles.subtitle}>Sign in to your garden</Text>
+            <View style={styles.divider} />
+            <View style={styles.card}>
+              <Text style={styles.inputLabel}>Email</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="you@example.com"
+                placeholderTextColor="#9b948d"
+                onChangeText={setEmail}
+                value={email}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+              <Text style={styles.inputLabel}>Password</Text>
+              <TextInput
+                style={[styles.input, { marginBottom: 0 }]}
+                placeholder="Your password"
+                placeholderTextColor="#9b948d"
+                onChangeText={setPassword}
+                value={password}
+                secureTextEntry
+                returnKeyType="go"
+                onSubmitEditing={handleLogin}
+              />
+            </View>
+            <View style={[styles.actionButtonWrap, { marginTop: 22 }]}>
+              <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
+              <Pressable
+                style={({ pressed }) => [styles.actionButtonFace, styles.actionButtonPrimary, pressed && styles.actionButtonPressed]}
+                onPress={handleLogin}
+              >
+                <Text style={styles.actionButtonTextPrimary}>Log In</Text>
+              </Pressable>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 
   if (view === 'needsUsername') {
     return (
-      <View style={styles.container} key="setup-view">
-        <Text style={styles.title}>Goal Grower</Text>
-        <Text style={styles.subtitle}>Pick a username to continue.</Text>
-        <TextInput 
-          style={styles.input} 
-          placeholder="New Username" 
-          value={username} 
-          onChangeText={setUsername} 
-          autoCapitalize="none"
-        />
-        <Pressable style={styles.button} onPress={handleSaveUsername}>
-          <Text style={styles.buttonText}>Finish Setup</Text>
-        </Pressable>
-        <Pressable style={[styles.button, styles.buttonDanger]} onPress={() => signOut(auth)}>
-          <Text style={[styles.buttonText, styles.buttonTextDanger]}>Logout</Text>
-        </Pressable>
-      </View>
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.backButtonWrap}>
+          <Pressable onPress={handleBackPress} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={26} color={theme.accent} />
+          </Pressable>
+        </View>
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={styles.inner}>
+            <Text style={styles.title}>Almost there</Text>
+            <Text style={styles.subtitle}>Pick a username to continue.</Text>
+            <View style={styles.divider} />
+            <View style={styles.card}>
+              <Text style={styles.inputLabel}>Username</Text>
+              <TextInput
+                style={[styles.input, { marginBottom: 0 }]}
+                placeholder="e.g. plantlover42"
+                placeholderTextColor="#9b948d"
+                value={username}
+                onChangeText={setUsername}
+                autoCapitalize="none"
+              />
+            </View>
+            <View style={[styles.actionButtonWrap, { marginTop: 22 }]}>
+              <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
+              <Pressable
+                style={({ pressed }) => [styles.actionButtonFace, styles.actionButtonPrimary, pressed && styles.actionButtonPressed]}
+                onPress={handleSaveUsername}
+              >
+                <Text style={styles.actionButtonTextPrimary}>Finish Setup</Text>
+              </Pressable>
+            </View>
+            <View style={[styles.actionButtonWrap, { marginTop: 12 }]}>
+              <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowSecondary]} />
+              <Pressable
+                style={({ pressed }) => [styles.actionButtonFace, styles.actionButtonSecondary, pressed && styles.actionButtonPressed]}
+                onPress={() => signOut(auth)}
+              >
+                <Text style={styles.actionButtonTextSecondary}>Logout</Text>
+              </Pressable>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -192,14 +263,96 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.bg, padding: 20 },
-  title: { fontSize: 32, fontWeight: 'bold', color: theme.title, marginBottom: 10 },
-  subtitle: { fontSize: 16, color: theme.muted, textAlign: 'center', marginBottom: 20 },
-  input: { width: '100%', height: 50, borderColor: theme.outline, borderWidth: 1, borderRadius: 10, marginBottom: 15, paddingHorizontal: 15, backgroundColor: theme.surface },
-  button: { width: '100%', height: 50, borderRadius: 10, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', marginBottom: 10, borderWidth: 1, borderColor: theme.outline },
-  buttonText: { color: theme.bg, fontWeight: '800', fontSize: 16 },
-  buttonSecondary: { backgroundColor: theme.surface, borderColor: theme.outline },
-  buttonTextSecondary: { color: theme.text },
-  buttonDanger: { backgroundColor: '#FEE2E2', borderColor: theme.dangerText },
-  buttonTextDanger: { color: theme.dangerText },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.bg },
+  loadingText: { marginTop: 10, fontSize: 14, color: '#6b6560', fontFamily: 'CeraRoundProDEMO-Black' },
+  backButtonWrap: {
+    position: 'absolute',
+    top: 56,
+    left: 16,
+    zIndex: 10,
+  },
+  backButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    shadowColor: '#c3cfdb',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
+  },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 16, paddingBottom: 40 },
+  inner: { width: '100%', maxWidth: 420, alignSelf: 'center' },
+  title: {
+    fontSize: 36,
+    fontWeight: '900',
+    color: '#2d2a26',
+    textAlign: 'center',
+    lineHeight: 42,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    marginBottom: 10,
+  },
+  subtitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#6b6560',
+    textAlign: 'center',
+    lineHeight: 26,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    maxWidth: 320,
+    alignSelf: 'center',
+  },
+  divider: {
+    height: 3,
+    backgroundColor: '#cfcfcf',
+    marginTop: 20,
+    marginBottom: 24,
+    marginHorizontal: 14,
+    borderRadius: 100,
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#4c6782',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#6b6560',
+    fontFamily: 'CeraRoundProDEMO-Black',
+    marginBottom: 4,
+    marginLeft: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  input: {
+    backgroundColor: theme.bg,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginBottom: 10,
+    borderWidth: 0,
+    borderColor: '#e0d7cc',
+    color: '#2d2a26',
+    fontSize: 15,
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
+  actionButtonWrap: { height: 56, position: 'relative' },
+  actionButtonShadow: { position: 'absolute', top: 4, left: 0, right: 0, bottom: 0, borderRadius: 20 },
+  actionButtonShadowPrimary: { backgroundColor: '#509a18' },
+  actionButtonShadowSecondary: { backgroundColor: '#c8bba9' },
+  actionButtonFace: { height: 52, borderRadius: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
+  actionButtonPrimary: { backgroundColor: '#58cc02' },
+  actionButtonSecondary: { backgroundColor: '#f7f1e8' },
+  actionButtonPressed: { transform: [{ translateY: 4 }] },
+  actionButtonTextPrimary: { fontSize: 19, fontWeight: '800', color: '#fff', fontFamily: 'CeraRoundProDEMO-Black' },
+  actionButtonTextSecondary: { fontSize: 19, fontWeight: '800', color: '#3d3d3d', fontFamily: 'CeraRoundProDEMO-Black' },
 });

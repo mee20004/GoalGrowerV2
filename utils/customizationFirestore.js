@@ -5,9 +5,17 @@ import { auth } from "../firebaseConfig";
 export function subscribePersonalCustomizations(userId, setCustomizations) {
   if (!userId) return () => {};
   const ref = doc(db, "users", userId, "meta", "customizations");
-  const unsub = onSnapshot(ref, (snap) => {
-    setCustomizations(snap.exists() ? snap.data() : {});
-  });
+  const unsub = onSnapshot(
+    ref,
+    (snap) => {
+      setCustomizations(snap.exists() ? snap.data() : {});
+    },
+    (error) => {
+      if (error?.code !== 'permission-denied' || auth.currentUser?.uid === userId) {
+        console.error('Error loading personal customizations', error);
+      }
+    }
+  );
   return unsub;
 }
 
@@ -23,9 +31,17 @@ import { db } from "../firebaseConfig";
 export function subscribeSharedCustomizations(sharedGardenId, setCustomizations) {
   if (!sharedGardenId) return () => {};
   const ref = doc(db, "sharedGardens", sharedGardenId, "meta", "customizations");
-  const unsub = onSnapshot(ref, (snap) => {
-    setCustomizations(snap.exists() ? snap.data() : {});
-  });
+  const unsub = onSnapshot(
+    ref,
+    (snap) => {
+      setCustomizations(snap.exists() ? snap.data() : {});
+    },
+    (error) => {
+      if (error?.code !== 'permission-denied' || auth.currentUser?.uid) {
+        console.error('Error loading shared customizations', error);
+      }
+    }
+  );
   return unsub;
 }
 

@@ -209,6 +209,18 @@ function GoalPlantPreview({ goal, getPlantHealthState, backdropColor = DEFAULT_P
   );
 }
 
+function getStoredHealthLogEntry(logs, dateKey) {
+  const entry = logs?.health?.[dateKey];
+  if (
+    entry &&
+    typeof entry.health === "number" &&
+    typeof entry.done === "boolean"
+  ) {
+    return entry;
+  }
+  return null;
+}
+
 function AnimatedTodayHealthBar({ healthLevel, color }) {
   const clampedLevel = Math.max(1, Math.min(5, Number(healthLevel) || 1));
   const targetRatio = clampedLevel / 5;
@@ -592,7 +604,95 @@ const IconItem = memo(({ iconName, isActive, onSelect }) => (
   </Pressable>
 ));
 
-export default function GoalScreen({ route, navigation }) {
+function SwipeCalendar({ month, setMonth, selectedDate, onSelectDate }) {
+  const [calendarWidth, setCalendarWidth] = useState(0);
+  const calendarPagerRef = useRef(null);
+
+  const calendarCells = useMemo(() => buildMonthGrid(month), [month]);
+  const prevMonth = useMemo(() => new Date(month.getFullYear(), month.getMonth() - 1, 1), [month]);
+  const nextMonth = useMemo(() => new Date(month.getFullYear(), month.getMonth() + 1, 1), [month]);
+  const prevMonthCells = useMemo(() => buildMonthGrid(prevMonth), [prevMonth]);
+  const nextMonthCells = useMemo(() => buildMonthGrid(nextMonth), [nextMonth]);
+
+  useEffect(() => {
+    if (!calendarWidth || !calendarPagerRef.current) return;
+    calendarPagerRef.current.scrollTo({ x: calendarWidth, animated: false });
+  }, [calendarWidth, month]);
+
+  const handleCalendarScrollEnd = (event) => {
+    if (!calendarWidth) return;
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const pageIndex = Math.round(offsetX / calendarWidth);
+    if (pageIndex === 0) {
+      setMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+    } else if (pageIndex === 2) {
+      setMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+    }
+  };
+
+  const todayStart = toStartOfDay(new Date());
+
+  return (
+    <View style={styles.calendarCard}>
+      <Text style={styles.helperText}>Swipe the calendar left/right to move by month.</Text>
+      <ScrollView
+        ref={calendarPagerRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        bounces={false}
+        onLayout={(e) => setCalendarWidth(e.nativeEvent.layout.width)}
+        onMomentumScrollEnd={handleCalendarScrollEnd}
+        scrollEventThrottle={16}
+      >
+        {[{ month: prevMonth, cells: prevMonthCells }, { month, cells: calendarCells }, { month: nextMonth, cells: nextMonthCells }].map((entry, pageIdx) => (
+          <View key={`${entry.month.getFullYear()}-${entry.month.getMonth()}-${pageIdx}`} style={[styles.calendarPage, { width: calendarWidth || undefined }]}> 
+            <View style={styles.calendarHeader}>
+              <Text style={styles.calendarHeaderText}>{monthLabel(entry.month)}</Text>
+            </View>
+
+            <View style={styles.calendarWeekHeader}>
+              {WEEKDAY_LABELS.map((label, idx) => (
+                <Text key={`${label}-${idx}`} style={styles.calendarWeekHeaderText}>{label}</Text>
+              ))}
+            </View>
+
+            <View style={styles.calendarGridFull}>
+              {entry.cells.map((day, idx) => {
+                const dayDate = day ? new Date(entry.month.getFullYear(), entry.month.getMonth(), day) : null;
+                const isToday = !!dayDate && toStartOfDay(dayDate).getTime() === todayStart.getTime();
+                const isPast = !!dayDate && toStartOfDay(dayDate).getTime() < todayStart.getTime();
+                const iso = day ? toISODate(new Date(entry.month.getFullYear(), entry.month.getMonth(), day)) : "";
+                const isSelected = !!day && selectedDate === iso;
+
+                return (
+                  <Pressable
+                    key={`${pageIdx}-${idx}-${day || "blank"}`}
+                    onPress={() => day && !isPast && onSelectDate(iso)}
+                    disabled={!day || isPast}
+                    style={[
+                      styles.calendarCell,
+                      isPast && styles.calendarCellPast,
+                      isToday && styles.calendarCellToday,
+                      isSelected && styles.calendarCellSelected,
+                      !day && styles.calendarCellEmpty,
+                    ]}
+                  >
+                    <Text style={[styles.calendarCellText, isPast && styles.calendarCellTextPast, isSelected && styles.calendarCellTextSelected]}>
+                      {day || ""}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+export default function GoalScreen({ route, navigation, tutorialLocked = false, onTutorialGoalCompleted }) {
   // --- ICON PICKER STATE (ported from AddGoalScreen) ---
   const [iconSearch, setIconSearch] = useState("");
   const [visibleIconCount, setVisibleIconCount] = useState(120);
@@ -835,6 +935,13 @@ export default function GoalScreen({ route, navigation }) {
   }, [goalId, isSharedGoalView, routeSharedGardenId, uid]);
 
   useEffect(() => {
+    if (!tutorialLocked || !goal) return;
+    if (isGoalDoneForDate(goal, selectedDateKey)) {
+      onTutorialGoalCompleted?.(goal.id);
+    }
+  }, [goal, onTutorialGoalCompleted, selectedDateKey, tutorialLocked]);
+
+  useEffect(() => {
     if (isSharedGoalView) {
       setShelfPosition(goal?.shelfPosition || null);
       return;
@@ -940,6 +1047,10 @@ export default function GoalScreen({ route, navigation }) {
   }, [goal]);
 
   const handleBack = () => {
+    if (tutorialLocked) {
+      return;
+    }
+
     if (navigation.canGoBack()) {
       navigation.goBack();
       return;
@@ -1846,11 +1957,6 @@ export default function GoalScreen({ route, navigation }) {
     date.setDate(rangeStartDate.getDate() + offset);
     const dateKey = toKey(date);
     const scheduled = isGoalScheduledOnDate(goalForDerivedState, date);
-    // For group-level history, use group mode for shared multi-user quantity
-    const doneForDate = scheduled && (isSharedMultiUserQuantity
-      ? isGoalDoneForDate(goal, dateKey)
-      : isGoalDoneForDate(goalForDerivedState, dateKey, currentUserId)
-    );
     const isTodayDate = dateKey === todayKey;
     const isPastDay = date.getTime() < anchor.getTime();
 
@@ -1860,14 +1966,30 @@ export default function GoalScreen({ route, navigation }) {
       isFrozenDay = true;
     }
 
+    const healthLog = getStoredHealthLogEntry(goal?.logs, dateKey);
+    if (!isFrozenDay && healthLog?.frozen) {
+      isFrozenDay = true;
+    }
+
+    const doneFromState = isSharedMultiUserQuantity
+      ? isGoalDoneForDate(goal, dateKey)
+      : isGoalDoneForDate(goalForDerivedState, dateKey, currentUserId);
+    const doneForDate = scheduled && (
+      isTodayDate
+        ? doneFromState
+        : (typeof healthLog?.done === "boolean" ? healthLog.done : doneFromState)
+    );
 
     let healthLevel;
     if (isFrozenDay) {
       healthLevel = Number(goal?.frozenHealthLevel) || 5;
-    } else if (typeof goal?.logs?.healthHistory?.[dateKey] === 'number') {
+    } else if (isTodayDate) {
+      healthLevel = getPlantHealthState(goalForDerivedState, date).healthLevel;
+    } else if (healthLog) {
+      healthLevel = healthLog.health;
+    } else if (typeof goal?.logs?.healthHistory?.[dateKey] === "number") {
       healthLevel = goal.logs.healthHistory[dateKey];
     } else {
-      // Fallback: simulate health for this day if not present in healthHistory
       healthLevel = getPlantHealthState(goalForDerivedState, date).healthLevel;
     }
 
@@ -2252,7 +2374,7 @@ export default function GoalScreen({ route, navigation }) {
               <View style={styles.historyStreakBadge}>
                 <Image source={FIRE_STREAK_ICON} style={styles.historyStreakIcon} resizeMode="contain" />
                 <Text style={styles.historyStreakValue}>
-                  {goal.currentStreak || 0} day streak
+                  {getStoredHealthLogEntry(goal?.logs, todayKey)?.streak ?? goal.currentStreak ?? 0} day streak
                 </Text>
               </View>
             </View>
