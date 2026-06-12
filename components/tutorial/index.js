@@ -8,4 +8,3 @@ export { default as TutorialWelcomeCard } from "./TutorialWelcomeCard";
 export { default as TutorialCompletionCard } from "./TutorialCompletionCard";
 export { default as TutorialComparisonImages } from "./TutorialComparisonImages";
 export { default as TutorialProgress } from "./TutorialProgress";
-export { default as TutorialDevPanel } from "./TutorialDevPanel";

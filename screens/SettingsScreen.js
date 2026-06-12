@@ -18,10 +18,9 @@ import {
   setNotificationMode,
 } from "../utils/notifications";
 import { useTutorial } from "../contexts/TutorialContext";
-import { DEV_TUTORIAL_TOOLS_ENABLED } from "../tutorial/devConfig";
 
 export default function SettingsScreen({ navigation }) {
-  const { previewTutorial } = useTutorial();
+  const { replayTutorial } = useTutorial();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -258,27 +257,28 @@ export default function SettingsScreen({ navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 120 }]} showsVerticalScrollIndicator={false}>
-        {DEV_TUTORIAL_TOOLS_ENABLED ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Developer</Text>
-            <View style={styles.actionButtonWrap}>
-              <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
-              <Pressable
-                onPress={async () => {
-                  await previewTutorial();
-                  navigation.goBack();
-                }}
-                style={({ pressed }) => [
-                  styles.actionButtonFace,
-                  styles.saveButton,
-                  pressed && styles.actionButtonPressed,
-                ]}
-              >
-                <Text style={styles.saveButtonText}>Preview onboarding tutorial</Text>
-              </Pressable>
-            </View>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Help</Text>
+          <Text style={styles.switchHint}>
+            Walk through the onboarding guide again from the beginning.
+          </Text>
+          <View style={[styles.actionButtonWrap, { marginTop: 12 }]}>
+            <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
+            <Pressable
+              onPress={async () => {
+                await replayTutorial();
+                navigation.goBack();
+              }}
+              style={({ pressed }) => [
+                styles.actionButtonFace,
+                styles.saveButton,
+                pressed && styles.actionButtonPressed,
+              ]}
+            >
+              <Text style={styles.saveButtonText}>Replay Tutorial</Text>
+            </Pressable>
           </View>
-        ) : null}
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>

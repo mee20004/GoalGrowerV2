@@ -21,7 +21,6 @@ import {
   resetOnboardingState,
   rectsEqual,
 } from "../tutorial";
-import { DEV_TUTORIAL_TOOLS_ENABLED } from "../tutorial/devConfig";
 import { TUTORIAL_TARGET_KEYS } from "../tutorial/constants";
 import {
   canAdvanceFromUserAction,
@@ -49,8 +48,6 @@ export function TutorialProvider({
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [targetLayouts, setTargetLayouts] = useState({});
   const targetsRef = useRef(new Map());
-  const devPreviewRef = useRef(false);
-  const [devPreview, setDevPreview] = useState(false);
   const pendingNavigationStepIdRef = useRef(null);
   const [hasExistingGoals, setHasExistingGoals] = useState(false);
   const [tutorialAwardGranted, setTutorialAwardGranted] = useState(false);
@@ -107,7 +104,6 @@ export function TutorialProvider({
   const isTutorialFinished = completed || skipped;
   const isTutorialActive =
     isTutorialEligible && !isTutorialFinished && currentStepIndex < TUTORIAL_STEP_COUNT;
-  const isDevPreview = DEV_TUTORIAL_TOOLS_ENABLED && devPreview;
   const progress = getTutorialProgress(currentStepIndex, TUTORIAL_STEP_COUNT);
 
   const syncStepNavigation = useCallback(
@@ -273,10 +269,7 @@ export function TutorialProvider({
     setSkipped(false);
     setCurrentStepIndex(TUTORIAL_STEP_COUNT - 1);
     pendingNavigationStepIdRef.current = null;
-    const skipPersist = DEV_TUTORIAL_TOOLS_ENABLED && devPreviewRef.current;
-    devPreviewRef.current = false;
-    setDevPreview(false);
-    if (userId && !skipPersist) {
+    if (userId) {
       const alreadyGranted = tutorialAwardGranted || await loadTutorialAwardGranted(userId);
       if (!alreadyGranted) {
         await persistTutorialAwardGranted(userId, true);
@@ -290,41 +283,27 @@ export function TutorialProvider({
     setSkipped(true);
     setCompleted(true);
     pendingNavigationStepIdRef.current = null;
-    const skipPersist = DEV_TUTORIAL_TOOLS_ENABLED && devPreviewRef.current;
-    devPreviewRef.current = false;
-    setDevPreview(false);
-    if (userId && !skipPersist) {
+    if (userId) {
       await persistOnboardingSkipped(userId, true);
     }
   }, [userId]);
 
-  const resetTutorial = useCallback(async () => {
-    setCompleted(false);
-    setSkipped(false);
-    setCurrentStepIndex(0);
-    devPreviewRef.current = false;
-    setDevPreview(false);
-    pendingNavigationStepIdRef.current = null;
-    if (userId) {
-      await resetOnboardingState(userId);
-    }
-  }, [userId]);
+  const replayTutorial = useCallback(async () => {
+    if (!userId) return;
 
-  const previewTutorial = useCallback(async () => {
-    if (!DEV_TUTORIAL_TOOLS_ENABLED || !userId) return;
-    devPreviewRef.current = true;
-    setDevPreview(true);
     await resetOnboardingState(userId);
     setCompleted(false);
     setSkipped(false);
     setCurrentStepIndex(0);
     pendingNavigationStepIdRef.current = null;
 
-    const goalsHomeStep = getTutorialStepByIndex(1);
-    if (goalsHomeStep) syncStepNavigation(goalsHomeStep);
+    const welcomeStep = getTutorialStepByIndex(0);
+    if (welcomeStep) syncStepNavigation(welcomeStep);
 
-    setTimeout(remeasureTargets, 150);
-    setTimeout(remeasureTargets, 450);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(remeasureTargets);
+    });
+    setTimeout(remeasureTargets, 250);
   }, [remeasureTargets, syncStepNavigation, userId]);
 
   const advanceStep = useCallback(async () => {
@@ -452,7 +431,6 @@ export function TutorialProvider({
       isTutorialEligible,
       isTutorialFinished,
       isTutorialActive,
-      isDevPreview,
       progress,
       goToStep,
       nextStep,
@@ -465,8 +443,7 @@ export function TutorialProvider({
       skipTutorial,
       skipGoalCreation,
       returnToGoalCreationChoice,
-      resetTutorial,
-      previewTutorial,
+      replayTutorial,
       finishIfLastStep,
       targetLayouts,
       registerTarget,
@@ -490,7 +467,6 @@ export function TutorialProvider({
       isTutorialEligible,
       isTutorialFinished,
       isTutorialActive,
-      isDevPreview,
       progress,
       goToStep,
       nextStep,
@@ -503,8 +479,7 @@ export function TutorialProvider({
       skipTutorial,
       skipGoalCreation,
       returnToGoalCreationChoice,
-      resetTutorial,
-      previewTutorial,
+      replayTutorial,
       finishIfLastStep,
       targetLayouts,
       registerTarget,

@@ -1,15 +1,14 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import {
   Animated,
-  Pressable,
   StyleSheet,
   View,
   useWindowDimensions,
 } from "react-native";
-import { theme } from "../../theme";
+import Svg, { Path } from "react-native-svg";
 import {
-  TUTORIAL_HIGHLIGHT_RADIUS,
   TUTORIAL_OVERLAY_COLOR,
+  buildHighlightCutoutPath,
   isValidRect,
 } from "../../tutorial/layout";
 
@@ -17,7 +16,7 @@ function DimPanel({ style, animatedOpacity }) {
   return (
     <Animated.View
       pointerEvents="auto"
-      style={[styles.dimPanel, style, { opacity: animatedOpacity }]}
+      style={[styles.touchPanel, style, { opacity: animatedOpacity }]}
     />
   );
 }
@@ -30,8 +29,26 @@ function HighlightCutout({ rect, screenWidth, screenHeight, animatedOpacity }) {
   const bottomHeight = Math.max(0, screenHeight - holeBottom);
   const rightWidth = Math.max(0, screenWidth - holeRight);
 
+  const cutoutPath = useMemo(
+    () => buildHighlightCutoutPath(screenWidth, screenHeight, rect),
+    [screenWidth, screenHeight, rect.x, rect.y, rect.width, rect.height]
+  );
+
   return (
     <>
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.visualLayer, { opacity: animatedOpacity }]}
+      >
+        <Svg width={screenWidth} height={screenHeight}>
+          <Path
+            d={cutoutPath}
+            fill={TUTORIAL_OVERLAY_COLOR}
+            fillRule="evenodd"
+          />
+        </Svg>
+      </Animated.View>
+
       <DimPanel
         animatedOpacity={animatedOpacity}
         style={{ top: 0, left: 0, width: screenWidth, height: topHeight }}
@@ -67,20 +84,6 @@ function HighlightCutout({ rect, screenWidth, screenHeight, animatedOpacity }) {
           width: rect.width,
           height: rect.height,
         }}
-      />
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.highlightRing,
-          {
-            left: rect.x,
-            top: rect.y,
-            width: rect.width,
-            height: rect.height,
-            borderRadius: TUTORIAL_HIGHLIGHT_RADIUS,
-            opacity: animatedOpacity,
-          },
-        ]}
       />
     </>
   );
@@ -155,23 +158,16 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 1000,
   },
-  dimPanel: {
+  visualLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  touchPanel: {
     position: "absolute",
-    backgroundColor: TUTORIAL_OVERLAY_COLOR,
+    backgroundColor: "transparent",
   },
   centeredDim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: TUTORIAL_OVERLAY_COLOR,
-  },
-  highlightRing: {
-    position: "absolute",
-    borderWidth: 2,
-    borderColor: theme.accent,
-    shadowColor: theme.accent,
-    shadowOpacity: 0.28,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 6,
   },
   content: {
     ...StyleSheet.absoluteFillObject,

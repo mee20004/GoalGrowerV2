@@ -621,33 +621,33 @@ Design implementation with extensibility in mind.
 
 ---
 
-# Post-Completion Cleanup — Remove Dev Testing Tools
+# Post-Completion Cleanup — Tutorial Dev Tools Removed
 
-Before production release, remove all temporary dev-only tutorial testing helpers. These must not ship.
+Dev-only tutorial testing helpers have been removed. Users can replay the tutorial from Settings.
 
-## Delete files
+## Removed
 
 - `tutorial/devConfig.js`
 - `components/tutorial/TutorialDevPanel.js`
+- `previewTutorial`, `devPreviewRef`, and dev-only skip-persist logic in `TutorialContext`
+- **Developer** section in Settings with **Preview onboarding tutorial**
 
-## Remove references
+## User-facing replay
 
 ### `contexts/TutorialContext.js`
 
-- Remove `DEV_TUTORIAL_TOOLS_ENABLED` import from `tutorial/devConfig`
-- Remove `TutorialDevPanel` import and render
-- Remove `devPreviewRef` and `previewTutorial`
-- Remove dev-only skip-persist logic inside `completeTutorial` and `skipTutorial`
+- `replayTutorial()` clears completed/skipped onboarding flags (not `tutorialAwardGranted`) and restarts from the welcome step
 
 ### `screens/SettingsScreen.js`
 
-- Remove `useTutorial` import (if unused elsewhere on that screen)
-- Remove the entire `{__DEV__ ? ( ... ) : null}` **Developer** block with **Preview onboarding tutorial**
+- **Help** section with **Replay Tutorial** — resets onboarding and returns to the app with the welcome card
 
 ## Verify before release
 
 - [ ] No **Developer** section in Settings
 - [ ] No `devConfig` or `TutorialDevPanel` imports remain
-- [ ] Tutorial only runs for real first-time authenticated users
+- [ ] Tutorial auto-starts only for first-time authenticated users who have not completed/skipped
+- [ ] **Replay Tutorial** in Settings restarts the full flow
 - [ ] Completing or skipping tutorial persists correctly in AsyncStorage
+- [ ] Replay does not re-grant one-time tutorial awards
 

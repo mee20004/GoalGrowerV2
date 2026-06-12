@@ -44,13 +44,9 @@ export function getStepPrimaryLabel(step, { isLastStep = false } = {}) {
   return "Next";
 }
 
-export function shouldShowStepPrimaryButton(
-  step,
-  { devToolsEnabled = false, devPreview = false } = {}
-) {
+export function shouldShowStepPrimaryButton(step) {
   if (!step) return false;
-  if (!step.requiresUserAction) return true;
-  return Boolean(devToolsEnabled && devPreview);
+  return !step.requiresUserAction;
 }
 
 export function shouldNavigateForStep(step) {

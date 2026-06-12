@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 import { useTutorial } from "../../contexts/TutorialContext";
-import { DEV_TUTORIAL_TOOLS_ENABLED } from "../../tutorial/devConfig";
 import { expandRect, isValidRect } from "../../tutorial/layout";
 import {
   getStepPrimaryLabel,
@@ -31,7 +30,6 @@ export default function TutorialHost() {
     currentStepIndex,
     stepCount,
     progress,
-    isDevPreview,
     targetLayouts,
     remeasureTargets,
     getTargetLayout,
@@ -97,10 +95,7 @@ export default function TutorialHost() {
   const showWelcome = isWelcomeStep(currentStep);
   const showCompletion = isCompletionStep(currentStep);
   const isLastStep = isLastStepIndex(currentStepIndex, stepCount);
-  const showPrimary = shouldShowStepPrimaryButton(currentStep, {
-    devToolsEnabled: DEV_TUTORIAL_TOOLS_ENABLED,
-    devPreview: isDevPreview,
-  });
+  const showPrimary = shouldShowStepPrimaryButton(currentStep);
   const usePassthrough =
     shouldUseHighlightPassthrough(currentStep) &&
     isValidRect(overlayConfig.highlightRect);
