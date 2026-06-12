@@ -1,6 +1,6 @@
 ﻿// ...existing code...
 // screens/GoalsScreen.js
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { View, Text, StyleSheet, Pressable, FlatList, ActivityIndicator, Image, Animated, Easing } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
@@ -10,6 +10,10 @@ import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
 // import { getAuth } from "firebase/auth";
 import { Ionicons } from "@expo/vector-icons";
 import Page from "../components/Page";
+import HighlightTarget from "../components/tutorial/HighlightTarget";
+import useRemeasureTutorialOnFocus from "../components/tutorial/useRemeasureTutorialOnFocus";
+import { useTutorial } from "../contexts/TutorialContext";
+import { TUTORIAL_TARGET_KEYS } from "../tutorial/constants";
 import theme, { useTheme } from "../theme";
 import { cpShadow } from "../utils/shadows";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
@@ -141,6 +145,8 @@ function GoalPlantPreview({ goal, getPlantHealthState, backdropColor = DEFAULT_P
 }
 
 export default function GoalsScreen({ navigation }) {
+  const { notifyUserAction, setTutorialHasExistingGoals } = useTutorial();
+  useRemeasureTutorialOnFocus();
     // Utility to update a goal and always recalculate healthLevel for selectedDateKey
     async function updateGoalWithHealth(goal, updatedFields, selectedDateKey) {
       const updatedGoal = { ...goal, ...updatedFields };
@@ -391,8 +397,27 @@ export default function GoalsScreen({ navigation }) {
     };
   }, []);
 
+  const visibleGoalCount = useMemo(() => {
+    const visiblePersonalGoals = goals.filter((g) => {
+      const layoutEntry = layout[g.id];
+      return !layoutEntry || layoutEntry.shelfPosition?.pageId !== STORAGE_PAGE_ID;
+    });
+    const visibleSharedGoals = sharedGoals.filter((g) => {
+      return !g.shelfPosition || g.shelfPosition.pageId !== STORAGE_PAGE_ID;
+    });
+    const sharedGoalIds = new Set(visibleSharedGoals.map((g) => g.id));
+    const dedupedPersonalGoals = visiblePersonalGoals.filter((g) => !sharedGoalIds.has(g.id));
+    return dedupedPersonalGoals.length + visibleSharedGoals.length;
+  }, [goals, sharedGoals, layout]);
+
+  useEffect(() => {
+    setTutorialHasExistingGoals(visibleGoalCount > 0);
+  }, [visibleGoalCount, setTutorialHasExistingGoals]);
+
   const handleAddGoal = () => {
     navigation.navigate("AddGoal");
+    notifyUserAction(TUTORIAL_TARGET_KEYS.ADD_GOAL_BUTTON)
+      || notifyUserAction(TUTORIAL_TARGET_KEYS.ADD_GOAL_FAB);
   };
 
   const handleCalendar = () => {
@@ -805,9 +830,14 @@ export default function GoalsScreen({ navigation }) {
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No goals yet</Text>
           <Text style={styles.emptySubtext}>Create your first goal to get started</Text>
-          <Pressable onPress={handleAddGoal} style={styles.addBtn}>
-            <Text style={styles.addBtnText}>+ Add Goal</Text>
-          </Pressable>
+          <HighlightTarget
+            targetKey={TUTORIAL_TARGET_KEYS.ADD_GOAL_BUTTON}
+            collapsable={false}
+          >
+            <Pressable onPress={handleAddGoal} style={styles.addBtn}>
+              <Text style={styles.addBtnText}>+ Add Goal</Text>
+            </Pressable>
+          </HighlightTarget>
         </View>
       ) : (
         <FlatList
@@ -820,14 +850,21 @@ export default function GoalsScreen({ navigation }) {
         />
       )}
 
-      {/* Floating Add Button */}
-      <Pressable
+      <HighlightTarget
+        targetKey={TUTORIAL_TARGET_KEYS.ADD_GOAL_FAB}
+        collapsable={false}
         style={[styles.fab, { bottom: insets.bottom + 85 }]}
-        onPress={() => navigation.navigate('AddGoal')}
-        android_ripple={{ color: '#fff' }}
       >
-        <Ionicons name="add" size={22} color="#fff" />
-      </Pressable>
+        <Pressable
+          style={styles.fabPressable}
+          onPress={handleAddGoal}
+          android_ripple={{ color: "#fff" }}
+          accessibilityRole="button"
+          accessibilityLabel="Add goal"
+        >
+          <Ionicons name="add" size={22} color="#fff" />
+        </Pressable>
+      </HighlightTarget>
     </Page>
   );
 }
@@ -1117,8 +1154,6 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     backgroundColor: 'rgb(82, 153, 61)',
-    justifyContent: 'center',
-    alignItems: 'center',
     zIndex: 12000,
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0)',
@@ -1127,6 +1162,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 1,
     shadowRadius: 0,
+  },
+  fabPressable: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   contributorOverlayLabel: {
     textAlign: 'center',

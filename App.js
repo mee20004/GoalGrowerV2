@@ -6,7 +6,7 @@ import { StackActions } from '@react-navigation/native';
 import { Text, View, Image, Alert } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { AppState } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator } from "@react-navigation/stack";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -372,6 +372,7 @@ function MainTabs() {
 
 import { FontProvider } from './components/FontProvider';
 import { GoalsProvider } from './components/GoalsStore';
+import { TutorialProvider } from './contexts/TutorialContext';
 import EnterScreen from './screens/EnterScreen';
 import Login from './login';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -385,6 +386,7 @@ export default function App() {
   const userRef = useRef(null);
   const unsubFirestoreRef = useRef(null);
   const appStateListenerRef = useRef(null);
+  const navigationRef = useNavigationContainerRef();
 
   // Helper to check if EnterScreen should be shown
   const checkEnterScreen = async (uid, context) => {
@@ -469,12 +471,19 @@ export default function App() {
     setShowEnterScreen(false);
   };
 
+  const tutorialEnabled = Boolean(user && hasUsername);
+
   return (
     <FontProvider>
       <SafeAreaProvider>
         <GoalsProvider>
+          <TutorialProvider
+            userId={user?.uid ?? null}
+            enabled={tutorialEnabled && !showEnterScreen}
+            navigationRef={navigationRef}
+          >
           <ThemeProvider accentColor={accentColor}>
-            <NavigationContainer>
+            <NavigationContainer ref={navigationRef}>
               <StatusBar style="dark" />
               <RootStack.Navigator screenOptions={{ headerShown: false }}>
                 {user && hasUsername ? (
@@ -490,7 +499,9 @@ export default function App() {
                 )}
               </RootStack.Navigator>
             </NavigationContainer>
+          
           </ThemeProvider>
+</TutorialProvider>
         </GoalsProvider>
       </SafeAreaProvider>
     </FontProvider>

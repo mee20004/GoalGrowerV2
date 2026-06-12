@@ -4,19 +4,32 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import { LinearGradient } from "expo-linear-gradient";
+
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
-import CustomizationScreen from "../components/CustomizationScreen";
-import { subscribeSharedCustomizations, saveSharedCustomizations } from "../utils/customizationFirestore";
-import { subscribePersonalCustomizations, savePersonalCustomizations } from "../utils/customizationFirestore";
 import { FAR_BG_ASSETS } from "../constants/FarBGAssets";
 import { FRAME_ASSETS } from "../constants/FrameAssets";
 import { WALLPAPER_ASSETS } from "../constants/WallpaperAssets";
 import { SHELF_COLOR_SCHEMES } from "../constants/ShelfColors";
+
+import CustomizationScreen from "../components/CustomizationScreen";
 import { toKey } from "../components/GoalsStore";
+
+import {
+  subscribeSharedCustomizations,
+  saveSharedCustomizations,
+  subscribePersonalCustomizations,
+  savePersonalCustomizations,
+} from "../utils/customizationFirestore";
+
 import { ACHIEVEMENTS } from "../AchievementsStore";
-import { updateOverallScoreForUser, updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
+import {
+  updateOverallScoreForUser,
+  updateOverallScoresForSharedGardenMembers,
+} from "../utils/scoreUtils";
+
 import theme, { useTheme } from "../theme";
+
 import {
   calculateGoalStreak,
   getGrowthStage,
@@ -25,7 +38,13 @@ import {
   isGoalDoneForDate,
   isGoalScheduledOnDate,
 } from "../utils/goalState";
+
 import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
+
+import HighlightTarget from "../components/tutorial/HighlightTarget";
+import useRemeasureTutorialOnFocus from "../components/tutorial/useRemeasureTutorialOnFocus";
+import { TUTORIAL_TARGET_KEYS } from "../tutorial/constants";
+
 // --- TROPHY STORAGE SLOT FINDERS (DEBUG) ---
 async function findFirstOpenStorageSlot(uid, goalId) {
   const layoutSnap = await getDocs(collection(db, "users", uid, "gardenLayout"));
@@ -927,6 +946,8 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
 
 // --- 3. MAIN GARDEN SCREEN ---
 export default function GardenScreen({ route, navigation }) {
+  useRemeasureTutorialOnFocus();
+
     // Utility to update a goal and always recalculate healthLevel for today
     async function updateGoalWithHealth(goal, updatedFields) {
       const today = new Date();
@@ -2717,10 +2738,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                 <View style={styles.pageDrawerUnderlayTopBandPrimary} />
                 <View style={styles.pageDrawerUnderlayTopBandSecondary} />
               </View>
-              <View
-                style={styles.gardenMain}
-                onLayout={onGardenMainLayout}
-              >
+              <View style={styles.gardenMain} onLayout={onGardenMainLayout}>
                 {["topShelf", "middleShelf", "bottomShelf"].map((shelfName) =>
                   renderShelf(
                     page.id,
@@ -3105,18 +3123,31 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       {!isReadOnly && drawerShouldShow && (
         <>
           {/* Water drop button (left) */}
-          <Animated.View
-            {...waterPanResponder.panHandlers}
+          <HighlightTarget
+            targetKey={TUTORIAL_TARGET_KEYS.WATER_DROP}
+            collapsable={false}
             style={[
               styles.waterDropHandle,
               styles.waterDropHandleWater,
-              { transform: waterPan.getTranslateTransform(), left: 32, right: undefined, bottom: insets.bottom + 85 },
+              {
+                left: 32,
+                right: undefined,
+                bottom: insets.bottom + 85,
+              },
             ]}
           >
-            <Animated.View style={{ opacity: waterDropOpacity, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="water" size={22} color="#fff" />
+            <Animated.View
+              {...waterPanResponder.panHandlers}
+              style={[
+                styles.waterDropHandleInner,
+                { transform: waterPan.getTranslateTransform() },
+              ]}
+            >
+              <Animated.View style={{ opacity: waterDropOpacity, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="water" size={22} color="#fff" />
+              </Animated.View>
             </Animated.View>
-          </Animated.View>
+          </HighlightTarget>
 
           {/* Plus button (right) */}
           <TouchableOpacity
@@ -4204,6 +4235,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 1,
     shadowRadius: 0,
+  },
+  waterDropHandleInner: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   waterDropHandleAddGoal: {
     backgroundColor: 'rgb(82, 153, 61)',

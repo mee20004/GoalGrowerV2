@@ -43,6 +43,9 @@ import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import * as Haptics from "expo-haptics";
 import Page from "../components/Page";
+import useRemeasureTutorialOnFocus from "../components/tutorial/useRemeasureTutorialOnFocus";
+import { useTutorial } from "../contexts/TutorialContext";
+import { TUTORIAL_TARGET_KEYS } from "../tutorial/constants";
 import theme, { useTheme } from "../theme";
 import { useGoals, fromKey } from "../components/GoalsStore";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
@@ -510,6 +513,15 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
 }
 
 export default function AddGoalScreen({ navigation }) {
+  useRemeasureTutorialOnFocus();
+  const {
+    isTutorialActive,
+    currentStep,
+    remeasureTargets,
+    notifyUserAction,
+    returnToGoalCreationChoice,
+  } = useTutorial();
+
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   // Load the Cera Round Pro DEMO font only for this screen
@@ -519,6 +531,37 @@ export default function AddGoalScreen({ navigation }) {
 
   // Step state for multi-step form
   const [step, setStep] = useState(0);
+  const formStepRef = useRef(step);
+  formStepRef.current = step;
+
+  useEffect(() => {
+    if (!isTutorialActive) return undefined;
+    const frame = requestAnimationFrame(() => {
+      remeasureTargets();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isTutorialActive, remeasureTargets, step]);
+
+  useEffect(() => {
+    if (!isTutorialActive || currentStep?.id !== "goal-creation") {
+      return undefined;
+    }
+
+    return navigation.addListener("beforeRemove", (e) => {
+      const action = e.data?.action;
+      const isBack =
+        action?.type === "GO_BACK" ||
+        (action?.type === "POP" &&
+          (action?.payload?.count === undefined || action?.payload?.count <= 1));
+      if (!isBack || formStepRef.current !== 0) return;
+      returnToGoalCreationChoice();
+    });
+  }, [
+    navigation,
+    isTutorialActive,
+    currentStep?.id,
+    returnToGoalCreationChoice,
+  ]);
   // Early return after all hooks
   if (!fontsLoaded) {
     return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" /></View>;
@@ -1490,6 +1533,10 @@ export default function AddGoalScreen({ navigation }) {
   const goNextStep = () => setStep((prev) => Math.min(prev + 1, stepLabels.length - 1));
   const goBackStep = () => {
     if (step === 0) {
+      if (isTutorialActive && currentStep?.id === "goal-creation") {
+        returnToGoalCreationChoice();
+      }
+      navigation.goBack();
       if (!isFormDirty()) {
         navigation.goBack();
       } else {
@@ -1570,6 +1617,15 @@ export default function AddGoalScreen({ navigation }) {
         );
       }
 
+      const didAdvanceTutorial = notifyUserAction(
+        TUTORIAL_TARGET_KEYS.GOAL_CREATION
+      );
+      if (!didAdvanceTutorial) {
+        navigation.navigate("Goals", {
+          screen: "Goal",
+          params: { goalId: docRef.id, source: "goals" },
+        });
+      }
       setAddGoalDirty(false);
       isLeavingAfterSaveRef.current = true;
       navigation.navigate("Goals", { screen: "Goal", params: { goalId: docRef.id, source: "goals" } });
