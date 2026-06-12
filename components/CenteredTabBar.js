@@ -2,9 +2,6 @@ import React, { useRef } from 'react';
 import { View, TouchableOpacity, StyleSheet, Platform, Image, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import HighlightTarget from './tutorial/HighlightTarget';
-import { TUTORIAL_TARGET_KEYS } from '../tutorial/constants';
-
 const TASKBAR_ICON_MAP = {
   Rank: require('../assets/Icons/Taskbar/TrophyIcon.png'),
   Goals: require('../assets/Icons/Taskbar/CheckIcon.png'),
@@ -135,16 +132,7 @@ export default function CenteredTabBar({ state, descriptors, navigation, disable
               style={styles.tab}
               activeOpacity={0.8}
             >
-              {route.name === 'Journey' ? (
-                <HighlightTarget
-                  targetKey={TUTORIAL_TARGET_KEYS.JOURNEY_TAB}
-                  collapsable={false}
-                >
-                  {iconContent}
-                </HighlightTarget>
-              ) : (
-                iconContent
-              )}
+              {iconContent}
             </TouchableOpacity>
           );
         })}

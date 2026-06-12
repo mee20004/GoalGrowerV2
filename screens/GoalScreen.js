@@ -56,7 +56,7 @@ import {
   dateFromFirestoreValue,
 } from "../utils/goalState";
 import { getBadgeImageForTrophyKey } from "./badgeImages";
-import { formatISOToDisplay, getWeekdayLabelsSync, getWeekStartSync, getShowLast6DaysSync } from '../utils/dateFormat';
+import { formatISOToDisplay, getWeekStartSync, getShowLast6DaysSync } from '../utils/dateFormat';
 
 // Consistent frozen day blue color for streak and health bar
 const FROZEN_DAY_BLUE = '#a6e6ff';
@@ -377,8 +377,6 @@ const DAYS = [
   { label: "Fri", day: 5 },
   { label: "Sat", day: 6 },
 ];
-const WEEKDAY_LABELS = getWeekdayLabelsSync();
-
 const CATEGORIES = ["Body", "Mind", "Spirit", "Work", "Custom"];
 const STORAGE_PAGE_ID = "storage";
 const STORAGE_SHELF_COUNT = 10;
@@ -444,30 +442,7 @@ const normalizeQuantityTargetInput = (value) => {
   return String(clampNum(Number(digits), 1, MAX_QUANTITY_TARGET));
 };
 
-const toISODate = (date) => {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
 const toStartOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
-
-const monthLabel = (date) =>
-  date.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-
-const buildMonthGrid = (monthDate) => {
-  const year = monthDate.getFullYear();
-  const month = monthDate.getMonth();
-  const firstDayWeekIndex = (new Date(year, month, 1).getDay() - getWeekStartSync() + 7) % 7;
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  const cells = [];
-  for (let i = 0; i < firstDayWeekIndex; i += 1) cells.push(null);
-  for (let day = 1; day <= daysInMonth; day += 1) cells.push(day);
-  while (cells.length < 42) cells.push(null);
-  return cells;
-};
 
 function formatScheduleLabel(schedule) {
   if (!schedule) return "No schedule";
@@ -603,94 +578,6 @@ const IconItem = memo(({ iconName, isActive, onSelect }) => (
     <GoalIcon name={iconName} size={45} color={isActive ? "#FFFFFF" : "#111111"} />
   </Pressable>
 ));
-
-function SwipeCalendar({ month, setMonth, selectedDate, onSelectDate }) {
-  const [calendarWidth, setCalendarWidth] = useState(0);
-  const calendarPagerRef = useRef(null);
-
-  const calendarCells = useMemo(() => buildMonthGrid(month), [month]);
-  const prevMonth = useMemo(() => new Date(month.getFullYear(), month.getMonth() - 1, 1), [month]);
-  const nextMonth = useMemo(() => new Date(month.getFullYear(), month.getMonth() + 1, 1), [month]);
-  const prevMonthCells = useMemo(() => buildMonthGrid(prevMonth), [prevMonth]);
-  const nextMonthCells = useMemo(() => buildMonthGrid(nextMonth), [nextMonth]);
-
-  useEffect(() => {
-    if (!calendarWidth || !calendarPagerRef.current) return;
-    calendarPagerRef.current.scrollTo({ x: calendarWidth, animated: false });
-  }, [calendarWidth, month]);
-
-  const handleCalendarScrollEnd = (event) => {
-    if (!calendarWidth) return;
-    const offsetX = event.nativeEvent.contentOffset.x;
-    const pageIndex = Math.round(offsetX / calendarWidth);
-    if (pageIndex === 0) {
-      setMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
-    } else if (pageIndex === 2) {
-      setMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
-    }
-  };
-
-  const todayStart = toStartOfDay(new Date());
-
-  return (
-    <View style={styles.calendarCard}>
-      <Text style={styles.helperText}>Swipe the calendar left/right to move by month.</Text>
-      <ScrollView
-        ref={calendarPagerRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        bounces={false}
-        onLayout={(e) => setCalendarWidth(e.nativeEvent.layout.width)}
-        onMomentumScrollEnd={handleCalendarScrollEnd}
-        scrollEventThrottle={16}
-      >
-        {[{ month: prevMonth, cells: prevMonthCells }, { month, cells: calendarCells }, { month: nextMonth, cells: nextMonthCells }].map((entry, pageIdx) => (
-          <View key={`${entry.month.getFullYear()}-${entry.month.getMonth()}-${pageIdx}`} style={[styles.calendarPage, { width: calendarWidth || undefined }]}> 
-            <View style={styles.calendarHeader}>
-              <Text style={styles.calendarHeaderText}>{monthLabel(entry.month)}</Text>
-            </View>
-
-            <View style={styles.calendarWeekHeader}>
-              {WEEKDAY_LABELS.map((label, idx) => (
-                <Text key={`${label}-${idx}`} style={styles.calendarWeekHeaderText}>{label}</Text>
-              ))}
-            </View>
-
-            <View style={styles.calendarGridFull}>
-              {entry.cells.map((day, idx) => {
-                const dayDate = day ? new Date(entry.month.getFullYear(), entry.month.getMonth(), day) : null;
-                const isToday = !!dayDate && toStartOfDay(dayDate).getTime() === todayStart.getTime();
-                const isPast = !!dayDate && toStartOfDay(dayDate).getTime() < todayStart.getTime();
-                const iso = day ? toISODate(new Date(entry.month.getFullYear(), entry.month.getMonth(), day)) : "";
-                const isSelected = !!day && selectedDate === iso;
-
-                return (
-                  <Pressable
-                    key={`${pageIdx}-${idx}-${day || "blank"}`}
-                    onPress={() => day && !isPast && onSelectDate(iso)}
-                    disabled={!day || isPast}
-                    style={[
-                      styles.calendarCell,
-                      isPast && styles.calendarCellPast,
-                      isToday && styles.calendarCellToday,
-                      isSelected && styles.calendarCellSelected,
-                      !day && styles.calendarCellEmpty,
-                    ]}
-                  >
-                    <Text style={[styles.calendarCellText, isPast && styles.calendarCellTextPast, isSelected && styles.calendarCellTextSelected]}>
-                      {day || ""}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-    </View>
-  );
-}
 
 export default function GoalScreen({ route, navigation, tutorialLocked = false, onTutorialGoalCompleted }) {
   // --- ICON PICKER STATE (ported from AddGoalScreen) ---

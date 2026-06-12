@@ -392,7 +392,6 @@ function MainTabs({ onboardingStep, onboardingActions, onOnboardingAction, onGar
 
 import { FontProvider } from './components/FontProvider';
 import { GoalsProvider } from './components/GoalsStore';
-import { TutorialProvider } from './contexts/TutorialContext';
 import EnterScreen from './screens/EnterScreen';
 import Login from './login';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -905,22 +904,21 @@ export default function App() {
         unsubFirestoreRef.current = onSnapshot(
           doc(db, "users", firebaseUser.uid),
           (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data();
+            if (docSnap.exists()) {
+              const data = docSnap.data();
 
-            setHasUsername(!!data.username);
-            setAccentColor(data.accentColor || theme.accent);
+              setHasUsername(!!data.username);
+              setAccentColor(data.accentColor || theme.accent);
 
-            if (data.username) {
-              loadOnboardingStep(firebaseUser.uid);
+              if (data.username) {
+                loadOnboardingStep(firebaseUser.uid);
+              } else {
+                setOnboardingLoaded(false);
+              }
             } else {
+              setHasUsername(false);
+              setAccentColor(theme.accent);
               setOnboardingLoaded(false);
-            }
-          } else {
-            setHasUsername(false);
-            setAccentColor(theme.accent);
-            setOnboardingLoaded(false);
-          }
             }
             setInitializing(false);
             checkEnterScreen(firebaseUser.uid, "onSnapshot");

@@ -44,14 +44,10 @@ import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Page from "../components/Page";
-import useRemeasureTutorialOnFocus from "../components/tutorial/useRemeasureTutorialOnFocus";
-import { useTutorial } from "../contexts/TutorialContext";
-import { TUTORIAL_TARGET_KEYS } from "../tutorial/constants";
 import theme, { useTheme } from "../theme";
 import { useGoals, fromKey } from "../components/GoalsStore";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { setAddGoalDirty } from '../utils/addGoalGuard';
 import SwipeCalendar from '../components/SwipeCalendar';
@@ -529,7 +525,6 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
 
   // Step state for multi-step form
   const [step, setStep] = useState(0);
-  const insets = useSafeAreaInsets();
   // Early return after all hooks
   if (!fontsLoaded) {
     return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" /></View>;

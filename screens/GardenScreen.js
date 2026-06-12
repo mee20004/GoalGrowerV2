@@ -1,4 +1,12 @@
+import React, { useState, useCallback, useRef, useEffect, memo } from "react";
+import {
+  View, Text, StyleSheet, ActivityIndicator, ScrollView, FlatList,
+  Animated, TouchableOpacity, Platform, UIManager, LayoutAnimation, PanResponder, Image, ImageBackground, useWindowDimensions, TouchableWithoutFeedback, Pressable, Modal, TextInput, Alert, Easing,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StackActions } from "@react-navigation/native";
 import { collection, doc, onSnapshot, setDoc, writeBatch, increment, updateDoc, getDoc, getDocs, arrayUnion, query, where, deleteDoc, runTransaction, deleteField } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebaseConfig";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
@@ -40,10 +48,6 @@ import {
 } from "../utils/goalState";
 
 import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
-
-import HighlightTarget from "../components/tutorial/HighlightTarget";
-import useRemeasureTutorialOnFocus from "../components/tutorial/useRemeasureTutorialOnFocus";
-import { TUTORIAL_TARGET_KEYS } from "../tutorial/constants";
 
 // --- TROPHY STORAGE SLOT FINDERS (DEBUG) ---
 async function findFirstOpenStorageSlot(uid, goalId) {
@@ -105,13 +109,6 @@ async function findFirstOpenSharedStorageSlot(gardenId, goalId) {
 
   return null;
 }
-import React, { useState, useCallback, useRef, useEffect, memo } from "react";
-import { 
-  View, Text, StyleSheet, ActivityIndicator, ScrollView, FlatList, 
-  Animated, TouchableOpacity, Platform, UIManager, LayoutAnimation, PanResponder, Image, ImageBackground, useWindowDimensions, TouchableWithoutFeedback, Pressable, Modal, TextInput, Alert, Easing 
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StackActions } from "@react-navigation/native";
 
 // Persist some state across mounts (helps keep drawer position & current page stable)
 const persistedGardenState = {
@@ -122,35 +119,7 @@ const persistedGardenState = {
 };
 // Ref to prevent multiple restriction alerts
 let editRestrictionAlertShown = { current: false };
-import { collection, doc, onSnapshot, setDoc, writeBatch, increment, updateDoc, getDoc, getDocs, arrayUnion, query, where, deleteDoc, runTransaction, deleteField } from "firebase/firestore";
-import { auth, db } from "../firebaseConfig";
-import { onAuthStateChanged } from "firebase/auth";
-import { theme } from "../theme";
-import Ionicons from "@expo/vector-icons/Ionicons";
-import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
-import * as solidIcons from '@fortawesome/free-solid-svg-icons';
-import { LinearGradient } from "expo-linear-gradient";
-import { PLANT_ASSETS } from "../constants/PlantAssets";
-import { POT_ASSETS } from "../constants/PotAssets";
-import CustomizationScreen from "../components/CustomizationScreen";
-import { subscribeSharedCustomizations, saveSharedCustomizations } from "../utils/customizationFirestore";
-import { subscribePersonalCustomizations, savePersonalCustomizations } from "../utils/customizationFirestore";
-import { FAR_BG_ASSETS } from "../constants/FarBGAssets";
-import { FRAME_ASSETS } from "../constants/FrameAssets";
-import { WALLPAPER_ASSETS } from "../constants/WallpaperAssets";
-import { SHELF_COLOR_SCHEMES } from "../constants/ShelfColors";
-import { toKey } from "../components/GoalsStore";
-import { ACHIEVEMENTS } from "../AchievementsStore";
-import { updateOverallScoreForUser, updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
-import {
-  calculateGoalStreak,
-  getGrowthStage,
-  getPlantHealthState,
-  getRequiredContributors,
-  isGoalDoneForDate,
-  isGoalScheduledOnDate,
-} from "../utils/goalState";
-import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
+
 const FAR_BG = require('../assets/far_background.png');
 const GARDEN_MASCOT = require('../assets/mascot/mascot.png');
 // Asset arrays are now imported from constants
@@ -3381,9 +3350,8 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       {!isReadOnly && drawerShouldShow && (
         <>
           {/* Water drop button (left) */}
-          <HighlightTarget
-            targetKey={TUTORIAL_TARGET_KEYS.WATER_DROP}
-            collapsable={false}
+          <Animated.View
+            {...waterPanResponder.panHandlers}
             style={[
               styles.waterDropHandle,
               styles.waterDropHandleWater,
@@ -3395,7 +3363,6 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
             ]}
           >
             <Animated.View
-              {...waterPanResponder.panHandlers}
               style={[
                 styles.waterDropHandleInner,
                 { transform: waterPan.getTranslateTransform() },
@@ -3405,7 +3372,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                 <Ionicons name="water" size={22} color="#fff" />
               </Animated.View>
             </Animated.View>
-          </HighlightTarget>
+          </Animated.View>
 
           {/* Plus button (right) */}
           <TouchableOpacity

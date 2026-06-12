@@ -22,11 +22,9 @@ import {
   removeGoalNotificationSetting,
   saveNotificationSettings,
 } from "../utils/notifications";
-import { useTutorial } from "../contexts/TutorialContext";
 import { getDateFormatSync, setDateFormat, FORMATS, getWeekStartSync, setWeekStart, WEEK_START_OPTIONS, getShowLast6DaysSync, setShowLast6Days } from '../utils/dateFormat';
 
 export default function SettingsScreen({ navigation }) {
-  const { replayTutorial } = useTutorial();
   const { theme, setAccent } = useTheme();
   const [username, setUsername] = useState("");
   const [weekStart, setWeekStartState] = useState(getWeekStartSync());
@@ -429,29 +427,6 @@ export default function SettingsScreen({ navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 120 }]} showsVerticalScrollIndicator={false}>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Help</Text>
-          <Text style={styles.switchHint}>
-            Walk through the onboarding guide again from the beginning.
-          </Text>
-          <View style={[styles.actionButtonWrap, { marginTop: 12 }]}>
-            <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
-            <Pressable
-              onPress={async () => {
-                await replayTutorial();
-                navigation.goBack();
-              }}
-              style={({ pressed }) => [
-                styles.actionButtonFace,
-                styles.saveButton,
-                pressed && styles.actionButtonPressed,
-              ]}
-            >
-              <Text style={styles.saveButtonText}>Replay Tutorial</Text>
-            </Pressable>
-          </View>
-        </View>
-
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
           <View style={styles.card}>

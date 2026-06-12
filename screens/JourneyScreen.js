@@ -5,7 +5,6 @@ import { useFocusEffect } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
-import useRemeasureTutorialOnFocus from "../components/tutorial/useRemeasureTutorialOnFocus";
 import { theme } from "../theme";
 import { getGoalTrophyRating, updateOverallScoreForUser } from "../utils/scoreUtils";
 import { getScoredGoalsForUser } from "../utils/scoreUtils";
@@ -176,7 +175,6 @@ function ProgressBar({ value, target }) {
 }
 
 export default function JourneyScreen() {
-  useRemeasureTutorialOnFocus();
   // Track which growth goals have been completed in this session
   const [completedGrowthGoals, setCompletedGrowthGoals] = useState([]);
   // Handler for completing a growth goal (stub)
