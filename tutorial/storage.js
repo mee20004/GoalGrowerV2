@@ -9,17 +9,39 @@ function parseBool(value) {
 export async function loadOnboardingState(userId) {
   const keys = onboardingKeysForUser(userId);
   try {
-    const [completedRaw, skippedRaw] = await Promise.all([
+    const [completedRaw, skippedRaw, awardGrantedRaw] = await Promise.all([
       AsyncStorage.getItem(keys.completed),
       AsyncStorage.getItem(keys.skipped),
+      AsyncStorage.getItem(keys.awardGranted),
     ]);
     return {
       completed: parseBool(completedRaw),
       skipped: parseBool(skippedRaw),
+      awardGranted: parseBool(awardGrantedRaw),
     };
   } catch {
-    return { completed: false, skipped: false };
+    return { completed: false, skipped: false, awardGranted: false };
   }
+}
+
+export async function loadTutorialAwardGranted(userId) {
+  const keys = onboardingKeysForUser(userId);
+  try {
+    return parseBool(await AsyncStorage.getItem(keys.awardGranted));
+  } catch {
+    return false;
+  }
+}
+
+export async function persistTutorialAwardGranted(userId, granted = true) {
+  const keys = onboardingKeysForUser(userId);
+  try {
+    if (granted) {
+      await AsyncStorage.setItem(keys.awardGranted, "true");
+    } else {
+      await AsyncStorage.removeItem(keys.awardGranted);
+    }
+  } catch {}
 }
 
 // Write completion / skip state

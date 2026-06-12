@@ -5,7 +5,6 @@ import {
   TUTORIAL_WILTING_PLANT_IMAGE,
 } from "./educationAssets";
 import { TUTORIAL_WELCOME_PLANT_IMAGE } from "./welcomeAssets";
-import { TUTORIAL_COMPLETION_TROPHY_IMAGE } from "./completionAssets";
 
 // Onboarding step sequence (copy aligned with wireframes/welcomeTutorial)
 export const TUTORIAL_STEPS = [
@@ -107,12 +106,13 @@ export const TUTORIAL_STEPS = [
     id: "completion",
     index: 5,
     mode: TUTORIAL_STEP_MODES.CENTERED,
-    title: "You're All Set!",
-    description: "Start planting your goals and watch your garden grow.",
+    title: "Congratulations!",
+    description:
+      "You've completed the tutorial. You're ready to grow your garden!",
     targetKey: null,
     navigation: null,
     requiresUserAction: false,
-    imageSource: TUTORIAL_COMPLETION_TROPHY_IMAGE,
+    imageSource: null,
     variant: "completion",
   },
 ];

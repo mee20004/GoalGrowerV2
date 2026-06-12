@@ -14,7 +14,7 @@ export default function TutorialCompletionCard({
   title,
   description,
   imageSource = null,
-  primaryLabel = "End Tutorial",
+  primaryLabel = "Done",
   onEndTutorial,
 }) {
   const cardOpacity = useRef(new Animated.Value(0)).current;
@@ -22,6 +22,7 @@ export default function TutorialCompletionCard({
   const trophyScale = useRef(new Animated.Value(0.6)).current;
   const trophyOpacity = useRef(new Animated.Value(0)).current;
   const glowOpacity = useRef(new Animated.Value(0)).current;
+  const showRewardImage = Boolean(imageSource);
 
   useEffect(() => {
     cardOpacity.setValue(0);
@@ -30,7 +31,7 @@ export default function TutorialCompletionCard({
     trophyOpacity.setValue(0);
     glowOpacity.setValue(0);
 
-    Animated.parallel([
+    const cardAnimation = Animated.parallel([
       Animated.timing(cardOpacity, {
         toValue: 1,
         duration: 360,
@@ -42,6 +43,15 @@ export default function TutorialCompletionCard({
         tension: 70,
         useNativeDriver: true,
       }),
+    ]);
+
+    if (!showRewardImage) {
+      cardAnimation.start();
+      return undefined;
+    }
+
+    Animated.parallel([
+      cardAnimation,
       Animated.sequence([
         Animated.delay(120),
         Animated.parallel([
@@ -64,7 +74,7 @@ export default function TutorialCompletionCard({
         ]),
       ]),
     ]).start();
-  }, [cardOpacity, cardScale, glowOpacity, title, trophyOpacity, trophyScale]);
+  }, [cardOpacity, cardScale, glowOpacity, showRewardImage, title, trophyOpacity, trophyScale]);
 
   return (
     <View style={styles.centerWrap} pointerEvents="box-none">
@@ -81,7 +91,7 @@ export default function TutorialCompletionCard({
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.description}>{description}</Text>
 
-        {imageSource ? (
+        {showRewardImage ? (
           <View style={styles.trophyWrap}>
             <Animated.View style={[styles.trophyGlow, { opacity: glowOpacity }]} />
             <Animated.View

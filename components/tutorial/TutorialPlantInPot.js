@@ -13,17 +13,19 @@ export default function TutorialPlantInPot({
   const potSource = POT_ASSETS[potKey] || POT_ASSETS.default;
   const plantHeight = size * 0.72;
   const potHeight = size * 0.42;
+  // Match garden shelf: plant base sits at the soil line (~85% up the pot height).
+  const plantBottom = potHeight * 0.85;
 
   return (
     <View style={[styles.wrap, { width: size, height: size }, style]}>
       <Image
-        source={plantSource}
-        style={[styles.plant, { height: plantHeight, bottom: potHeight * 0.55 }]}
+        source={potSource}
+        style={[styles.pot, { height: potHeight }]}
         resizeMode="contain"
       />
       <Image
-        source={potSource}
-        style={[styles.pot, { height: potHeight }]}
+        source={plantSource}
+        style={[styles.plant, { height: plantHeight, bottom: plantBottom }]}
         resizeMode="contain"
       />
     </View>
@@ -38,10 +40,10 @@ const styles = StyleSheet.create({
   plant: {
     position: "absolute",
     width: "88%",
-    zIndex: 1,
+    zIndex: 2,
   },
   pot: {
     width: "72%",
-    zIndex: 2,
+    zIndex: 1,
   },
 });

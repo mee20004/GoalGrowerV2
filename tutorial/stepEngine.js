@@ -1,4 +1,4 @@
-import { TUTORIAL_STEP_MODES } from "./constants";
+import { TUTORIAL_STEP_MODES, TUTORIAL_TARGET_KEYS } from "./constants";
 import { buildTutorialNavigateAction } from "./navigation";
 import { getTutorialStepByIndex } from "./steps";
 
@@ -26,7 +26,7 @@ export function isSilentTutorialStep(step) {
 export function getStepPrimaryLabel(step, { isLastStep = false } = {}) {
   if (!step) return "Next";
   if (isWelcomeStep(step)) return "Get Started";
-  if (isLastStep) return "End Tutorial";
+  if (isCompletionStep(step) || isLastStep) return "Done";
   return "Next";
 }
 
@@ -75,6 +75,37 @@ export function canAdvanceFromUserAction(step, actionId) {
   if (step.advanceOn === actionId) return true;
   if (step.requiresUserAction && step.id === actionId) return true;
   return false;
+}
+
+const CREATE_GOAL_TITLE = "Create a Goal";
+
+export function resolveTutorialStep(step, { hasExistingGoals = false } = {}) {
+  if (!step || !hasExistingGoals) return step;
+
+  if (step.id === "highlight-add-goal") {
+    return {
+      ...step,
+      title: CREATE_GOAL_TITLE,
+      targetKey: TUTORIAL_TARGET_KEYS.ADD_GOAL_FAB,
+      advanceOn: TUTORIAL_TARGET_KEYS.ADD_GOAL_FAB,
+      descriptionParts: [
+        { text: "Tap the " },
+        { text: "+", accent: true },
+        {
+          text: " button in the bottom right, choose a plant, set your schedule, and plant it in your garden!",
+        },
+      ],
+    };
+  }
+
+  if (step.id === "goal-creation") {
+    return {
+      ...step,
+      title: CREATE_GOAL_TITLE,
+    };
+  }
+
+  return step;
 }
 
 export function getNextStepIndex(currentIndex, stepCount) {

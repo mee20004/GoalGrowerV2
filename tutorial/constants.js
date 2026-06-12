@@ -2,11 +2,14 @@
 export const ONBOARDING_COMPLETED_KEY = "goalGrower:onboardingCompleted:v1";
 export const ONBOARDING_SKIPPED_KEY = "goalGrower:onboardingSkipped:v1";
 
+export const TUTORIAL_AWARD_GRANTED_KEY = "goalGrower:tutorialAwardGranted:v1";
+
 export function onboardingKeysForUser(userId) {
   const suffix = userId ? `:${userId}` : "";
   return {
     completed: `${ONBOARDING_COMPLETED_KEY}${suffix}`,
     skipped: `${ONBOARDING_SKIPPED_KEY}${suffix}`,
+    awardGranted: `${TUTORIAL_AWARD_GRANTED_KEY}${suffix}`,
   };
 }
 

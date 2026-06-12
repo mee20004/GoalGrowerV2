@@ -15,8 +15,10 @@ export {
 
 export {
   loadOnboardingState,
+  loadTutorialAwardGranted,
   persistOnboardingCompleted,
   persistOnboardingSkipped,
+  persistTutorialAwardGranted,
   resetOnboardingState,
 } from "./storage";
 
@@ -39,6 +41,7 @@ export {
   isCompletionStep,
   shouldUseHighlightPassthrough,
   getTutorialOverlayPresentation,
+  resolveTutorialStep,
 } from "./stepEngine";
 
 export { TUTORIAL_WELCOME_PLANT_IMAGE } from "./welcomeAssets";

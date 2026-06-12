@@ -14,8 +14,10 @@ import {
   TUTORIAL_STEPS,
   getTutorialStepByIndex,
   loadOnboardingState,
+  loadTutorialAwardGranted,
   persistOnboardingCompleted,
   persistOnboardingSkipped,
+  persistTutorialAwardGranted,
   resetOnboardingState,
   rectsEqual,
 } from "../tutorial";
@@ -28,6 +30,7 @@ import {
   isWelcomeStep,
   navigateForTutorialStep,
   resolveStepTransition,
+  resolveTutorialStep,
 } from "../tutorial/stepEngine";
 
 const TutorialContext = createContext(null);
@@ -47,6 +50,12 @@ export function TutorialProvider({
   const devPreviewRef = useRef(false);
   const [devPreview, setDevPreview] = useState(false);
   const pendingNavigationStepIdRef = useRef(null);
+  const [hasExistingGoals, setHasExistingGoals] = useState(false);
+  const [tutorialAwardGranted, setTutorialAwardGranted] = useState(false);
+
+  const setTutorialHasExistingGoals = useCallback((value) => {
+    setHasExistingGoals(Boolean(value));
+  }, []);
 
   // Hydrate from AsyncStorage
   useEffect(() => {
@@ -57,6 +66,7 @@ export function TutorialProvider({
         if (!cancelled) {
           setCompleted(false);
           setSkipped(false);
+          setTutorialAwardGranted(false);
           setCurrentStepIndex(0);
           setHydrated(true);
         }
@@ -68,6 +78,7 @@ export function TutorialProvider({
 
       setCompleted(persisted.completed);
       setSkipped(persisted.skipped);
+      setTutorialAwardGranted(persisted.awardGranted);
       setCurrentStepIndex(0);
       setHydrated(true);
     }
@@ -80,9 +91,14 @@ export function TutorialProvider({
     };
   }, [enabled, userId]);
 
-  const currentStep = useMemo(
+  const baseStep = useMemo(
     () => getTutorialStepByIndex(currentStepIndex),
     [currentStepIndex]
+  );
+
+  const currentStep = useMemo(
+    () => resolveTutorialStep(baseStep, { hasExistingGoals }),
+    [baseStep, hasExistingGoals]
   );
 
   const isTutorialEligible = Boolean(enabled && userId && hydrated);
@@ -259,9 +275,14 @@ export function TutorialProvider({
     devPreviewRef.current = false;
     setDevPreview(false);
     if (userId && !skipPersist) {
+      const alreadyGranted = tutorialAwardGranted || await loadTutorialAwardGranted(userId);
+      if (!alreadyGranted) {
+        await persistTutorialAwardGranted(userId, true);
+        setTutorialAwardGranted(true);
+      }
       await persistOnboardingCompleted(userId, true);
     }
-  }, [userId]);
+  }, [tutorialAwardGranted, userId]);
 
   const skipTutorial = useCallback(async () => {
     setSkipped(true);
@@ -412,6 +433,7 @@ export function TutorialProvider({
       updateTargetLayout,
       measureTarget,
       remeasureTargets,
+      setTutorialHasExistingGoals,
     }),
     [
       hydrated,
@@ -419,6 +441,7 @@ export function TutorialProvider({
       userId,
       currentStepIndex,
       currentStep,
+      setTutorialHasExistingGoals,
       completed,
       skipped,
       isTutorialEligible,
