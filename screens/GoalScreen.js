@@ -26,7 +26,9 @@ import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import Page from "../components/Page";
 import EditButtonRestriction from "./EditButtonRestriction";
-import { theme } from "../theme";
+import theme, { useTheme } from "../theme";
+import { cpShadow } from "../utils/shadows";
+import SwipeCalendar from '../components/SwipeCalendar';
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
 import { WALLPAPER_OPTIONS } from "../constants/WallpaperAssets";
@@ -54,6 +56,7 @@ import {
   dateFromFirestoreValue,
 } from "../utils/goalState";
 import { getBadgeImageForTrophyKey } from "./badgeImages";
+import { formatISOToDisplay, getWeekdayLabelsSync, getWeekStartSync, getShowLast6DaysSync } from '../utils/dateFormat';
 
 // Consistent frozen day blue color for streak and health bar
 const FROZEN_DAY_BLUE = '#a6e6ff';
@@ -374,7 +377,7 @@ const DAYS = [
   { label: "Fri", day: 5 },
   { label: "Sat", day: 6 },
 ];
-const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+const WEEKDAY_LABELS = getWeekdayLabelsSync();
 
 const CATEGORIES = ["Body", "Mind", "Spirit", "Work", "Custom"];
 const STORAGE_PAGE_ID = "storage";
@@ -456,7 +459,7 @@ const monthLabel = (date) =>
 const buildMonthGrid = (monthDate) => {
   const year = monthDate.getFullYear();
   const month = monthDate.getMonth();
-  const firstDayWeekIndex = new Date(year, month, 1).getDay();
+  const firstDayWeekIndex = (new Date(year, month, 1).getDay() - getWeekStartSync() + 7) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
   const cells = [];
@@ -484,10 +487,10 @@ function formatScheduleLabel(schedule) {
 function formatCompletionLabel(condition) {
   const type = condition?.type || "none";
   if (type === "none") return "No end";
-  if (type === "date") return condition?.endDate ? `Ends on ${condition.endDate}` : "End date";
+  if (type === "date") return condition?.endDate ? `Ends on ${formatISOToDisplay(condition.endDate)}` : "End date";
   if (type === "amount") return condition?.targetAmount ? `Ends at ${condition.targetAmount} ${condition?.unit || "times"}` : "End amount";
   if (type === "both") {
-    const endDate = condition?.endDate || "an end date";
+    const endDate = condition?.endDate ? formatISOToDisplay(condition.endDate) : "an end date";
     const target = condition?.targetAmount ? `${condition.targetAmount} ${condition?.unit || "times"}` : "a target amount";
     return `${endDate} and ${target}`;
   }
@@ -711,6 +714,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const { goalId, source, sharedGardenId: routeSharedGardenId, ownerId: paramOwnerId, sourceGoalId: paramSourceGoalId } = route.params || {};
   const isSharedGoalView = Boolean(routeSharedGardenId);
   const { selectedDateKey } = useGoals();
+  const { theme } = useTheme();
 
   const [goal, setGoal] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1934,11 +1938,23 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const todayKey = toKey(new Date());
   const anchor = fromKey(todayKey);
   anchor.setHours(0, 0, 0, 0);
+  const showLast6Days = getShowLast6DaysSync();
+  const weekStart = getWeekStartSync();
+  const rangeStartDate = new Date(anchor);
+  if (showLast6Days) {
+    rangeStartDate.setDate(anchor.getDate() - 6);
+  } else {
+    const weekOffset = (anchor.getDay() - weekStart + 7) % 7;
+    rangeStartDate.setDate(anchor.getDate() - weekOffset);
+  }
+  const rangeEndDate = new Date(rangeStartDate);
+  rangeEndDate.setDate(rangeStartDate.getDate() + 6);
+  const weekRangeLabel = `${rangeStartDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${rangeEndDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
   const recentHistory = [];
 
-  for (let offset = 6; offset >= 0; offset -= 1) {
-    const date = new Date(anchor);
-    date.setDate(anchor.getDate() - offset);
+  for (let offset = 0; offset < 7; offset += 1) {
+    const date = new Date(rangeStartDate);
+    date.setDate(rangeStartDate.getDate() + offset);
     const dateKey = toKey(date);
     const scheduled = isGoalScheduledOnDate(goalForDerivedState, date);
     const isTodayDate = dateKey === todayKey;
@@ -2106,27 +2122,52 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
 
   let statusButtonBgColor = "#f1f1f1";
   let statusButtonShadowColor = "#d6d6d6";
-  let statusButtonIconColor = "#58cc02";
+  let statusButtonIconColor = theme.accent;
 
   if (isTrophy) {
     statusButtonBgColor = "#d9dde3";
     statusButtonShadowColor = "#b7c0c9";
     statusButtonIconColor = "#7b8794";
+  } else if (isSharedMultiUserCompletion || isSharedMultiUserQuantity) {
+    // Handle shared goals with new styling
+    if (isDone) {
+      // Complete: full accent background with grey shadow and white text
+      statusButtonBgColor = theme.accent;
+      statusButtonShadowColor = "#d6d6d6";
+      statusButtonIconColor = "#ffffff";
+    } else if (isSharedMultiUserCompletion && currentUserClicked) {
+      // Partial (clicked): lighter solid accent background with darker accent shadow and white text
+      const r = parseInt(theme.accent.slice(1,3), 16);
+      const g = parseInt(theme.accent.slice(3,5), 16);
+      const b = parseInt(theme.accent.slice(5,7), 16);
+      // Create lighter solid color by blending toward white (50% lighter)
+      const lighterR = Math.round(r + (255 - r) * 0.5);
+      const lighterG = Math.round(g + (255 - g) * 0.5);
+      const lighterB = Math.round(b + (255 - b) * 0.5);
+      statusButtonBgColor = `rgb(${lighterR}, ${lighterG}, ${lighterB})`;
+      statusButtonShadowColor = `rgba(${Math.round(r * 0.65)}, ${Math.round(g * 0.65)}, ${Math.round(b * 0.65)}, 0.8)`;
+      statusButtonIconColor = "#ffffff";
+    } else if (isSharedMultiUserQuantity && Number(currentValue) >= (quantityTargetValue || 1)) {
+      // Partial (clicked): lighter solid accent background with darker accent shadow and white text
+      const r = parseInt(theme.accent.slice(1,3), 16);
+      const g = parseInt(theme.accent.slice(3,5), 16);
+      const b = parseInt(theme.accent.slice(5,7), 16);
+      // Create lighter solid color by blending toward white (50% lighter)
+      const lighterR = Math.round(r + (255 - r) * 0.5);
+      const lighterG = Math.round(g + (255 - g) * 0.5);
+      const lighterB = Math.round(b + (255 - b) * 0.5);
+      statusButtonBgColor = `rgb(${lighterR}, ${lighterG}, ${lighterB})`;
+      statusButtonShadowColor = `rgba(${Math.round(r * 0.65)}, ${Math.round(g * 0.65)}, ${Math.round(b * 0.65)}, 0.8)`;
+      statusButtonIconColor = "#ffffff";
+    } else {
+      // Default: blank background with colored text
+      statusButtonBgColor = "#f1f1f1";
+      statusButtonShadowColor = "#d6d6d6";
+      statusButtonIconColor = theme.accent;
+    }
   } else if (isDone) {
-    statusButtonBgColor = "#59d700";
-    statusButtonShadowColor = "#4aa93a";
-    statusButtonIconColor = "#ffffff";
-  } else if (isSharedMultiUserCompletion && currentUserClicked) {
-    statusButtonBgColor = "#8ef148";
-    statusButtonShadowColor = "#73cf39";
-    statusButtonIconColor = "#ffffff";
-  } else if (isSharedMultiUserQuantity && isDone) {
-    statusButtonBgColor = "#59d700";
-    statusButtonShadowColor = "#4aa93a";
-    statusButtonIconColor = "#ffffff";
-  } else if (isQuantity && Number(currentValue) >= (quantityTargetValue || 1)) {
-    statusButtonBgColor = "#8ef148";
-    statusButtonShadowColor = "#73cf39";
+    statusButtonBgColor = theme.accent;
+    statusButtonShadowColor = "#d6d6d6";
     statusButtonIconColor = "#ffffff";
   } else if (isQuantity && Number(currentValue) >= (quantityTargetValue || 1)) {
     statusButtonBgColor = "#eef6e8";
@@ -2134,7 +2175,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     statusButtonIconColor = "#2f7d12";
   }
 
-  const primaryActionBgColor = isTrophy ? "#6d9eff" : "#59d700";
+  const primaryActionBgColor = isTrophy ? "#6d9eff" : theme.accent;
   const primaryActionShadowColor = isTrophy ? "#4e79cf" : "#4aa93a";
 
   return (
@@ -2231,7 +2272,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                     <Text
                       style={[
                         styles.sharedQuantityProgressLabel,
-                        { color: (Number(currentValue) >= quantityTargetValue) ? '#fff' : '#58cc02' },
+                        { color: (isDone || Number(currentValue) >= quantityTargetValue) ? '#fff' : theme.accent },
                       ]}
                     >
                       {`${Math.min(Object.values(quantityLogs).filter(v => Number(v) >= quantityTargetValue).length, requiredSharedContributors)}/${requiredSharedContributors}`}
@@ -2276,7 +2317,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                   <Text
                     style={[
                       styles.statusCircleCount,
-                      { color: (isDone || currentUserClicked) ? "#ffffff" : statusButtonIconColor },
+                      { color: (isDone || currentUserClicked) ? "#ffffff" : theme.accent },
                     ]}
                   >
                     {contributorProgressLabel}
@@ -2315,7 +2356,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
               </View>
               <AnimatedGrowthStageBar
                 progressPercent={growthToNextPercent}
-                color={activeGrowthMilestone.nextStart ? "#59d700" : "#ffd454"}
+                color={activeGrowthMilestone.nextStart ? theme.accent : "#ffd454"}
                 showGoldStripes={!activeGrowthMilestone.nextStart}
               />
             </View>
@@ -2326,7 +2367,10 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
           <Text style={styles.sectionTitle}>Weekly streak</Text>
           <View style={styles.historyCardDuolingo}>
             <View style={styles.historyTopRowSimple}>
-              <Text style={styles.historyHeadline}>This week</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.historyHeadline}>{showLast6Days ? 'Last 7 days' : 'This week'}</Text>
+                <Text style={styles.historySubhead}>{weekRangeLabel}</Text>
+              </View>
               <View style={styles.historyStreakBadge}>
                 <Image source={FIRE_STREAK_ICON} style={styles.historyStreakIcon} resizeMode="contain" />
                 <Text style={styles.historyStreakValue}>
@@ -2939,11 +2983,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 0,
     borderColor: '#d9e6f4',
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 3,
+    ...cpShadow({ color: '#4c6782', offset: { width: 0, height: 6 }, opacity: 0.16, radius: 0, elevation: 3 }),
     marginTop: 8,
     marginBottom: 12,
   },
@@ -2962,11 +3002,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: '#e7edf5',
-    shadowColor: '#c3cfdb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 1,
+    ...cpShadow({ color: '#c3cfdb', offset: { width: 0, height: 4 }, opacity: 1, radius: 0, elevation: 1 }),
   },
   headerBtnDanger: {
     backgroundColor: '#fde6e3',
@@ -2985,11 +3021,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: "center",
     marginBottom: 18,
-    shadowColor: '#cdcdcd',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...cpShadow({ color: '#cdcdcd', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   goalPlantPreviewWrap: {
     width: 56,
@@ -3299,6 +3331,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   historyHeadline: { fontSize: 15, fontWeight: '900', color: theme.text, fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1 },
+  historySubhead: { fontSize: 12, color: '#7d8a97', marginTop: 2, fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1 },
   historyStreakBadge: {
     backgroundColor: '#fcae49',
     paddingHorizontal: 14,

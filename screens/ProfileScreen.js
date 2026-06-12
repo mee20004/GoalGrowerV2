@@ -4,7 +4,8 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator
 import { useFocusEffect } from "@react-navigation/native";
 import { doc, getDoc, collection, getDocs, updateDoc, query, where, writeBatch, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
-import { theme } from "../theme";
+import theme, { useTheme } from "../theme";
+import { cpShadow } from "../utils/shadows";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { updateOverallScoreForUser } from "../utils/scoreUtils";
 
@@ -12,6 +13,7 @@ import { updateOverallScoreForUser } from "../utils/scoreUtils";
 import { ACHIEVEMENTS } from "../AchievementsStore";
 
 export default function ProfileScreen({ navigation }) {
+  const { theme } = useTheme();
   const [profileData, setProfileData] = useState(null);
   const [followers, setFollowers] = useState([]);
   const [following, setFollowing] = useState([]);
@@ -179,7 +181,7 @@ export default function ProfileScreen({ navigation }) {
               editable={!addingFriend}
             />
             <TouchableOpacity
-              style={[styles.addFriendBtn, addingFriend && styles.addFriendBtnDisabled]}
+              style={[styles.addFriendBtn, { backgroundColor: theme.accent }, addingFriend && styles.addFriendBtnDisabled]}
               onPress={handleAddFriendByUsername}
               disabled={addingFriend}
             >
@@ -194,7 +196,7 @@ export default function ProfileScreen({ navigation }) {
         <View style={styles.infoCard}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Overall Score</Text>
-            <Text style={[styles.infoValue, styles.scoreValue]}>{profileData?.overallScore || 0} pts</Text>
+            <Text style={[styles.infoValue, styles.scoreValue, { color: theme.accent }]}>{profileData?.overallScore || 0} pts</Text>
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Overall App Streak</Text>
@@ -251,11 +253,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 0,
     borderColor: '#d9e6f4',
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 3,
+    ...cpShadow({ color: '#4c6782', offset: { width: 0, height: 6 }, opacity: 0.16, radius: 0, elevation: 3 }),
     marginTop: 8,
     marginBottom: 12,
   },
@@ -281,11 +279,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: '#e7edf5',
-    shadowColor: '#c3cfdb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 1,
+    ...cpShadow({ color: '#c3cfdb', offset: { width: 0, height: 4 }, opacity: 1, radius: 0, elevation: 1 }),
   },
   userSection: {
     marginBottom: 20,
@@ -296,11 +290,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 18,
     paddingBottom: 16,
-    shadowColor: '#cdcdcd',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...cpShadow({ color: '#cdcdcd', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
     alignItems: "center",
   },
   avatar: {
@@ -370,11 +360,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderRadius: 24,
     paddingHorizontal: 14,
-    shadowColor: '#cdcdcd',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...cpShadow({ color: '#cdcdcd', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   infoRow: {
     flexDirection: "row",
@@ -445,11 +431,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 14,
     marginBottom: 10,
-    shadowColor: '#cdcdcd',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...cpShadow({ color: '#cdcdcd', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   iconWrap: {
     width: 62,
@@ -489,11 +471,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderRadius: 20,
     padding: 16,
-    shadowColor: '#cdcdcd',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...cpShadow({ color: '#cdcdcd', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   emptyText: {
     color: theme.muted,

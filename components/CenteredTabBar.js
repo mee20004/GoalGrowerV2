@@ -2,6 +2,8 @@ import React, { useRef } from 'react';
 import { View, TouchableOpacity, StyleSheet, Platform, Image, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import HighlightTarget from './tutorial/HighlightTarget';
+import { TUTORIAL_TARGET_KEYS } from '../tutorial/constants';
 
 const TASKBAR_ICON_MAP = {
   Rank: require('../assets/Icons/Taskbar/TrophyIcon.png'),
@@ -98,6 +100,29 @@ export default function CenteredTabBar({ state, descriptors, navigation, disable
             ? options.tabBarIcon({ color: isFocused ? '#2D5A27' : '#A0A0A0', focused: isFocused })
             : 'ellipse-outline';
 
+          const iconContent = (
+            <Animated.View
+              style={[
+                styles.iconFrame,
+                isFocused && styles.iconFrameActive,
+                { transform: [{ scale: tapScale }] },
+              ]}
+            >
+              {taskbarIconSource ? (
+                <Image
+                  source={taskbarIconSource}
+                  style={styles.taskbarIcon}
+                  resizeMode="contain"
+                  fadeDuration={0}
+                />
+              ) : typeof iconName === 'string' ? (
+                <Ionicons name={iconName} size={24} color={isFocused ? '#2D5A27' : '#A0A0A0'} />
+              ) : (
+                iconName
+              )}
+            </Animated.View>
+          );
+
           return (
             <TouchableOpacity
               key={route.key}
@@ -110,26 +135,16 @@ export default function CenteredTabBar({ state, descriptors, navigation, disable
               style={styles.tab}
               activeOpacity={0.8}
             >
-              <Animated.View
-                style={[
-                  styles.iconFrame,
-                  isFocused && styles.iconFrameActive,
-                  { transform: [{ scale: tapScale }] },
-                ]}
-              >
-                {taskbarIconSource ? (
-                  <Image
-                    source={taskbarIconSource}
-                    style={styles.taskbarIcon}
-                    resizeMode="contain"
-                    fadeDuration={0}
-                  />
-                ) : typeof iconName === 'string' ? (
-                  <Ionicons name={iconName} size={24} color={isFocused ? '#2D5A27' : '#A0A0A0'} />
-                ) : (
-                  iconName
-                )}
-              </Animated.View>
+              {route.name === 'Journey' ? (
+                <HighlightTarget
+                  targetKey={TUTORIAL_TARGET_KEYS.JOURNEY_TAB}
+                  collapsable={false}
+                >
+                  {iconContent}
+                </HighlightTarget>
+              ) : (
+                iconContent
+              )}
             </TouchableOpacity>
           );
         })}

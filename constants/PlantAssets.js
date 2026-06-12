@@ -84,5 +84,34 @@ export const PLANT_ASSETS = {
       dead: require('../assets/plants/cactus/cactus_stage4.png'),
     },
   },
-  // Add other plants here (lily, etc.) following the same pattern
+  succulent: {
+    stage1: {
+      alive: require('../assets/plants/succulent/succulent_stage1.png'),
+      day: require('../assets/plants/succulent/succulent_stage1_day.png'),
+      dying: require('../assets/plants/succulent/succulent_stage1_dying.png'),
+      dry: require('../assets/plants/succulent/succulent_stage1_dry.png'),
+      dead: require('../assets/plants/succulent/succulent_stage1_dead.png'),
+    },
+    stage2: {
+      alive: require('../assets/plants/succulent/succulent_stage2.png'),
+      day: require('../assets/plants/succulent/succulent_stage2_day.png'),
+      dying: require('../assets/plants/succulent/succulent_stage2_dying.png'),
+      dry: require('../assets/plants/succulent/succulent_stage2_dry.png'),
+      dead: require('../assets/plants/succulent/succulent_stage2_dead.png'),
+    },
+    stage3: {
+      alive: require('../assets/plants/succulent/succulent_stage3.png'),
+      day: require('../assets/plants/succulent/succulent_stage3_day.png'),
+      dying: require('../assets/plants/succulent/succulent_stage3_dying.png'),
+      dry: require('../assets/plants/succulent/succulent_stage3_dry.png'),
+      dead: require('../assets/plants/succulent/succulent_stage3_dead.png'),
+    },
+    stage4: {
+      alive: require('../assets/plants/succulent/succulent_stage4.png'),
+      day: require('../assets/plants/succulent/succulent_stage4_day.png'),
+      dying: require('../assets/plants/succulent/succulent_stage4_dying.png'),
+      dry: require('../assets/plants/succulent/succulent_stage4_dry.png'),
+      dead: require('../assets/plants/succulent/succulent_stage4_dead.png'),
+    },
+  },
 };

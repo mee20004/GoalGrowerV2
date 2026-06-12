@@ -1,4 +1,4 @@
-import { theme } from './theme';
+import theme, { ThemeProvider, useTheme } from './theme';
 import React, { useState, useEffect, useRef } from "react";
 import { useCallback } from "react";
 import { Asset } from 'expo-asset';
@@ -6,7 +6,7 @@ import { StackActions } from '@react-navigation/native';
 import { Text, View, Image, Alert, Pressable, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { AppState } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createStackNavigator, CardStyleInterpolators } from "@react-navigation/stack";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -26,6 +26,7 @@ import { initializeNotifications } from "./utils/notifications";
 import GoalsScreen from "./screens/GoalsScreen";
 import AddGoalScreen from "./screens/AddGoalScreen";
 import GoalScreen from "./screens/GoalScreen";
+import { hasAddGoalDirty } from './utils/addGoalGuard';
 import ProfileScreen from "./screens/ProfileScreen";
 import AddFriendsScreen from "./screens/AddFriendsScreen";
 import UserProfileScreen from './screens/UserProfileScreen';
@@ -50,6 +51,8 @@ const TASKBAR_ICON_MAP = {
 
 // Helper Placeholder Screen
 function Placeholder({ title }) {
+  const { theme } = useTheme();
+
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: theme.bg }}>
       <Text style={{ fontWeight: "900", color: theme.muted2 }}>{title}</Text>
@@ -155,8 +158,39 @@ function GardenStack({ onboardingStep, onboardingActions, onOnboardingAction, on
 // --- MAIN BOTTOM TABS ---
 
 function MainTabs({ onboardingStep, onboardingActions, onOnboardingAction, onGardenTutorialNext }) {
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const lockTaskbar = onboardingStep === ONBOARDING_STEP.GARDEN_TUTORIAL;
+
+  const getActiveNestedRoute = (route) => {
+    if (!route?.state || !route.state.routes?.length) return route;
+    return getActiveNestedRoute(route.state.routes[route.state.index]);
+  };
+
+  const isAddGoalScreenActive = (navigation) => {
+    const state = navigation.getState();
+    const activeTab = state?.routes?.[state.index];
+    const activeRoute = getActiveNestedRoute(activeTab);
+    return activeRoute?.name === 'AddGoal';
+  };
+
+  const handleTabPress = (e, navigation, targetActivity) => {
+    if (hasAddGoalDirty() && isAddGoalScreenActive(navigation)) {
+      e.preventDefault();
+      Alert.alert(
+        'Discard changes?',
+        'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
+        [
+          { text: 'Stay', style: 'cancel' },
+          { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate(...targetActivity) },
+        ]
+      );
+      return;
+    }
+
+    e.preventDefault();
+    navigation.navigate(...targetActivity);
+  };
 
   return (
     <Tab.Navigator
@@ -193,14 +227,66 @@ function MainTabs({ onboardingStep, onboardingActions, onOnboardingAction, onGar
               name="Shop"
               component={ShopScreen}
               options={{ tabBarLabel: "Shop" }}
+              listeners={({ navigation }) => ({
+                tabPress: e => {
+                  if (hasAddGoalDirty()) {
+                    e.preventDefault();
+                    Alert.alert(
+                      'Discard changes?',
+                      'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
+                      [
+                        { text: 'Stay', style: 'cancel' },
+                        { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('Shop') },
+                      ]
+                    );
+                    return;
+                  }
+                  e.preventDefault();
+                  navigation.navigate('Shop');
+                },
+              })}
             />
-      <Tab.Screen name="Rank" component={RankStack} options={{ tabBarLabel: "Rank" }} />
+      <Tab.Screen
+        name="Rank"
+        component={RankStack}
+        options={{ tabBarLabel: "Rank" }}
+        listeners={({ navigation }) => ({
+          tabPress: e => {
+            if (hasAddGoalDirty()) {
+              e.preventDefault();
+              Alert.alert(
+                'Discard changes?',
+                'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
+                [
+                  { text: 'Stay', style: 'cancel' },
+                  { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('Rank') },
+                ]
+              );
+              return;
+            }
+            e.preventDefault();
+            navigation.navigate('Rank');
+          },
+        })}
+      />
       <Tab.Screen
         name="Goals"
         component={GoalsStack}
         options={{ tabBarLabel: "Goals" }}
         listeners={({ navigation }) => ({
           tabPress: e => {
+            if (hasAddGoalDirty()) {
+              e.preventDefault();
+              Alert.alert(
+                'Discard changes?',
+                'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
+                [
+                  { text: 'Stay', style: 'cancel' },
+                  { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('Goals', { screen: 'GoalsHome', params: {} }) },
+                ]
+              );
+              return;
+            }
             e.preventDefault();
             navigation.navigate('Goals', {
               screen: 'GoalsHome',
@@ -222,8 +308,26 @@ function MainTabs({ onboardingStep, onboardingActions, onOnboardingAction, onGar
             />
           ),
         }}
+        listeners={({ navigation }) => ({
+          tabPress: e => {
+            if (hasAddGoalDirty()) {
+              e.preventDefault();
+              Alert.alert(
+                'Discard changes?',
+                'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
+                [
+                  { text: 'Stay', style: 'cancel' },
+                  { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('Journey') },
+                ]
+              );
+              return;
+            }
+            e.preventDefault();
+            navigation.navigate('Journey');
+          },
+        })}
       />
-      {/* <-- 3. WIRE UP THE GARDEN TAB */}
+      {/* <-- 3. WIRE UP THE GARDEN TAB --> */}
       <Tab.Screen
         name="Garden"
         children={() => (
@@ -237,9 +341,19 @@ function MainTabs({ onboardingStep, onboardingActions, onOnboardingAction, onGar
         options={{ tabBarLabel: "Garden", unmountOnBlur: false }}
         listeners={({ navigation }) => ({
           tabPress: e => {
-            // Prevent default behavior
+            if (hasAddGoalDirty()) {
+              e.preventDefault();
+              Alert.alert(
+                'Discard changes?',
+                'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
+                [
+                  { text: 'Stay', style: 'cancel' },
+                  { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('Garden', { screen: 'GardenHome', params: {} }) },
+                ]
+              );
+              return;
+            }
             e.preventDefault();
-            // Always navigate to the root of the Garden stack
             navigation.navigate('Garden', {
               screen: 'GardenHome',
               params: {},
@@ -247,7 +361,29 @@ function MainTabs({ onboardingStep, onboardingActions, onOnboardingAction, onGar
           },
         })}
       />
-      <Tab.Screen name="ProfileTab" component={ProfileStack} options={{ tabBarLabel: "Profile" }} />
+      <Tab.Screen
+        name="ProfileTab"
+        component={ProfileStack}
+        options={{ tabBarLabel: "Profile" }}
+        listeners={({ navigation }) => ({
+          tabPress: e => {
+            if (hasAddGoalDirty()) {
+              e.preventDefault();
+              Alert.alert(
+                'Discard changes?',
+                'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
+                [
+                  { text: 'Stay', style: 'cancel' },
+                  { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('ProfileTab') },
+                ]
+              );
+              return;
+            }
+            e.preventDefault();
+            navigation.navigate('ProfileTab');
+          },
+        })}
+      />
     </Tab.Navigator>
   );
 }
@@ -256,6 +392,7 @@ function MainTabs({ onboardingStep, onboardingActions, onOnboardingAction, onGar
 
 import { FontProvider } from './components/FontProvider';
 import { GoalsProvider } from './components/GoalsStore';
+import { TutorialProvider } from './contexts/TutorialContext';
 import EnterScreen from './screens/EnterScreen';
 import Login from './login';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -661,6 +798,7 @@ function CreateGoalIntroScreen({ onNext, onBack }) {
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [accentColor, setAccentColor] = useState(theme.accent);
   const [initializing, setInitializing] = useState(true);
   const [hasUsername, setHasUsername] = useState(false);
   const [showEnterScreen, setShowEnterScreen] = useState(false);
@@ -672,6 +810,7 @@ export default function App() {
   const userRef = useRef(null);
   const unsubFirestoreRef = useRef(null);
   const appStateListenerRef = useRef(null);
+  const navigationRef = useNavigationContainerRef();
 
   const getOnboardingKey = (uid) => `onboardingStep_${uid}`;
   const getOnboardingGoalKey = (uid) => `onboardingGoalId_${uid}`;
@@ -766,12 +905,22 @@ export default function App() {
         unsubFirestoreRef.current = onSnapshot(
           doc(db, "users", firebaseUser.uid),
           (docSnap) => {
-            if (docSnap.exists() && docSnap.data().username) {
-              setHasUsername(true);
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+
+            setHasUsername(!!data.username);
+            setAccentColor(data.accentColor || theme.accent);
+
+            if (data.username) {
               loadOnboardingStep(firebaseUser.uid);
             } else {
-              setHasUsername(false);
               setOnboardingLoaded(false);
+            }
+          } else {
+            setHasUsername(false);
+            setAccentColor(theme.accent);
+            setOnboardingLoaded(false);
+          }
             }
             setInitializing(false);
             checkEnterScreen(firebaseUser.uid, "onSnapshot");
@@ -832,125 +981,150 @@ export default function App() {
     setShowEnterScreen(false);
   };
 
+  const tutorialEnabled = Boolean(user && hasUsername);
+
   return (
     <FontProvider>
       <SafeAreaProvider>
         <GoalsProvider>
-          <NavigationContainer>
-            <StatusBar style="dark" />
-            <RootStack.Navigator screenOptions={{ headerShown: false }}>
-              {user && hasUsername ? (
-                onboardingStep === ONBOARDING_STEP.WELCOME ? (
-                  <RootStack.Screen name="Welcome" options={onboardingTransitionOptions}>
-                    {(props) => (
-                      <WelcomeScreen
-                        {...props}
-                        onContinue={() => updateOnboardingStep(ONBOARDING_STEP.CREATE_GOAL_INTRO)}
-                        onLogin={() => updateOnboardingStep(ONBOARDING_STEP.ACCOUNT_PROMPT)}
-                      />
-                    )}
-                  </RootStack.Screen>
-                ) : onboardingStep === ONBOARDING_STEP.CREATE_GOAL_INTRO ? (
-                  <RootStack.Screen name="OnboardingCreateGoalIntro" options={onboardingTransitionOptions}>
-                    {(props) => (
-                      <CreateGoalIntroScreen
-                        {...props}
-                        onBack={() => updateOnboardingStep(ONBOARDING_STEP.WELCOME)}
-                        onNext={() => updateOnboardingStep(ONBOARDING_STEP.CREATE_GOAL)}
-                      />
-                    )}
-                  </RootStack.Screen>
-                ) : onboardingStep === ONBOARDING_STEP.CREATE_GOAL ? (
-                  <RootStack.Screen name="OnboardingAddGoal" options={onboardingTransitionOptions}>
-                    {(props) => (
-                      <AddGoalScreen
-                        {...props}
-                        onboardingMode={true}
-                        onBack={() => updateOnboardingStep(ONBOARDING_STEP.CREATE_GOAL_INTRO)}
-                        onGoalSaved={(goalId) => updateOnboardingStep(ONBOARDING_STEP.GARDEN_TUTORIAL, { goalId })}
-                        onSkipOnboarding={handleGardenTutorialNext}
-                      />
-                    )}
-                  </RootStack.Screen>
-                ) : onboardingStep === ONBOARDING_STEP.ACCOUNT_PROMPT ? (
-                  <RootStack.Screen name="OnboardingAccountPrompt" options={onboardingTransitionOptions}>
-                    {(props) => (
-                      <AccountPromptScreen
-                        {...props}
-                        onDone={() => updateOnboardingStep(ONBOARDING_STEP.DONE)}
-                        onLoginInstead={async () => {
-                          try {
-                            await signOut(auth);
-                          } catch (error) {
-                            console.error('Sign out during onboarding failed:', error);
-                          }
-                        }}
-                      />
-                    )}
-                  </RootStack.Screen>
-                ) : (
-                  showEnterScreen && onboardingStep === ONBOARDING_STEP.DONE ? (
-                    <RootStack.Screen name="Enter" options={{ headerShown: false }}>
-                      {props => <EnterScreen {...props} onDone={handleEnterScreenDone} />}
-                    </RootStack.Screen>
-                  ) : (
-                    <RootStack.Screen name="Tabs" options={{ headerShown: false }}>
+          <ThemeProvider accentColor={accentColor}>
+            <NavigationContainer>
+              <StatusBar style="dark" />
+              <RootStack.Navigator screenOptions={{ headerShown: false }}>
+                {user && hasUsername ? (
+                  onboardingStep === ONBOARDING_STEP.WELCOME ? (
+                    <RootStack.Screen name="Welcome" options={onboardingTransitionOptions}>
                       {(props) => (
-                        <MainTabs
+                        <WelcomeScreen
                           {...props}
-                          onboardingStep={onboardingStep}
-                          onboardingActions={onboardingActions}
-                          onOnboardingAction={markOnboardingAction}
-                          onGardenTutorialNext={handleGardenTutorialNext}
+                          onContinue={() => updateOnboardingStep(ONBOARDING_STEP.CREATE_GOAL_INTRO)}
+                          onLogin={() => updateOnboardingStep(ONBOARDING_STEP.ACCOUNT_PROMPT)}
                         />
                       )}
                     </RootStack.Screen>
-                  )
-                )
-              ) : (
-                <>
-                  <RootStack.Screen name="WelcomeEntry" options={{ headerShown: false }}>
-                    {(props) => (
-                      <WelcomeScreen
-                        {...props}
-                        onLogin={() => props.navigation.navigate('Login')}
-                        onContinue={async () => {
-                          try {
-                            const cred = await signInAnonymously(auth);
-                            const anonUid = cred?.user?.uid;
-                            if (anonUid) {
-                              await AsyncStorage.setItem(`onboardingStep_${anonUid}`, ONBOARDING_STEP.CREATE_GOAL_INTRO);
-                              await AsyncStorage.removeItem(`onboardingGoalId_${anonUid}`);
-                              setOnboardingStep(ONBOARDING_STEP.CREATE_GOAL_INTRO);
-                              setOnboardingLoaded(true);
-                              setOnboardingGoalId(null);
-                            }
-                          } catch (error) {
-                            console.error('Anonymous sign-in failed:', error?.code || error?.message || error);
-                            if (error?.code === 'auth/admin-restricted-operation') {
-                              Alert.alert(
-                                'Guest Onboarding Disabled',
-                                'Anonymous sign-in is disabled in Firebase Authentication. Enable it in Firebase Console > Authentication > Sign-in method > Anonymous, or continue with Login/Register.',
-                                [
-                                  {
-                                    text: 'Continue to Login',
-                                    onPress: () => props.navigation.navigate('Login'),
-                                  },
-                                ]
-                              );
-                            } else {
-                              Alert.alert('Could not start onboarding', 'Please try again or continue with Login/Register.');
-                            }
+                  ) : onboardingStep === ONBOARDING_STEP.CREATE_GOAL_INTRO ? (
+                    <RootStack.Screen name="OnboardingCreateGoalIntro" options={onboardingTransitionOptions}>
+                      {(props) => (
+                        <CreateGoalIntroScreen
+                          {...props}
+                          onBack={() => updateOnboardingStep(ONBOARDING_STEP.WELCOME)}
+                          onNext={() => updateOnboardingStep(ONBOARDING_STEP.CREATE_GOAL)}
+                        />
+                      )}
+                    </RootStack.Screen>
+                  ) : onboardingStep === ONBOARDING_STEP.CREATE_GOAL ? (
+                    <RootStack.Screen name="OnboardingAddGoal" options={onboardingTransitionOptions}>
+                      {(props) => (
+                        <AddGoalScreen
+                          {...props}
+                          onboardingMode={true}
+                          onBack={() => updateOnboardingStep(ONBOARDING_STEP.CREATE_GOAL_INTRO)}
+                          onGoalSaved={(goalId) =>
+                            updateOnboardingStep(ONBOARDING_STEP.GARDEN_TUTORIAL, { goalId })
                           }
-                        }}
-                      />
-                    )}
-                  </RootStack.Screen>
-                  <RootStack.Screen name="Login" component={Login} />
-                </>
-              )}
-            </RootStack.Navigator>
-          </NavigationContainer>
+                          onSkipOnboarding={handleGardenTutorialNext}
+                        />
+                      )}
+                    </RootStack.Screen>
+                  ) : onboardingStep === ONBOARDING_STEP.ACCOUNT_PROMPT ? (
+                    <RootStack.Screen name="OnboardingAccountPrompt" options={onboardingTransitionOptions}>
+                      {(props) => (
+                        <AccountPromptScreen
+                          {...props}
+                          onDone={() => updateOnboardingStep(ONBOARDING_STEP.DONE)}
+                          onLoginInstead={async () => {
+                            try {
+                              await signOut(auth);
+                            } catch (error) {
+                              console.error('Sign out during onboarding failed:', error);
+                            }
+                          }}
+                        />
+                      )}
+                    </RootStack.Screen>
+                  ) : (
+                    showEnterScreen && onboardingStep === ONBOARDING_STEP.DONE ? (
+                      <RootStack.Screen name="Enter" options={{ headerShown: false }}>
+                        {(props) => (
+                          <EnterScreen {...props} onDone={handleEnterScreenDone} />
+                        )}
+                      </RootStack.Screen>
+                    ) : (
+                      <RootStack.Screen name="Tabs" options={{ headerShown: false }}>
+                        {(props) => (
+                          <MainTabs
+                            {...props}
+                            onboardingStep={onboardingStep}
+                            onboardingActions={onboardingActions}
+                            onOnboardingAction={markOnboardingAction}
+                            onGardenTutorialNext={handleGardenTutorialNext}
+                          />
+                        )}
+                      </RootStack.Screen>
+                    )
+                  )
+                ) : (
+                  <>
+                    <RootStack.Screen name="WelcomeEntry" options={{ headerShown: false }}>
+                      {(props) => (
+                        <WelcomeScreen
+                          {...props}
+                          onLogin={() => props.navigation.navigate('Login')}
+                          onContinue={async () => {
+                            try {
+                              const cred = await signInAnonymously(auth);
+                              const anonUid = cred?.user?.uid;
+
+                              if (anonUid) {
+                                await AsyncStorage.setItem(
+                                  `onboardingStep_${anonUid}`,
+                                  ONBOARDING_STEP.CREATE_GOAL_INTRO
+                                );
+                                await AsyncStorage.removeItem(
+                                  `onboardingGoalId_${anonUid}`
+                                );
+                                setOnboardingStep(ONBOARDING_STEP.CREATE_GOAL_INTRO);
+                                setOnboardingLoaded(true);
+                                setOnboardingGoalId(null);
+                              }
+                            } catch (error) {
+                              console.error(
+                                'Anonymous sign-in failed:',
+                                error?.code || error?.message || error
+                              );
+
+                              if (error?.code === 'auth/admin-restricted-operation') {
+                                Alert.alert(
+                                  'Guest Onboarding Disabled',
+                                  'Anonymous sign-in is disabled in Firebase Authentication. Enable it in Firebase Console > Authentication > Sign-in method > Anonymous, or continue with Login/Register.',
+                                  [
+                                    {
+                                      text: 'Continue to Login',
+                                      onPress: () => props.navigation.navigate('Login'),
+                                    },
+                                  ]
+                                );
+                              } else {
+                                Alert.alert(
+                                  'Could not start onboarding',
+                                  'Please try again or continue with Login/Register.'
+                                );
+                              }
+                            }
+                          }}
+                        />
+                      )}
+                    </RootStack.Screen>
+
+                    <RootStack.Screen
+                      name="Login"
+                      component={Login}
+                    />
+                  </>
+                )}
+              </RootStack.Navigator>
+            </NavigationContainer>
+          </ThemeProvider>
         </GoalsProvider>
       </SafeAreaProvider>
     </FontProvider>
