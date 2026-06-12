@@ -502,7 +502,13 @@ function StepProgressBar({ total = 1, index = 0 }) {
 
 export default function AddGoalScreen({ navigation }) {
   useRemeasureTutorialOnFocus();
-  const { isTutorialActive, remeasureTargets, notifyUserAction } = useTutorial();
+  const {
+    isTutorialActive,
+    currentStep,
+    remeasureTargets,
+    notifyUserAction,
+    returnToGoalCreationChoice,
+  } = useTutorial();
 
   // Load the Cera Round Pro DEMO font only for this screen
   const [fontsLoaded] = useFonts({
@@ -1200,6 +1206,9 @@ export default function AddGoalScreen({ navigation }) {
   const goNextStep = () => setStep((prev) => Math.min(prev + 1, stepLabels.length - 1));
   const goBackStep = () => {
     if (step === 0) {
+      if (isTutorialActive && currentStep?.id === "goal-creation") {
+        returnToGoalCreationChoice();
+      }
       navigation.goBack();
     } else {
       setStep((prev) => Math.max(prev - 1, 0));

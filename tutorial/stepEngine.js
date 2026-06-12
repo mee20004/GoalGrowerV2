@@ -23,6 +23,20 @@ export function isSilentTutorialStep(step) {
   return Boolean(step?.silent);
 }
 
+export function isGoalCreationTutorialStep(step) {
+  return step?.id === "highlight-add-goal" || step?.id === "goal-creation";
+}
+
+export function allowsSkipGoalCreation(step) {
+  return Boolean(step?.allowSkipGoalCreation);
+}
+
+export function getSkipGoalCreationLabel(step) {
+  return step?.skipGoalCreationLabel || "Skip for now";
+}
+
+export const PLANT_GROWTH_STEP_INDEX = 3;
+
 export function getStepPrimaryLabel(step, { isLastStep = false } = {}) {
   if (!step) return "Next";
   if (isWelcomeStep(step)) return "Get Started";

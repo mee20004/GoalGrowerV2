@@ -31,6 +31,8 @@ import {
   navigateForTutorialStep,
   resolveStepTransition,
   resolveTutorialStep,
+  isGoalCreationTutorialStep,
+  PLANT_GROWTH_STEP_INDEX,
 } from "../tutorial/stepEngine";
 
 const TutorialContext = createContext(null);
@@ -384,6 +386,45 @@ export function TutorialProvider({
     [navigationRef, notifyUserAction]
   );
 
+  const returnToGoalCreationChoice = useCallback(() => {
+    if (!isTutorialActive || currentStep?.id !== "goal-creation") {
+      return false;
+    }
+
+    const highlightStep = getTutorialStepByIndex(1);
+    if (!highlightStep) return false;
+
+    setCurrentStepIndex(1);
+    syncStepNavigation(highlightStep);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(remeasureTargets);
+    });
+    setTimeout(remeasureTargets, 250);
+    return true;
+  }, [currentStep, isTutorialActive, remeasureTargets, syncStepNavigation]);
+
+  const skipGoalCreation = useCallback(() => {
+    if (!isTutorialActive || !currentStep || !isGoalCreationTutorialStep(currentStep)) {
+      return false;
+    }
+
+    const plantGrowthStep = getTutorialStepByIndex(PLANT_GROWTH_STEP_INDEX);
+    if (!plantGrowthStep) return false;
+
+    setCurrentStepIndex(PLANT_GROWTH_STEP_INDEX);
+
+    if (currentStep.id === "goal-creation" && navigationRef?.current) {
+      navigationRef.current.navigate("Goals", { screen: "GoalsHome" });
+    }
+
+    syncStepNavigation(plantGrowthStep);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(remeasureTargets);
+    });
+    setTimeout(remeasureTargets, 250);
+    return true;
+  }, [currentStep, isTutorialActive, navigationRef, remeasureTargets, syncStepNavigation]);
+
   const finishIfLastStep = useCallback(async () => {
     const transition = resolveStepTransition({
       currentIndex: currentStepIndex,
@@ -422,6 +463,8 @@ export function TutorialProvider({
       activateTutorialUserAction,
       completeTutorial,
       skipTutorial,
+      skipGoalCreation,
+      returnToGoalCreationChoice,
       resetTutorial,
       previewTutorial,
       finishIfLastStep,
@@ -458,6 +501,8 @@ export function TutorialProvider({
       activateTutorialUserAction,
       completeTutorial,
       skipTutorial,
+      skipGoalCreation,
+      returnToGoalCreationChoice,
       resetTutorial,
       previewTutorial,
       finishIfLastStep,

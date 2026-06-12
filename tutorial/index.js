@@ -42,6 +42,10 @@ export {
   shouldUseHighlightPassthrough,
   getTutorialOverlayPresentation,
   resolveTutorialStep,
+  isGoalCreationTutorialStep,
+  allowsSkipGoalCreation,
+  getSkipGoalCreationLabel,
+  PLANT_GROWTH_STEP_INDEX,
 } from "./stepEngine";
 
 export { TUTORIAL_WELCOME_PLANT_IMAGE } from "./welcomeAssets";

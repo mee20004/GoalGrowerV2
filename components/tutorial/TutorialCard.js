@@ -85,6 +85,10 @@ export default function TutorialCard({
   cardPlacement = null,
   anchorPlacement = null,
   comparisonImages = null,
+  showSkipGoalCreation = false,
+  skipGoalCreationLabel = "Skip for now",
+  optionalHint = null,
+  onSkipGoalCreation,
 }) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -140,6 +144,10 @@ export default function TutorialCard({
     showPrimary,
     onSkip,
     onPrimary,
+    showSkipGoalCreation,
+    skipGoalCreationLabel,
+    optionalHint,
+    onSkipGoalCreation,
   };
 
   return (
@@ -196,6 +204,10 @@ function CardBody({
   showPrimary,
   onSkip,
   onPrimary,
+  showSkipGoalCreation = false,
+  skipGoalCreationLabel = "Skip for now",
+  optionalHint = null,
+  onSkipGoalCreation,
 }) {
   const hasRichCopy =
     descriptionParts?.length || descriptionEmphasis || description;
@@ -233,6 +245,10 @@ function CardBody({
         <Image source={imageSource} style={styles.image} resizeMode="contain" />
       ) : null}
 
+      {showSkipGoalCreation && optionalHint ? (
+        <Text style={styles.optionalHint}>{optionalHint}</Text>
+      ) : null}
+
       <View style={tutorialCardStyles.actionsRow}>
         <Pressable
           style={tutorialCardStyles.skipLink}
@@ -242,18 +258,29 @@ function CardBody({
         >
           <Text style={tutorialCardStyles.skipLinkText}>Skip</Text>
         </Pressable>
-        {showPrimary ? (
-          <Pressable
-            style={tutorialCardStyles.primaryBtn}
-            onPress={onPrimary}
-            accessibilityRole="button"
-            accessibilityLabel={primaryLabel}
-          >
-            <Text style={tutorialCardStyles.primaryText}>{primaryLabel}</Text>
-          </Pressable>
-        ) : (
-          <View style={styles.primaryPlaceholder} />
-        )}
+        <View style={styles.actionsEnd}>
+          {showSkipGoalCreation ? (
+            <Pressable
+              style={tutorialCardStyles.primaryBtn}
+              onPress={onSkipGoalCreation}
+              accessibilityRole="button"
+              accessibilityLabel={skipGoalCreationLabel}
+            >
+              <Text style={tutorialCardStyles.primaryText}>{skipGoalCreationLabel}</Text>
+            </Pressable>
+          ) : showPrimary ? (
+            <Pressable
+              style={tutorialCardStyles.primaryBtn}
+              onPress={onPrimary}
+              accessibilityRole="button"
+              accessibilityLabel={primaryLabel}
+            >
+              <Text style={tutorialCardStyles.primaryText}>{primaryLabel}</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.primaryPlaceholder} />
+          )}
+        </View>
       </View>
     </View>
   );
@@ -280,8 +307,18 @@ const styles = StyleSheet.create({
     height: 120,
     marginBottom: 12,
   },
+  optionalHint: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#5a6b7a",
+    textAlign: "center",
+    marginBottom: 12,
+  },
   primaryPlaceholder: {
     minWidth: 108,
+  },
+  actionsEnd: {
+    marginLeft: "auto",
   },
   arrow: {
     position: "absolute",

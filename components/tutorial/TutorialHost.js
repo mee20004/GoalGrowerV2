@@ -8,6 +8,8 @@ import {
   getTutorialOverlayPresentation,
   isLastStepIndex,
   isCompletionStep,
+  allowsSkipGoalCreation,
+  getSkipGoalCreationLabel,
   isSilentTutorialStep,
   isWelcomeStep,
   shouldShowStepPrimaryButton,
@@ -37,6 +39,7 @@ export default function TutorialHost() {
     beginWelcomeFlow,
     activateTutorialUserAction,
     skipTutorial,
+    skipGoalCreation,
   } = useTutorial();
 
   useEffect(() => {
@@ -166,6 +169,10 @@ export default function TutorialHost() {
             primaryLabel={getStepPrimaryLabel(currentStep, { isLastStep })}
             showPrimary={showPrimary}
             onSkip={skipTutorial}
+            showSkipGoalCreation={allowsSkipGoalCreation(currentStep)}
+            skipGoalCreationLabel={getSkipGoalCreationLabel(currentStep)}
+            optionalHint={currentStep.goalCreationOptionalHint ?? null}
+            onSkipGoalCreation={skipGoalCreation}
             onPrimary={advanceStep}
             targetRect={overlayConfig.cardTargetRect}
             centered={overlayConfig.cardCentered}

@@ -45,6 +45,9 @@ export const TUTORIAL_STEPS = [
     },
     requiresUserAction: true,
     advanceOn: TUTORIAL_TARGET_KEYS.ADD_GOAL_BUTTON,
+    allowSkipGoalCreation: true,
+    skipGoalCreationLabel: "Skip for now",
+    goalCreationOptionalHint: "Creating a goal is optional during the tutorial.",
   },
   {
     id: "goal-creation",
