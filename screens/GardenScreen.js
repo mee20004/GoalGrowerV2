@@ -1,3 +1,31 @@
+import { collection, doc, onSnapshot, setDoc, writeBatch, increment, updateDoc, getDoc, getDocs, arrayUnion, query, where, deleteDoc, runTransaction, deleteField } from "firebase/firestore";
+import { auth, db } from "../firebaseConfig";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
+import * as solidIcons from '@fortawesome/free-solid-svg-icons';
+import { LinearGradient } from "expo-linear-gradient";
+import { PLANT_ASSETS } from "../constants/PlantAssets";
+import { POT_ASSETS } from "../constants/PotAssets";
+import CustomizationScreen from "../components/CustomizationScreen";
+import { subscribeSharedCustomizations, saveSharedCustomizations } from "../utils/customizationFirestore";
+import { subscribePersonalCustomizations, savePersonalCustomizations } from "../utils/customizationFirestore";
+import { FAR_BG_ASSETS } from "../constants/FarBGAssets";
+import { FRAME_ASSETS } from "../constants/FrameAssets";
+import { WALLPAPER_ASSETS } from "../constants/WallpaperAssets";
+import { SHELF_COLOR_SCHEMES } from "../constants/ShelfColors";
+import { toKey } from "../components/GoalsStore";
+import { ACHIEVEMENTS } from "../AchievementsStore";
+import { updateOverallScoreForUser, updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
+import theme, { useTheme } from "../theme";
+import {
+  calculateGoalStreak,
+  getGrowthStage,
+  getPlantHealthState,
+  getRequiredContributors,
+  isGoalDoneForDate,
+  isGoalScheduledOnDate,
+} from "../utils/goalState";
+import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
 // --- TROPHY STORAGE SLOT FINDERS (DEBUG) ---
 async function findFirstOpenStorageSlot(uid, goalId) {
   const layoutSnap = await getDocs(collection(db, "users", uid, "gardenLayout"));
@@ -75,38 +103,12 @@ const persistedGardenState = {
 };
 // Ref to prevent multiple restriction alerts
 let editRestrictionAlertShown = { current: false };
-import { collection, doc, onSnapshot, setDoc, writeBatch, increment, updateDoc, getDoc, getDocs, arrayUnion, query, where, deleteDoc, runTransaction, deleteField } from "firebase/firestore";
-import { auth, db } from "../firebaseConfig";
-import { theme } from "../theme";
-import Ionicons from "@expo/vector-icons/Ionicons";
-import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
-import * as solidIcons from '@fortawesome/free-solid-svg-icons';
-import { LinearGradient } from "expo-linear-gradient";
-import { PLANT_ASSETS } from "../constants/PlantAssets";
-import { POT_ASSETS } from "../constants/PotAssets";
-import CustomizationScreen from "../components/CustomizationScreen";
-import { subscribeSharedCustomizations, saveSharedCustomizations } from "../utils/customizationFirestore";
-import { subscribePersonalCustomizations, savePersonalCustomizations } from "../utils/customizationFirestore";
-import { FAR_BG_ASSETS } from "../constants/FarBGAssets";
-import { FRAME_ASSETS } from "../constants/FrameAssets";
-import { WALLPAPER_ASSETS } from "../constants/WallpaperAssets";
-import { SHELF_COLOR_SCHEMES } from "../constants/ShelfColors";
-import { toKey } from "../components/GoalsStore";
-import { ACHIEVEMENTS } from "../AchievementsStore";
-import { updateOverallScoreForUser, updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
-import {
-  calculateGoalStreak,
-  getGrowthStage,
-  getPlantHealthState,
-  getRequiredContributors,
-  isGoalDoneForDate,
-  isGoalScheduledOnDate,
-} from "../utils/goalState";
-import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
+
 const FAR_BG = require('../assets/far_background.png');
 // Asset arrays are now imported from constants
 const STORAGE_PAGE_ID = 'storage';
 const STORAGE_SHELF_COUNT = 10;
+const PLANT_GHOST_SIZE = 110;
 const SHARED_GARDEN_DEFAULT_PAGE_ID = 'default';
 const MULTI_USER_MIN_WATERERS = 2;
 const SHARED_EDIT_LOCK_MS = 45000;
@@ -707,13 +709,19 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
   const dragFinalizedRef = useRef(false);
   const dragStartPendingRef = useRef(false);
   const dragStartShelfPositionRef = useRef(null);
+  const dragOriginRef = useRef({ x: 0, y: 0 });
   const lastTouchRef = useRef({ x: 0, y: 0, lx: 0, ly: 0 });
+
+  const clearLongPressTimeout = () => {
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+  };
 
   useEffect(() => {
     return () => {
-      if (longPressTimeoutRef.current) {
-        clearTimeout(longPressTimeoutRef.current);
-      }
+      clearLongPressTimeout();
     };
   }, []);
 
@@ -734,6 +742,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
       ? { ...latestProps.current.plant.shelfPosition }
       : null;
 
+    dragOriginRef.current = { x: touch.pageX, y: touch.pageY };
     dragStartPendingRef.current = true;
     try {
       const didStart = await latestProps.current.onDragStart(
@@ -757,6 +766,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
   const finalizeDrag = (moveX, moveY) => {
     if (!dragStartedRef.current || dragFinalizedRef.current) return;
     dragFinalizedRef.current = true;
+    longPressTriggeredRef.current = false;
     latestProps.current.onDragEnd(latestProps.current.plant, moveX, moveY, dragStartShelfPositionRef.current, () => {
       setIsHidden(false);
     });
@@ -786,12 +796,12 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
         const { pageX, pageY, locationX, locationY } = evt.nativeEvent;
         lastTouchRef.current = { x: pageX, y: pageY, lx: locationX, ly: locationY };
 
-        if (latestProps.current.instantDrag || latestProps.current.isEditing) {
+        if (latestProps.current.instantDrag || latestProps.current.isEditing || longPressTriggeredRef.current) {
           startDrag(lastTouchRef.current);
         } else {
           longPressTriggeredRef.current = false;
           dragStartedRef.current = false;
-          if (longPressTimeoutRef.current) clearTimeout(longPressTimeoutRef.current);
+          clearLongPressTimeout();
           longPressTimeoutRef.current = setTimeout(() => {
             longPressTriggeredRef.current = true;
             startDrag(lastTouchRef.current);
@@ -810,6 +820,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
           Animated.event([null, { dx: globalPan.x, dy: globalPan.y }], { useNativeDriver: false })(evt, gesture);
         }
       },
+      onPanResponderTerminationRequest: () => false,
       onPanResponderRelease: (_, gesture) => {
         if (longPressTimeoutRef.current) {
           clearTimeout(longPressTimeoutRef.current);
@@ -854,10 +865,46 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
       onTouchStart={(e) => {
         const { pageX, pageY, locationX, locationY } = e.nativeEvent;
         lastTouchRef.current = { x: pageX, y: pageY, lx: locationX, ly: locationY };
+        if (disabled || globalDragRef.current || latestProps.current.instantDrag || latestProps.current.isEditing) return;
+
+        clearLongPressTimeout();
+        longPressTriggeredRef.current = false;
+        longPressTimeoutRef.current = setTimeout(() => {
+          longPressTriggeredRef.current = true;
+          startDrag(lastTouchRef.current);
+        }, 400);
+      }}
+      onTouchMove={(e) => {
+        const { pageX, pageY, locationX, locationY } = e.nativeEvent;
+        const prev = lastTouchRef.current;
+        const TAP_THRESHOLD = 8;
+        const moved = Math.abs(pageX - prev.x) > TAP_THRESHOLD || Math.abs(pageY - prev.y) > TAP_THRESHOLD;
+        lastTouchRef.current = { x: pageX, y: pageY, lx: locationX, ly: locationY };
+
+        if (dragStartedRef.current) {
+          const origin = dragOriginRef.current;
+          globalPan.setValue({ x: pageX - origin.x, y: pageY - origin.y });
+          return;
+        }
+
+        if (disabled || globalDragRef.current || latestProps.current.instantDrag || latestProps.current.isEditing) return;
+        if (moved && !dragStartedRef.current) {
+          clearLongPressTimeout();
+        }
       }}
       onTouchEnd={(e) => {
+        clearLongPressTimeout();
+        if (dragStartedRef.current && !responderClaimedRef.current) {
+          const { pageX, pageY } = e.nativeEvent;
+          longPressTriggeredRef.current = false;
+          finalizeDrag(pageX, pageY);
+          return;
+        }
         // If a responder was claimed (dragging) or a long-press triggered, skip
-        if (responderClaimedRef.current || dragStartedRef.current || longPressTriggeredRef.current) return;
+        if (responderClaimedRef.current || dragStartedRef.current || longPressTriggeredRef.current) {
+          longPressTriggeredRef.current = false;
+          return;
+        }
         if (latestProps.current.isEditing || globalDragRef.current) return;
         const { pageX, pageY } = e.nativeEvent;
         const TAP_THRESHOLD = 10; // px
@@ -865,6 +912,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
         if (!moved) {
           latestProps.current.onPlantTap?.(latestProps.current.plant);
         }
+        longPressTriggeredRef.current = false;
       }}
       style={[
         styles.plantContainer,
@@ -910,6 +958,7 @@ export default function GardenScreen({ route, navigation }) {
     }
   }, [shelfLayout]);
     // --- Customization State ---
+    const { theme } = useTheme();
     const [showCustomization, setShowCustomization] = useState(false);
     // { [pageId]: { farBg, windowFrame, wallBg, shelfColor } }
     const [customizations, setCustomizations] = useState({});
@@ -1716,7 +1765,7 @@ export default function GardenScreen({ route, navigation }) {
     return true;
   }, [acquireSharedEditLock, canEnterEditMode, globalDragging, isEditing, isReadOnly, isSharedGarden, shouldPersistState]);
 
-  const handleDragStart = async (plant, touchX, touchY) => {
+  const handleDragStart = async (plant, touchX, touchY, touchLocationX, touchLocationY) => {
     if (!canEditPlants) {
       if (!editRestrictionAlertShown.current) {
         editRestrictionAlertShown.current = true;
@@ -1736,7 +1785,13 @@ export default function GardenScreen({ route, navigation }) {
     globalDragRef.current = true;
     setGlobalDragging(true);
     globalPan.setValue({ x: 0, y: 0 });
-    setDraggedGhost({ plant, x: touchX - 40, y: touchY - -50 });
+
+    // Center plant directly under finger
+    setDraggedGhost({
+  plant,
+  x: touchX - 44,
+  y: touchY  + 44,
+});
     return true;
   };
 
@@ -1795,7 +1850,7 @@ export default function GardenScreen({ route, navigation }) {
 
     try {
       const uid = auth.currentUser?.uid;
-      const dest = await checkDropZones(moveX, moveY);
+      const dest = await checkDropZones(moveX, moveY, plant.id);
       if (dest) {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         const baseOldPos = dragStartShelfPosition
@@ -2319,32 +2374,66 @@ export default function GardenScreen({ route, navigation }) {
     );
   };
 
-  const checkDropZones = async (moveX, moveY) => {
-    if (currentPageRef.current !== STORAGE_PAGE_ID && drawerRef.current) {
-      const dRect = await new Promise(res => drawerRef.current.measure((x, y, w, h, px, py) => {
-        res(px !== undefined ? { l: px, r: px + w, t: py, b: py + h } : null);
-      }));
+  const checkDropZones = async (moveX, moveY, draggedPlantId = null) => {
+    if (drawerRef.current && currentPageRef.current !== STORAGE_PAGE_ID) {
+      const dRect = await new Promise((res) => {
+        drawerRef.current.measure((x, y, w, h, px, py) => {
+          res(px !== undefined ? { l: px, r: px + w, t: py, b: py + h } : null);
+        });
+      });
+
       if (dRect && moveX >= dRect.l && moveX <= dRect.r && moveY >= dRect.t && moveY <= dRect.b) return 'drawer';
     }
 
     const prefix = `${currentPageRef.current}_`;
     const candidateKeys = Object.keys(slotRefs.current).filter((key) => key.startsWith(prefix));
+
     for (const slotKey of candidateKeys) {
       const slotRef = slotRefs.current[slotKey];
       if (!slotRef) continue;
-      const rect = await new Promise(res => slotRef.measure((x, y, w, h, px, py) => {
-        res(px !== undefined ? { l: px - 15, r: px + w + 15, t: py - 15, b: py + h + 15 } : null);
-      }));
-      if (rect && moveX >= rect.l && moveX <= rect.r && moveY >= rect.t && moveY <= rect.b) {
-        const suffix = slotKey.slice(prefix.length);
-        const lastUnderscore = suffix.lastIndexOf('_');
-        if (lastUnderscore !== -1) {
-          const shelfName = suffix.slice(0, lastUnderscore);
-          const slotIndex = suffix.slice(lastUnderscore + 1);
-          return `${shelfName}_${slotIndex}`;
-        }
-      }
+
+      const rect = await new Promise((res) => {
+        slotRef.measure((x, y, w, h, px, py) => {
+          res(px !== undefined ? {
+            l: px,
+            r: px + w,
+            t: py,
+            b: py + h,
+          } : null);
+        });
+      });
+
+      if (!rect) continue;
+
+      const isInside =
+        moveX >= rect.l &&
+        moveX <= rect.r &&
+        moveY >= rect.t &&
+        moveY <= rect.b;
+
+      if (!isInside) continue;
+
+      const suffix = slotKey.slice(prefix.length);
+      const lastUnderscore = suffix.lastIndexOf('_');
+      if (lastUnderscore === -1) continue;
+
+      const shelfName = suffix.slice(0, lastUnderscore);
+      const slotIndex = Number(suffix.slice(lastUnderscore + 1));
+
+      // Check if slot is occupied by another plant
+      const occupied = allPlants.find(
+        (p) =>
+          p.id !== draggedPlantId &&
+          p.shelfPosition?.pageId === currentPageRef.current &&
+          p.shelfPosition?.shelfName === shelfName &&
+          Number(p.shelfPosition?.slotIndex) === slotIndex
+      );
+
+      if (occupied) return null;
+
+      return `${shelfName}_${slotIndex}`;
     }
+
     return null;
   };
 
@@ -2432,6 +2521,7 @@ export default function GardenScreen({ route, navigation }) {
                     onPlantTap={handlePlantTap}
                     globalPan={globalPan}
                     globalDragRef={globalDragRef}
+                    instantDrag={isEditing}
                     onDragStart={handleDragStart}
                     onDragEnd={handleDragEnd}
                     onDelete={() => clearPlantFromLayout(occupant.id)}
@@ -2514,6 +2604,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                   onCompletionTargetRef={setCompletionTargetRef}
                   onLongPress={activateEditMode} globalPan={globalPan} globalDragRef={globalDragRef} 
                   onPlantTap={handlePlantTap}
+                  instantDrag={isEditing}
                   onDragStart={handleDragStart} onDragEnd={handleDragEnd}
                   onDelete={() => clearPlantFromLayout(occupant.id)}
                 />
@@ -2865,7 +2956,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                 <TouchableOpacity style={[styles.createGardenModalButton, styles.createGardenModalButtonSecondary]} onPress={closeCreateSharedGardenModal}>
                   <Text style={styles.createGardenModalButtonText}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.createGardenModalButton, styles.createGardenModalButtonPrimary]} onPress={handleConfirmCreateSharedGarden}>
+                <TouchableOpacity style={[styles.createGardenModalButton, styles.createGardenModalButtonPrimary, { backgroundColor: theme.accent }]} onPress={handleConfirmCreateSharedGarden}>
                   <Text style={[styles.createGardenModalButtonText, styles.createGardenModalButtonTextPrimary]}>Create</Text>
                 </TouchableOpacity>
               </View>
@@ -3069,8 +3160,18 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       )}
 
       {draggedGhost && (
-        <Animated.View style={[styles.ghost, { left: draggedGhost.x, top: draggedGhost.y, transform: globalPan.getTranslateTransform() }]}>
-          <PlantVisual plant={draggedGhost.plant} isDraggingHighlight={true} />
+        <Animated.View style={[
+          styles.ghost,
+          {
+            left: draggedGhost.x,
+            top: draggedGhost.y,
+            width: PLANT_GHOST_SIZE,
+            height: PLANT_GHOST_SIZE,
+          },
+        ]}>
+          <Animated.View style={{ transform: globalPan.getTranslateTransform() }}>
+            <PlantVisual plant={draggedGhost.plant} isDraggingHighlight={true} />
+          </Animated.View>
         </Animated.View>
       )}
     </View>

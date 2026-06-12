@@ -26,7 +26,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import Page from "../components/Page";
 import EditButtonRestriction from "./EditButtonRestriction";
-import { theme } from "../theme";
+import theme, { useTheme } from "../theme";
 import { cpShadow } from "../utils/shadows";
 import SwipeCalendar from '../components/SwipeCalendar';
 import { PLANT_ASSETS } from "../constants/PlantAssets";
@@ -614,6 +614,7 @@ export default function GoalScreen({ route, navigation }) {
   const { goalId, source, sharedGardenId: routeSharedGardenId, ownerId: paramOwnerId, sourceGoalId: paramSourceGoalId } = route.params || {};
   const isSharedGoalView = Boolean(routeSharedGardenId);
   const { selectedDateKey } = useGoals();
+  const { theme } = useTheme();
 
   const [goal, setGoal] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1999,27 +2000,52 @@ export default function GoalScreen({ route, navigation }) {
 
   let statusButtonBgColor = "#f1f1f1";
   let statusButtonShadowColor = "#d6d6d6";
-  let statusButtonIconColor = "#58cc02";
+  let statusButtonIconColor = theme.accent;
 
   if (isTrophy) {
     statusButtonBgColor = "#d9dde3";
     statusButtonShadowColor = "#b7c0c9";
     statusButtonIconColor = "#7b8794";
+  } else if (isSharedMultiUserCompletion || isSharedMultiUserQuantity) {
+    // Handle shared goals with new styling
+    if (isDone) {
+      // Complete: full accent background with grey shadow and white text
+      statusButtonBgColor = theme.accent;
+      statusButtonShadowColor = "#d6d6d6";
+      statusButtonIconColor = "#ffffff";
+    } else if (isSharedMultiUserCompletion && currentUserClicked) {
+      // Partial (clicked): lighter solid accent background with darker accent shadow and white text
+      const r = parseInt(theme.accent.slice(1,3), 16);
+      const g = parseInt(theme.accent.slice(3,5), 16);
+      const b = parseInt(theme.accent.slice(5,7), 16);
+      // Create lighter solid color by blending toward white (50% lighter)
+      const lighterR = Math.round(r + (255 - r) * 0.5);
+      const lighterG = Math.round(g + (255 - g) * 0.5);
+      const lighterB = Math.round(b + (255 - b) * 0.5);
+      statusButtonBgColor = `rgb(${lighterR}, ${lighterG}, ${lighterB})`;
+      statusButtonShadowColor = `rgba(${Math.round(r * 0.65)}, ${Math.round(g * 0.65)}, ${Math.round(b * 0.65)}, 0.8)`;
+      statusButtonIconColor = "#ffffff";
+    } else if (isSharedMultiUserQuantity && Number(currentValue) >= (quantityTargetValue || 1)) {
+      // Partial (clicked): lighter solid accent background with darker accent shadow and white text
+      const r = parseInt(theme.accent.slice(1,3), 16);
+      const g = parseInt(theme.accent.slice(3,5), 16);
+      const b = parseInt(theme.accent.slice(5,7), 16);
+      // Create lighter solid color by blending toward white (50% lighter)
+      const lighterR = Math.round(r + (255 - r) * 0.5);
+      const lighterG = Math.round(g + (255 - g) * 0.5);
+      const lighterB = Math.round(b + (255 - b) * 0.5);
+      statusButtonBgColor = `rgb(${lighterR}, ${lighterG}, ${lighterB})`;
+      statusButtonShadowColor = `rgba(${Math.round(r * 0.65)}, ${Math.round(g * 0.65)}, ${Math.round(b * 0.65)}, 0.8)`;
+      statusButtonIconColor = "#ffffff";
+    } else {
+      // Default: blank background with colored text
+      statusButtonBgColor = "#f1f1f1";
+      statusButtonShadowColor = "#d6d6d6";
+      statusButtonIconColor = theme.accent;
+    }
   } else if (isDone) {
-    statusButtonBgColor = "#59d700";
-    statusButtonShadowColor = "#4aa93a";
-    statusButtonIconColor = "#ffffff";
-  } else if (isSharedMultiUserCompletion && currentUserClicked) {
-    statusButtonBgColor = "#8ef148";
-    statusButtonShadowColor = "#73cf39";
-    statusButtonIconColor = "#ffffff";
-  } else if (isSharedMultiUserQuantity && isDone) {
-    statusButtonBgColor = "#59d700";
-    statusButtonShadowColor = "#4aa93a";
-    statusButtonIconColor = "#ffffff";
-  } else if (isQuantity && Number(currentValue) >= (quantityTargetValue || 1)) {
-    statusButtonBgColor = "#8ef148";
-    statusButtonShadowColor = "#73cf39";
+    statusButtonBgColor = theme.accent;
+    statusButtonShadowColor = "#d6d6d6";
     statusButtonIconColor = "#ffffff";
   } else if (isQuantity && Number(currentValue) >= (quantityTargetValue || 1)) {
     statusButtonBgColor = "#eef6e8";
@@ -2027,7 +2053,7 @@ export default function GoalScreen({ route, navigation }) {
     statusButtonIconColor = "#2f7d12";
   }
 
-  const primaryActionBgColor = isTrophy ? "#6d9eff" : "#59d700";
+  const primaryActionBgColor = isTrophy ? "#6d9eff" : theme.accent;
   const primaryActionShadowColor = isTrophy ? "#4e79cf" : "#4aa93a";
 
   return (
@@ -2124,7 +2150,7 @@ export default function GoalScreen({ route, navigation }) {
                     <Text
                       style={[
                         styles.sharedQuantityProgressLabel,
-                        { color: (Number(currentValue) >= quantityTargetValue) ? '#fff' : '#58cc02' },
+                        { color: (isDone || Number(currentValue) >= quantityTargetValue) ? '#fff' : theme.accent },
                       ]}
                     >
                       {`${Math.min(Object.values(quantityLogs).filter(v => Number(v) >= quantityTargetValue).length, requiredSharedContributors)}/${requiredSharedContributors}`}
@@ -2169,7 +2195,7 @@ export default function GoalScreen({ route, navigation }) {
                   <Text
                     style={[
                       styles.statusCircleCount,
-                      { color: (isDone || currentUserClicked) ? "#ffffff" : statusButtonIconColor },
+                      { color: (isDone || currentUserClicked) ? "#ffffff" : theme.accent },
                     ]}
                   >
                     {contributorProgressLabel}
@@ -2208,7 +2234,7 @@ export default function GoalScreen({ route, navigation }) {
               </View>
               <AnimatedGrowthStageBar
                 progressPercent={growthToNextPercent}
-                color={activeGrowthMilestone.nextStart ? "#59d700" : "#ffd454"}
+                color={activeGrowthMilestone.nextStart ? theme.accent : "#ffd454"}
                 showGoldStripes={!activeGrowthMilestone.nextStart}
               />
             </View>

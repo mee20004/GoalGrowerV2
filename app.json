@@ -25,6 +25,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "enableProguardInReleaseBuilds": true,
       "edgeToEdgeEnabled": true,
       "permissions": [
         "NOTIFICATIONS",

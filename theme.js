@@ -1,9 +1,12 @@
 
-export const theme = {
-    colors: {
-      primary: '#28b900', // match your accent or main button color
-      number: '#4f6893',   // match your number color (or pick a suitable one)
-    },
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+
+const baseTheme = {
+  primary: '#28b900',
+  colors: {
+    primary: '#28b900', // match your accent or main button color
+    number: '#4f6893',   // match your number color (or pick a suitable one)
+  },
   // Backgrounds
   //bg: "#4f6893",
   bg: "#f0f0f0",
@@ -21,6 +24,8 @@ export const theme = {
   surface2: "#EBF9EE",
   card: "#F6FBF7",
   cardSoftBlue: "#E8F1FF",
+  gray: "#E5E7EB",
+  line: "#D1D5DB",
 
   // Text (accessible contrast)
   title: "#000000",
@@ -44,3 +49,51 @@ export const theme = {
   radiusSm: 10,
   topGap: 10,
 };
+
+function createTheme(accent) {
+  return {
+    ...baseTheme,
+    accent,
+    primary: accent,
+    colors: {
+      ...baseTheme.colors,
+      primary: accent,
+    },
+  };
+}
+
+export const theme = createTheme(baseTheme.accent);
+
+const ThemeContext = createContext(null);
+
+export function ThemeProvider({ children, accentColor = theme.accent }) {
+  const [accent, setAccent] = useState(accentColor);
+
+  useEffect(() => {
+    setAccent(accentColor);
+  }, [accentColor]);
+
+  useEffect(() => {
+    Object.assign(theme, createTheme(accent));
+  }, [accent]);
+
+  const value = useMemo(
+    () => ({
+      theme,
+      setAccent,
+    }),
+    [accent]
+  );
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+export function useTheme() {
+  const context = useContext(ThemeContext);
+  if (!context) {
+    throw new Error('useTheme must be used within ThemeProvider');
+  }
+  return context;
+}
+
+export default theme;
