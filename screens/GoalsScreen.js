@@ -833,15 +833,17 @@ export default function GoalsScreen({ navigation }) {
         />
       )}
 
-      <Pressable
-        style={[styles.fab, styles.fabPressable, { bottom: insets.bottom + 85 }]}
-        onPress={handleAddGoal}
-        android_ripple={{ color: "#fff" }}
-        accessibilityRole="button"
-        accessibilityLabel="Add goal"
-      >
-        <Ionicons name="add" size={22} color="#fff" />
-      </Pressable>
+      <View style={[styles.fab, { bottom: insets.bottom + 85 }]}>
+        <Pressable
+          style={styles.fabPressable}
+          onPress={handleAddGoal}
+          android_ripple={{ color: "#fff" }}
+          accessibilityRole="button"
+          accessibilityLabel="Add goal"
+        >
+          <Ionicons name="add" size={22} color="#fff" />
+        </Pressable>
+      </View>
     </Page>
   );
 }

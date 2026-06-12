@@ -1629,7 +1629,11 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
           style={[
             styles.stepFooterRow,
             onboardingMode && styles.stepFooterRowOnboarding,
-            onboardingMode && { paddingBottom: insets.bottom + 8 },
+            {
+              paddingBottom: onboardingMode
+                ? insets.bottom + 8
+                : insets.bottom + 65,
+            },
           ]}
         >
           {onboardingMode && typeof onSkipOnboarding === "function" && (
