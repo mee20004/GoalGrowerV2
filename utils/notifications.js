@@ -21,7 +21,9 @@ export const DEFAULT_NOTIFICATION_SETTINGS = {
   globalTime: 9, // 9 AM
   globalTimeMinute: 0,
   dailyReminderEnabled: true,
-  perGoalNotifications: {}, // { goalId: { enabled: true, time: 9, timeMinute: 0, frequency: 'daily' } }
+  perGoalNotifications: {}, // { goalId: { enabled: true, time: 9, timeMinute: 0, customText: '', customPosition: 'prefix' } }
+  globalCustomText: '',
+  globalCustomPosition: 'prefix',
 };
 
 /**
@@ -138,6 +140,17 @@ export async function updateGlobalNotificationTime(hour, minute = 0) {
  * Schedule a daily notification at specified time (or user's preferred time)
  * Uses customizable time from notification settings
  */
+function buildGoalNotificationBody(goalName, customText = '', customPosition = 'prefix') {
+  const trimmed = (customText || '').trim();
+  if (!trimmed) {
+    return `Time to work on your goal: ${goalName}`;
+  }
+  if (customPosition === 'suffix') {
+    return `${goalName} - ${trimmed}`;
+  }
+  return `${trimmed} - ${goalName}`;
+}
+
 export async function scheduleDailyGoalNotification() {
   try {
     const settings = await getNotificationSettings();
@@ -178,13 +191,13 @@ export async function scheduleDailyGoalNotification() {
       `Watering time! Check your goals and grow today. 💧`,
     ];
 
-    const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+    const body = settings.globalCustomText?.trim() ? settings.globalCustomText.trim() : messages[Math.floor(Math.random() * messages.length)];
 
     // Schedule the notification
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
         title: '🌱 Time to Check Your Goals!',
-        body: randomMessage,
+        body,
         data: {
           type: 'daily_goal_reminder',
           timestamp: new Date().toISOString(),
@@ -214,7 +227,7 @@ export async function scheduleDailyGoalNotification() {
 /**
  * Schedule a per-goal notification
  */
-export async function scheduleGoalNotification(goalId, goalName, hour = 9, minute = 0) {
+export async function scheduleGoalNotification(goalId, goalName, hour = 9, minute = 0, customText = '', customPosition = 'prefix') {
   try {
     const settings = await getNotificationSettings();
     
@@ -236,7 +249,7 @@ export async function scheduleGoalNotification(goalId, goalName, hour = 9, minut
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
         title: `⏰ ${goalName}`,
-        body: `Time to work on your goal: ${goalName}`,
+        body: buildGoalNotificationBody(goalName, customText, customPosition),
         data: {
           type: 'goal_notification',
           goalId,
@@ -494,6 +507,8 @@ export async function getGoalNotificationSettings(goalId) {
       enabled: false,
       time: 9,
       timeMinute: 0,
+      customText: '',
+      customPosition: 'prefix',
     };
   } catch (error) {
     console.error('Error getting goal notification settings:', error);
@@ -518,17 +533,28 @@ export async function saveGoalNotificationSettings(goalId, notificationSettings)
     }
     
     settings.perGoalNotifications[goalId] = notificationSettings;
-    
+
     await saveNotificationSettings(settings);
-    
-    // Reschedule this goal's notification
+
+    // Reschedule this goal's notification. Try to resolve the goal name from Firestore if not provided
     if (notificationSettings.enabled && settings.notificationsEnabled) {
-      await scheduleGoalNotification(
-        goalId,
-        '', // goalName will be passed separately
-        notificationSettings.time,
-        notificationSettings.timeMinute
-      );
+      try {
+        let goalName = notificationSettings.goalName || '';
+        if (!goalName) {
+          const goalDoc = await getDoc(doc(db, 'users', auth.currentUser.uid, 'goals', goalId));
+          if (goalDoc.exists()) goalName = goalDoc.data().name || '';
+        }
+        await scheduleGoalNotification(
+          goalId,
+          goalName,
+          notificationSettings.time,
+          notificationSettings.timeMinute,
+          notificationSettings.customText,
+          notificationSettings.customPosition
+        );
+      } catch (e) {
+        console.warn('Could not fetch goal name for scheduling:', e);
+      }
     } else {
       // Cancel this goal's notification
       await cancelGoalNotification(goalId);
@@ -537,6 +563,25 @@ export async function saveGoalNotificationSettings(goalId, notificationSettings)
     return true;
   } catch (error) {
     console.error('Error saving goal notification settings:', error);
+    return false;
+  }
+}
+
+/**
+ * Remove stored notification settings for a specific goal
+ */
+export async function removeGoalNotificationSetting(goalId) {
+  try {
+    if (!auth.currentUser) return false;
+    const settings = await getNotificationSettings();
+    if (settings.perGoalNotifications && settings.perGoalNotifications[goalId]) {
+      delete settings.perGoalNotifications[goalId];
+      await saveNotificationSettings(settings);
+    }
+    await cancelGoalNotification(goalId);
+    return true;
+  } catch (error) {
+    console.error('Error removing goal notification setting:', error);
     return false;
   }
 }

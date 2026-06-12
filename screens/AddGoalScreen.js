@@ -43,7 +43,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import * as Haptics from "expo-haptics";
 import Page from "../components/Page";
-import { theme } from "../theme";
+import theme, { useTheme } from "../theme";
 import { useGoals, fromKey } from "../components/GoalsStore";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
@@ -105,7 +105,7 @@ const getScheduleDays = () => {
   return [...DAYS.slice(weekStart), ...DAYS.slice(0, weekStart)];
 };
 
-function Chip({ label, active, onPress, variant = "default" }) {
+function Chip({ label, active, onPress, variant = "default", accent }) {
   const isFilter = variant === "filter";
 
   return (
@@ -117,8 +117,8 @@ function Chip({ label, active, onPress, variant = "default" }) {
       style={[
         styles.chip,
         isFilter && styles.filterStyleChip,
-        active && styles.chipActive,
-        active && isFilter && styles.filterStyleChipActive,
+        active && [styles.chipActive, { backgroundColor: accent, borderColor: accent }],
+        active && isFilter && [styles.filterStyleChipActive, { backgroundColor: accent, borderColor: accent }],
       ]}
     >
       <Text
@@ -135,7 +135,7 @@ function Chip({ label, active, onPress, variant = "default" }) {
   );
 }
 
-function Segmented({ left, right, value, onChange }) {
+function Segmented({ left, right, value, onChange, accent }) {
   return (
     <View style={styles.segmentWrap}>
       <Pressable
@@ -143,7 +143,7 @@ function Segmented({ left, right, value, onChange }) {
           triggerSelectionHaptic();
           onChange(left.value);
         }}
-        style={[styles.segment, value === left.value && styles.segmentActive]}
+        style={[styles.segment, value === left.value && [styles.segmentActive, { backgroundColor: accent, borderColor: accent }]]}
       >
         <Text style={[styles.segmentText, value === left.value && styles.segmentTextActive]}>{left.label}</Text>
       </Pressable>
@@ -152,7 +152,7 @@ function Segmented({ left, right, value, onChange }) {
           triggerSelectionHaptic();
           onChange(right.value);
         }}
-        style={[styles.segment, value === right.value && styles.segmentActive]}
+        style={[styles.segment, value === right.value && [styles.segmentActive, { backgroundColor: accent, borderColor: accent }]]}
       >
         <Text style={[styles.segmentText, value === right.value && styles.segmentTextActive]}>{right.label}</Text>
       </Pressable>
@@ -407,10 +407,10 @@ function Pill({ label, active, onPress }) {
   );
 }
 
-function PrimaryButton({ label, onPress, disabled, style }) {
+function PrimaryButton({ label, onPress, disabled, style, accent }) {
   return (
     <View style={[styles.actionButtonWrap, style]}>
-      <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
+      <View pointerEvents="none" style={[styles.actionButtonShadow, { backgroundColor: accent }]} />
       <Pressable
         onPress={() => {
           if (disabled) return;
@@ -421,6 +421,7 @@ function PrimaryButton({ label, onPress, disabled, style }) {
         style={({ pressed }) => [
           styles.actionButtonFace,
           styles.actionButtonPrimary,
+          { backgroundColor: accent },
           pressed && styles.actionButtonPressed,
           disabled && styles.actionButtonPrimaryDisabled,
         ]}
@@ -431,7 +432,7 @@ function PrimaryButton({ label, onPress, disabled, style }) {
   );
 }
 
-function GhostButton({ label, onPress, disabled, style }) {
+function GhostButton({ label, onPress, disabled, style, accent }) {
   return (
     <View style={[styles.actionButtonWrap, style]}>
       <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowSecondary]} />
@@ -449,17 +450,17 @@ function GhostButton({ label, onPress, disabled, style }) {
           disabled && styles.actionButtonSecondaryDisabled,
         ]}
       >
-        <Text style={[styles.actionButtonText, styles.actionButtonTextSecondary, disabled && styles.actionButtonTextDisabled]}>{label}</Text>
+        <Text style={[styles.actionButtonText, styles.actionButtonTextSecondary, { color: accent }, disabled && styles.actionButtonTextDisabled]}>{label}</Text>
       </Pressable>
     </View>
   );
 }
 
-function Button({ variant = "primary", label, onPress, disabled, style }) {
+function Button({ variant = "primary", label, onPress, disabled, style, accent }) {
   if (variant === "secondary") {
-    return <GhostButton label={label} onPress={onPress} disabled={disabled} style={style} />;
+    return <GhostButton label={label} onPress={onPress} disabled={disabled} style={style} accent={accent} />;
   }
-  return <PrimaryButton label={label} onPress={onPress} disabled={disabled} style={style} />;
+  return <PrimaryButton label={label} onPress={onPress} disabled={disabled} style={style} accent={accent} />;
 }
 
 function CoachMark({ visible, title, body, onClose }) {
@@ -479,7 +480,7 @@ function CoachMark({ visible, title, body, onClose }) {
   );
 }
 
-function StepProgressBar({ total = 1, index = 0 }) {
+function StepProgressBar({ total = 1, index = 0, accent }) {
   const progress = Math.min(1, Math.max(0, (index + 1) / Math.max(total, 1)));
   const animatedProgress = useRef(new Animated.Value(progress)).current;
 
@@ -503,12 +504,13 @@ function StepProgressBar({ total = 1, index = 0 }) {
       accessibilityRole="progressbar"
       accessibilityValue={{ min: 0, max: total, now: index + 1 }}
     >
-       <Animated.View style={[styles.progressBarFill, { width: animatedWidth, fontFamily: 'CeraRoundProDEMO-Black' }]} />
+       <Animated.View style={[styles.progressBarFill, { width: animatedWidth, backgroundColor: accent, fontFamily: 'CeraRoundProDEMO-Black' }]} />
     </View>
   );
 }
 
 export default function AddGoalScreen({ navigation }) {
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   // Load the Cera Round Pro DEMO font only for this screen
   const [fontsLoaded] = useFonts({
@@ -1160,6 +1162,7 @@ export default function AddGoalScreen({ navigation }) {
                 label="Personal"
                 variant="filter"
                 active={selectedGardenId === "personal"}
+                accent={theme.accent}
                 onPress={() => setSelectedGardenId("personal")}
               />
               {sharedGardens.map((garden) => (
@@ -1168,6 +1171,7 @@ export default function AddGoalScreen({ navigation }) {
                   label={garden.name || "Shared Garden"}
                   variant="filter"
                   active={selectedGardenId === garden.id}
+                  accent={theme.accent}
                   onPress={() => setSelectedGardenId(garden.id)}
                 />
               ))}
@@ -1329,7 +1333,7 @@ export default function AddGoalScreen({ navigation }) {
       return (
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Tracking</Text>
-          <Segmented left={{ label: "Checkmark", value: "completion" }} right={{ label: "Quantity", value: "quantity" }} value={type} onChange={setType} />
+          <Segmented left={{ label: "Checkmark", value: "completion" }} right={{ label: "Quantity", value: "quantity" }} value={type} onChange={setType} accent={theme.accent} />
           {type === "quantity" && (
             <View style={styles.row}>
               <TextInput value={target} onChangeText={(value) => setTarget(normalizeQuantityTargetInput(value))} keyboardType="numeric" style={[styles.input, { flex: 1, marginRight: 10 }]} placeholder="Target (max 6)" placeholderTextColor={theme.muted2} />
@@ -1348,6 +1352,7 @@ export default function AddGoalScreen({ navigation }) {
               label="Every day"
               variant="filter"
               active={mode === "everyday"}
+              accent={theme.accent}
               onPress={() => {
                 setMode("everyday");
                 setDays([0,1,2,3,4,5,6]);
@@ -1357,12 +1362,13 @@ export default function AddGoalScreen({ navigation }) {
               label="Weekdays"
               variant="filter"
               active={mode === "weekdays"}
+              accent={theme.accent}
               onPress={() => {
                 setMode("weekdays");
                 setDays([1,2,3,4,5]);
               }}
             />
-            <Chip label="Custom" variant="filter" active={mode === "days"} onPress={() => setMode("days")} />
+            <Chip label="Custom" variant="filter" active={mode === "days"} accent={theme.accent} onPress={() => setMode("days")} />
           </View>
           <View style={styles.daysGrid}>
             {getScheduleDays().map((d) => {
@@ -1371,7 +1377,7 @@ export default function AddGoalScreen({ navigation }) {
                 <Pressable
                   key={d.label}
                   onPress={() => handleDayPress(d.day)}
-                  style={[styles.dayPill, isSelected && styles.dayPillActive]}
+                  style={[styles.dayPill, isSelected && [styles.dayPillActive, { backgroundColor: theme.accent, borderColor: theme.accent }]]}
                 >
                   <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>{d.label}</Text>
                 </Pressable>
@@ -1386,9 +1392,9 @@ export default function AddGoalScreen({ navigation }) {
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Goal completion</Text>
           <View style={styles.completionModeRow}>
-            <Chip label="No end" variant="filter" active={completionMode === "none"} onPress={() => changeCompletionMode("none")} />
-            <Chip label="End date" variant="filter" active={completionMode === "date"} onPress={() => changeCompletionMode("date")} />
-            <Chip label="End amount" variant="filter" active={completionMode === "amount"} onPress={() => changeCompletionMode("amount")} />
+            <Chip label="No end" variant="filter" accent={theme.accent} active={completionMode === "none"} onPress={() => changeCompletionMode("none")} />
+            <Chip label="End date" variant="filter" accent={theme.accent} active={completionMode === "date"} onPress={() => changeCompletionMode("date")} />
+            <Chip label="End amount" variant="filter" accent={theme.accent} active={completionMode === "amount"} onPress={() => changeCompletionMode("amount")} />
           </View>
           {completionMode === "date" && (
             <>
@@ -1613,7 +1619,7 @@ export default function AddGoalScreen({ navigation }) {
 
         <View style={[styles.stepFooterRow, { position: 'absolute', left: 12, right: 12, bottom: insets.bottom + 88, zIndex: 1000, elevation: 20 }]}> 
           <View style={styles.footerProgressWrap}>
-            <StepProgressBar total={stepLabels.length} index={step} />
+            <StepProgressBar total={stepLabels.length} index={step} accent={theme.accent} />
           </View>
           <View style={styles.stepButtonGroup}>
             <Button
@@ -1622,6 +1628,7 @@ export default function AddGoalScreen({ navigation }) {
               onPress={goBackStep}
               disabled={isSaving}
               style={styles.stepButton}
+              accent={theme.accent}
             />
             {step < stepLabels.length - 1 ? (
               <Button
@@ -1630,9 +1637,10 @@ export default function AddGoalScreen({ navigation }) {
                 onPress={goNextStep}
                 disabled={isSaving || (step === 0 && name.trim().length < 3)}
                 style={styles.stepButton}
+                accent={theme.accent}
               />
             ) : (
-              <Button variant="primary" label={isSaving ? "Saving..." : "Save Goal"} onPress={save} disabled={isSaving || !canSave || (selectedGardenId !== "personal" && !canEditPlants)} style={styles.stepButton} />
+              <Button variant="primary" accent={theme.accent} label={isSaving ? "Saving..." : "Save Goal"} onPress={save} disabled={isSaving || !canSave || (selectedGardenId !== "personal" && !canEditPlants)} style={styles.stepButton} />
             )}
           </View>
         </View>
@@ -1662,7 +1670,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderRadius: 20,
   },
-  actionButtonShadowPrimary: { backgroundColor: "#4aa93a" },
+  actionButtonShadowPrimary: { backgroundColor: "#c3cfdb" },
   actionButtonShadowSecondary: { backgroundColor: "#c3cfdb" },
   actionButtonFace: {
     height: 52,
@@ -1671,9 +1679,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 16,
   },
-  actionButtonPrimary: { backgroundColor: "#59d700" },
+  actionButtonPrimary: { backgroundColor: theme.accent },
   actionButtonSecondary: { backgroundColor: "#e7edf5" },
-  actionButtonPrimaryDisabled: { backgroundColor: "#97cd71"},
+  actionButtonPrimaryDisabled: { backgroundColor: "#c3cfdb" },
   actionButtonSecondaryDisabled: { backgroundColor: "#dde3ea" },
   actionButtonPressed: { transform: [{ translateY: 4 }] },
   actionButtonText: { fontSize: 15, fontFamily: 'CeraRoundProDEMO-Black' },
@@ -1683,7 +1691,7 @@ const styles = StyleSheet.create({
   headerWrapper: {
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderRadius: 24,
-    shadowColor: '#4c6782',
+    shadowColor: theme.accent,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.16,
     shadowRadius: 0,
@@ -1897,9 +1905,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#c9c9c9',
     borderColor: 'transparent',
   },
-  chipActive: { backgroundColor: "#28b900", borderColor: theme.accent },
+  chipActive: { backgroundColor: theme.accent, borderColor: theme.accent },
   filterStyleChipActive: {
-    backgroundColor: '#28b900',
+    backgroundColor: theme.accent,
     borderColor: theme.accent,
   },
   chipText: { fontSize: 12, color: "#4c5f75", fontFamily: 'CeraRoundProDEMO-Black' },
@@ -1929,7 +1937,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  segmentActive: { backgroundColor: '#28b900', borderColor: theme.accent },
+  segmentActive: { backgroundColor: theme.accent, borderColor: theme.accent },
   segmentText: { fontSize: 14, fontWeight: '900', color: '#ffffff', fontFamily: 'CeraRoundProDEMO-Black' },
   segmentTextActive: { color: '#ffffff', fontFamily: 'CeraRoundProDEMO-Black' },
   row: { flexDirection: "row", marginTop: 10, gap: 10 },
@@ -1944,7 +1952,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  dayPillActive: { backgroundColor: '#28b900', borderColor: theme.accent },
+  dayPillActive: { backgroundColor: theme.accent, borderColor: theme.accent },
   dayText: { fontSize: 14, fontWeight: '900', color: '#ffffff', fontFamily: 'CeraRoundProDEMO-Black' },
   dayTextActive: { color: '#ffffff', fontFamily: 'CeraRoundProDEMO-Black' },
   iconPickerButton: {
@@ -2052,7 +2060,7 @@ const styles = StyleSheet.create({
   iconSelectedPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#59d700',
+    backgroundColor: theme.accent,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -2114,7 +2122,7 @@ const styles = StyleSheet.create({
     height: 76,
     borderRadius: 16,
     borderWidth: 2,
-    borderColor: "#59d700",
+    borderColor: theme.accent,
     backgroundColor: "rgba(89, 215, 0, 0.08)",
     zIndex: -1,
   },
@@ -2266,7 +2274,7 @@ const styles = StyleSheet.create({
     borderColor: "#d6e4f2",
   },
   selectorCardActive: {
-    borderColor: "#59d700",
+    borderColor: theme.accent,
     backgroundColor: "#f8fff2",
   },
   selectorControlRow: {
@@ -2313,7 +2321,7 @@ const styles = StyleSheet.create({
     borderColor: "#d6e4f2",
   },
   plantCardActive: {
-    borderColor: "#59d700",
+    borderColor: theme.accent,
     backgroundColor: "#f8fff2",
   },
   previewAssemblyWrap: {
@@ -2357,7 +2365,7 @@ const styles = StyleSheet.create({
   plantDotActive: {
     width: 20,
     borderRadius: 999,
-    backgroundColor: "#59d700",
+    backgroundColor: theme.accent,
   },
   potPagerWrap: {
     marginTop: 4,
@@ -2384,7 +2392,7 @@ const styles = StyleSheet.create({
     borderColor: "#d6e4f2",
   },
   potCardActive: {
-    borderColor: "#59d700",
+    borderColor: theme.accent,
     backgroundColor: "#f8fff2",
   },
   potPreviewName: {
@@ -2408,7 +2416,7 @@ const styles = StyleSheet.create({
   potDotActive: {
     width: 20,
     borderRadius: 999,
-    backgroundColor: "#59d700",
+    backgroundColor: theme.accent,
   },
   loadMoreIconsBtn: {
     alignSelf: 'center',

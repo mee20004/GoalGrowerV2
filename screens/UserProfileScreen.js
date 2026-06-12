@@ -5,13 +5,14 @@ import { View, Text, ScrollView, TouchableOpacity, Pressable, StyleSheet, Activi
 import { useFocusEffect } from "@react-navigation/native";
 import { doc, getDoc, collection, getDocs, setDoc, deleteDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
-import { theme } from "../theme";
+import theme, { useTheme } from "../theme";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 // IMPORT YOUR ACHIEVEMENTS STORE
 import { ACHIEVEMENTS } from "../AchievementsStore";
 
 export default function UserProfileScreen({ route, navigation }) {
+  const { theme } = useTheme();
   // We expect a userId to be passed when navigating to this screen
   const { userId } = route.params; 
   
@@ -155,13 +156,14 @@ export default function UserProfileScreen({ route, navigation }) {
             {currentUserId !== userId && (
               <>
                 <View style={styles.actionButtonWrapWide}>
-                  <View pointerEvents="none" style={[styles.actionButtonShadow, isFollowing ? styles.actionButtonShadowDanger : styles.actionButtonShadowPrimary]} />
+                  <View pointerEvents="none" style={[styles.actionButtonShadow, isFollowing ? styles.actionButtonShadowDanger : styles.actionButtonShadowPrimary, !isFollowing && { backgroundColor: theme.accent }]} />
                   <Pressable
                     onPress={toggleFollow}
                     disabled={followLoading}
                     style={({ pressed }) => [
                       styles.actionButtonFace,
                       isFollowing ? styles.followingButton : styles.followButton,
+                      !isFollowing && { backgroundColor: theme.accent },
                       pressed && !followLoading && styles.actionButtonPressed,
                     ]}
                   >
@@ -203,7 +205,7 @@ export default function UserProfileScreen({ route, navigation }) {
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Overall Score</Text>
-              <Text style={[styles.infoValue, styles.scoreValue]}>{profileData?.overallScore || 0} pts</Text>
+              <Text style={[styles.infoValue, styles.scoreValue, { color: theme.accent }]}>{profileData?.overallScore || 0} pts</Text>
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Overall App Streak</Text>

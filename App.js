@@ -1,4 +1,4 @@
-import { theme } from './theme';
+import theme, { ThemeProvider, useTheme } from './theme';
 import React, { useState, useEffect, useRef } from "react";
 import { useCallback } from "react";
 import { Asset } from 'expo-asset';
@@ -50,6 +50,8 @@ const TASKBAR_ICON_MAP = {
 
 // Helper Placeholder Screen
 function Placeholder({ title }) {
+  const { theme } = useTheme();
+
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: theme.bg }}>
       <Text style={{ fontWeight: "900", color: theme.muted2 }}>{title}</Text>
@@ -145,6 +147,7 @@ function GardenStack() {
 // --- MAIN BOTTOM TABS ---
 
 function MainTabs() {
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
 
   const getActiveNestedRoute = (route) => {
@@ -375,6 +378,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [accentColor, setAccentColor] = useState(theme.accent);
   const [initializing, setInitializing] = useState(true);
   const [hasUsername, setHasUsername] = useState(false);
   const [showEnterScreen, setShowEnterScreen] = useState(false);
@@ -413,10 +417,13 @@ export default function App() {
         unsubFirestoreRef.current = onSnapshot(
           doc(db, "users", firebaseUser.uid),
           (docSnap) => {
-            if (docSnap.exists() && docSnap.data().username) {
-              setHasUsername(true);
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              setHasUsername(!!data.username);
+              setAccentColor(data.accentColor || theme.accent);
             } else {
               setHasUsername(false);
+              setAccentColor(theme.accent);
             }
             setInitializing(false);
             checkEnterScreen(firebaseUser.uid, "onSnapshot");
@@ -466,22 +473,24 @@ export default function App() {
     <FontProvider>
       <SafeAreaProvider>
         <GoalsProvider>
-          <NavigationContainer>
-            <StatusBar style="dark" />
-            <RootStack.Navigator screenOptions={{ headerShown: false }}>
-              {user && hasUsername ? (
-                showEnterScreen ? (
-                  <RootStack.Screen name="Enter" options={{ headerShown: false }}>
-                    {props => <EnterScreen {...props} onDone={handleEnterScreenDone} />}
-                  </RootStack.Screen>
+          <ThemeProvider accentColor={accentColor}>
+            <NavigationContainer>
+              <StatusBar style="dark" />
+              <RootStack.Navigator screenOptions={{ headerShown: false }}>
+                {user && hasUsername ? (
+                  showEnterScreen ? (
+                    <RootStack.Screen name="Enter" options={{ headerShown: false }}>
+                      {props => <EnterScreen {...props} onDone={handleEnterScreenDone} />}
+                    </RootStack.Screen>
+                  ) : (
+                    <RootStack.Screen name="Tabs" component={MainTabs} />
+                  )
                 ) : (
-                  <RootStack.Screen name="Tabs" component={MainTabs} />
-                )
-              ) : (
-                <RootStack.Screen name="Login" component={Login} />
-              )}
-            </RootStack.Navigator>
-          </NavigationContainer>
+                  <RootStack.Screen name="Login" component={Login} />
+                )}
+              </RootStack.Navigator>
+            </NavigationContainer>
+          </ThemeProvider>
         </GoalsProvider>
       </SafeAreaProvider>
     </FontProvider>

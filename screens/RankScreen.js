@@ -6,7 +6,7 @@ import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "@react-navigation/native";
 import { collection, query, orderBy, limit, getDocs, doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
-import { theme } from "../theme";
+import theme, { useTheme } from "../theme";
 import Page from "../components/Page";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import FireStreakIcon from "../assets/Icons/FireStreakIcon";
@@ -26,6 +26,7 @@ export default function RankScreen({ navigation }) {
   const [fontsLoaded] = useFonts({
     'CeraRoundProDEMO-Black': require('../assets/fonts/CeraRoundProDEMOBlack.otf'),
   });
+  const { theme } = useTheme();
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("global");
@@ -162,7 +163,7 @@ export default function RankScreen({ navigation }) {
         </View>
 
         <View style={styles.userInfo}>
-          <Text style={[styles.username, isCurrentUser && styles.currentUsername]}>
+          <Text style={[styles.username, isCurrentUser && { color: theme.accent }]}> 
             {item.username || "Unknown"} {isCurrentUser && "(You)"}
           </Text>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
@@ -172,7 +173,7 @@ export default function RankScreen({ navigation }) {
         </View>
 
         <View style={styles.scoreContainer}>
-          <Text style={styles.scoreNumber}>{item.overallScore || 0}</Text>
+          <Text style={[styles.scoreNumber, { color: theme.accent }]}>{item.overallScore || 0}</Text>
           <Text style={styles.scoreLabel}>pts</Text>
         </View>
       </TouchableOpacity>
@@ -192,7 +193,7 @@ export default function RankScreen({ navigation }) {
                   return (
                     <TouchableOpacity
                       key={filter.key}
-                      style={[styles.filterChip, isActive && styles.filterChipActive]}
+                      style={[styles.filterChip, isActive && { backgroundColor: theme.accent, borderColor: theme.accent }]}
                       onPress={() => {
                         triggerFilterHaptic();
                         setActiveFilter(filter.key);
@@ -238,7 +239,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 0,
     borderColor: '#d9e6f4',
-    ...cpShadow({ color: '#4c6782', offset: { width: 0, height: 6 }, opacity: 0.16, radius: 0, elevation: 3 }),
+    ...cpShadow({ color: theme.accent, offset: { width: 0, height: 6 }, opacity: 0.16, radius: 0, elevation: 3 }),
     marginTop: 8,
     marginBottom: 12,
   },
@@ -283,7 +284,8 @@ const styles = StyleSheet.create({
     marginHorizontal: 0,
   },
   filterChipActive: {
-    backgroundColor: '#28b900',
+    backgroundColor: theme.accent,
+    borderColor: theme.accent,
   },
   filterChipText: {
     fontSize: 14,
@@ -311,9 +313,9 @@ const styles = StyleSheet.create({
     ...cpShadow({ color: '#cdcdcd', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   currentUserCard: {
-    borderColor: '#28b900',
+    borderColor: theme.accent,
     backgroundColor: '#ffffff',
-    ...cpShadow({ color: '#28b900', offset: { width: 0, height: 6 }, opacity: 0.9, radius: 0, elevation: 3 }),
+    ...cpShadow({ color: theme.accent, offset: { width: 0, height: 6 }, opacity: 0.9, radius: 0, elevation: 3 }),
   },
 
   rankContainer: { width: 40, alignItems: "center", justifyContent: "center", marginRight: 8 },
@@ -324,11 +326,11 @@ const styles = StyleSheet.create({
 
   userInfo: { flex: 1 },
   username: { fontSize: 16, fontWeight: "900", color: theme.text, marginBottom: 4, fontFamily: 'CeraRoundProDEMO-Black' },
-  currentUsername: { color: '#28b900', fontFamily: 'CeraRoundProDEMO-Black' },
+  currentUsername: { color: theme.accent, fontFamily: 'CeraRoundProDEMO-Black' },
   streakText: { fontSize: 12, fontWeight: "800", color: "#FF9600", fontFamily: 'CeraRoundProDEMO-Black' },
 
   scoreContainer: { alignItems: "flex-end", justifyContent: "center" },
-  scoreNumber: { fontSize: 20, fontWeight: "900", color: '#28b900', fontFamily: 'CeraRoundProDEMO-Black' },
+  scoreNumber: { fontSize: 20, fontWeight: "900", color: theme.accent, fontFamily: 'CeraRoundProDEMO-Black' },
   scoreLabel: { fontSize: 10, fontWeight: "800", color: theme.muted, marginTop: -2, fontFamily: 'CeraRoundProDEMO-Black' },
 
   emptyText: { textAlign: "center", color: theme.muted, marginTop: 40, fontStyle: "italic", fontWeight: '900', fontSize: 16, fontFamily: 'CeraRoundProDEMO-Black' },
