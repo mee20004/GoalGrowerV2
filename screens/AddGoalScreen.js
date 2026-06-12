@@ -517,6 +517,8 @@ export default function AddGoalScreen({ navigation }) {
 
   // Step state for multi-step form
   const [step, setStep] = useState(0);
+  const formStepRef = useRef(step);
+  formStepRef.current = step;
 
   useEffect(() => {
     if (!isTutorialActive) return undefined;
@@ -525,6 +527,27 @@ export default function AddGoalScreen({ navigation }) {
     });
     return () => cancelAnimationFrame(frame);
   }, [isTutorialActive, remeasureTargets, step]);
+
+  useEffect(() => {
+    if (!isTutorialActive || currentStep?.id !== "goal-creation") {
+      return undefined;
+    }
+
+    return navigation.addListener("beforeRemove", (e) => {
+      const action = e.data?.action;
+      const isBack =
+        action?.type === "GO_BACK" ||
+        (action?.type === "POP" &&
+          (action?.payload?.count === undefined || action?.payload?.count <= 1));
+      if (!isBack || formStepRef.current !== 0) return;
+      returnToGoalCreationChoice();
+    });
+  }, [
+    navigation,
+    isTutorialActive,
+    currentStep?.id,
+    returnToGoalCreationChoice,
+  ]);
   // Early return after all hooks
   if (!fontsLoaded) {
     return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" /></View>;

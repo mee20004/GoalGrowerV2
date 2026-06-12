@@ -6,10 +6,12 @@ This document defines the architecture, UX behavior, implementation roadmap, and
 
 The onboarding flow introduces first-time users to:
 1. The GoalGrower concept
-2. Creating their first goal
+2. Creating a goal (optional during the tutorial)
 3. Understanding plant growth progression
-4. Staying consistent
-5. Completing the tutorial and earning their first trophy
+4. Staying consistent with watering
+5. Completing the tutorial
+
+A one-time `tutorialAwardGranted` flag is persisted in AsyncStorage when the user first completes the tutorial (for downstream reward logic). The completion screen shows congratulations only — no trophy image on the card.
 
 IMPORTANT:
 - Use the wireframe images in the `/wireframes` folder as the primary visual guide.
@@ -68,81 +70,93 @@ Includes:
 
 ---
 
-## Step 2 — Highlight Add Goal Button
+## Step 2 — Highlight Add Goal (`highlight-add-goal`)
 
-Highlight:
-- Floating action button ("+ Add Goal")
+**New users (no visible goals):**
+- Highlights empty-state **+ Add Goal** button
+- Title: "Create Your First Goal"
+
+**Returning users (has visible goals):**
+- Highlights the **FAB** (+) in the bottom right
+- Title: "Create a Goal"
+- Copy references the bottom-right + button
 
 Behavior:
-- Background darkens
-- Add Goal button remains illuminated
-- Tutorial card hovers near highlighted button
+- Background darkens with rounded SVG highlight cutout (no border ring)
+- Tutorial card anchors above the highlighted target
 - Progress bar visible but subtle
+- **Skip** (left) exits the entire tutorial
+- **Skip for now** (right, primary green) skips goal creation and jumps to Step 4
+- Optional hint on this card only: "Creating a goal is optional during the tutorial."
 
-Instruction:
-Guide user to create their first goal.
+User action required to advance:
+- Tap the highlighted Add Goal control (passthrough overlay or real button)
 
-User action required:
-- Tap Add Goal button
-
----
-
-## Step 3 — Goal Creation Guidance
-
-Tutorial remains active during:
-- Goal creation flow
-- Plant selection
-- Schedule selection
-
-
-Focus areas should dynamically reposition.
+Navigates to Goals tab on step entry.
 
 ---
 
-## Step 4 — Plant Growth Explanation
+## Step 3 — Goal Creation (`goal-creation`, silent)
 
-Navigate to Journey/Garden screen.
+Silent step — **no tutorial overlay** during the Add Goal form so bottom controls are not blocked.
+
+Tutorial remains active in state while user:
+- Fills out the multi-step Add Goal flow
+- Selects a plant and schedule
+
+Advance triggers:
+- Successfully saving a goal (`GOAL_CREATION` user action)
+
+Back navigation:
+- In-form back button or Android hardware back from step 0 returns user to Step 2 decision card (`returnToGoalCreationChoice`)
+
+---
+
+## Step 4 — Plant Growth (`plant-growth`)
+
+Navigate to Journey tab.
 
 Highlight:
-- Plant growth area
+- **Journey tab** in the bottom tab bar
 
-Instruction:
-Explain:
-- Plants grow as goals progress
-- Multiple growth stages exist
+Instruction (in card):
+- Plants grow as goals are completed
+- Growth stage illustrations shown in card (`TutorialGrowthStages`)
 
-Tutorial card should point toward plant progression area.
+Primary **Next** button advances (no user tap on highlight required).
 
 ---
 
-## Step 5 — Consistency / Watering Explanation
+## Step 5 — Consistency / Watering (`consistency`)
+
+Navigate to Garden tab.
 
 Highlight:
-- Plant health/watering area
+- **Water drop** control on the garden screen
 
 Instruction:
-Explain:
-- Missing goals causes wilting
-- Consistency keeps plants healthy
+- Warning banner about missing watering schedule
+- Side-by-side healthy vs. wilting plant comparison (`TutorialComparisonImages`)
 
-Use side-by-side healthy/wilted plant visuals.
+Primary **Next** button advances.
 
 ---
 
-## Step 6 — Completion / Reward
+## Step 6 — Completion (`completion`)
 
 Centered completion card.
 
-No highlighted element.
+No highlighted element. No trophy image.
 
 Show:
-- Trophy reward
-- Positive reinforcement
-- "End Tutorial" button
+- "Congratulations!" title
+- Short positive reinforcement copy
+- **Done** button
 
-Tutorial completion should:
-- Persist in storage
-- Never automatically show again
+Tutorial completion:
+- Persists `onboardingCompleted` in AsyncStorage (per user)
+- Sets `tutorialAwardGranted` once (first completion only)
+- Does not auto-show again unless user taps **Replay Tutorial** in Settings
 
 ---
 
@@ -157,97 +171,83 @@ Use modular architecture.
 
 ---
 
-# Required Components
+# Required Components (Implemented)
 
-## Overlay System
+| Component | Path | Role |
+|-----------|------|------|
+| `TutorialProvider` | `contexts/TutorialContext.js` | State, persistence, navigation sync, target registry |
+| `TutorialHost` | `components/tutorial/TutorialHost.js` | Renders overlay + step-specific cards |
+| `TutorialOverlay` | `components/tutorial/TutorialOverlay.js` | Dimming, SVG rounded cutout, centered mode |
+| `TutorialWelcomeCard` | `components/tutorial/TutorialWelcomeCard.js` | Welcome step centered card |
+| `TutorialCard` | `components/tutorial/TutorialCard.js` | Highlight/flow instructional card |
+| `TutorialCompletionCard` | `components/tutorial/TutorialCompletionCard.js` | Completion step |
+| `TutorialHighlightPassthrough` | `components/tutorial/TutorialHighlightPassthrough.js` | Tap-through on highlighted targets |
+| `HighlightTarget` | `components/tutorial/HighlightTarget.js` | Wraps UI elements for measurement |
+| `TutorialProgress` | `components/tutorial/TutorialProgress.js` | Subtle step progress bar |
+| `TutorialPlantInPot` | `components/tutorial/TutorialPlantInPot.js` | Plant-in-pot illustrations |
+| `TutorialGrowthStages` | `components/tutorial/TutorialGrowthStages.js` | Stage progression row |
+| `TutorialComparisonImages` | `components/tutorial/TutorialComparisonImages.js` | Healthy vs. wilted comparison |
+| `useRemeasureTutorialOnFocus` | `components/tutorial/useRemeasureTutorialOnFocus.js` | Re-measure targets on screen focus |
 
-### TutorialOverlay
+Step config and engine live under `tutorial/` (`steps.js`, `stepEngine.js`, `layout.js`, `storage.js`, `navigation.js`, `cardLayout.js`, `constants.js`).
+
+## Overlay System (`TutorialOverlay`)
+
 Responsible for:
-- Background dimming
-- Highlight cutout
-- Animated transitions
+- Background dimming (`rgba(0, 0, 0, 0.52)`)
+- Rounded highlight cutout via SVG `evenodd` path (`buildHighlightCutoutPath`)
+- Cutout radius derived from target size (`min(width/2, height/2)`)
+- Animated fade-in transitions
+- Centered, highlight, and flow modes
 
-Requirements:
-- Supports highlighted target rectangles
-- Supports centered mode
-- Supports responsive recalculation
-- Handles orientation changes
-
----
+No green border ring on highlights. Invisible rectangular touch panels block dimmed areas; highlight hole remains tappable.
 
 ## TutorialCard
 
-Reusable floating instructional card.
-
-Supports:
-- Title
-- Description
-- Optional image
-- Skip button
-- Next button
-- Arrow/pointer direction
-
-Must:
-- Auto-position relative to target
-- Avoid off-screen rendering
-- Adapt to smaller screens
-
----
+Reusable floating instructional card with auto-positioning (`computeTutorialCardLayout`), arrow anchor, rich description parts, optional growth stages and comparison images, Skip / Skip for now / Next actions.
 
 ## HighlightTarget
 
-System for:
-- Measuring target element position
-- Tracking layout changes
-- Recalculating overlay placement
+Registers refs with `TutorialContext`, measures via `measureInWindow`, re-measures on layout and focus.
 
-Use:
-- `measureInWindow`
-OR
-- `onLayout`
+## Progress Indicator (`TutorialProgress`)
+
+Minimal bar; hidden on welcome and completion steps.
 
 ---
 
-## Progress Indicator
+# State Management (`TutorialContext`)
 
-Requirements:
-- Minimal/subtle
-- Non-dominant
-- Animated progression
-- Responsive width
+Tutorial state supports:
+- `currentStepIndex` / resolved `currentStep` (via `resolveTutorialStep` for existing-goal users)
+- `completed`, `skipped`, `hydrated`
+- `hasExistingGoals` (from Firestore `goals.length` + `GoalsScreen` visible count)
+- `tutorialAwardGranted`
+- Target layout map and ref registry
+- `replayTutorial()`, `skipGoalCreation()`, `returnToGoalCreationChoice()`
+- Guards against double-advance and double-finish (`advancingFromActionRef`, `finishingTutorialRef`)
 
-Avoid:
-- Large onboarding headers
-- Oversized step indicators
+`TutorialHost` is rendered inside the provider and overlays the app via absolute positioning (`zIndex: 10000`).
 
----
-
-# State Management Requirements
-
-Tutorial state should support:
-- Current step
-- Completion state
-- Skip state
-- Dynamic positioning
-- Target refs
-
-
-Avoid:
-- Excessive prop drilling
+Avoid excessive prop drilling — screens use `useTutorial()` and `HighlightTarget` only where needed (`GoalsScreen`, `AddGoalScreen`, `GardenScreen`, `CenteredTabBar`).
 
 ---
 
 # Persistence Requirements
 
-Persist:
-- onboardingCompleted
+Persist per authenticated `userId` (AsyncStorage keys suffixed with `:${userId}`):
 
-Use:
-- AsyncStorage
+| Key | Purpose |
+|-----|---------|
+| `goalGrower:onboardingCompleted:v1` | Tutorial finished normally |
+| `goalGrower:onboardingSkipped:v1` | User tapped Skip (also sets completed) |
+| `goalGrower:tutorialAwardGranted:v1` | One-time award flag; **not** cleared on replay |
 
 Behavior:
-- Tutorial only shown first launch
-- Can later be reset from settings (future-ready architecture)
+- Tutorial auto-starts only when `enabled`, user is authenticated, hydrated, and neither completed nor skipped
+- **Replay Tutorial** (Settings → Help) calls `resetOnboardingState()` (clears completed/skipped only) and restarts from welcome
+- Mid-flow step index is **not** persisted — app restart during tutorial returns to welcome
+- All storage functions no-op when `userId` is null
 
 ---
 
@@ -261,14 +261,17 @@ The onboarding tutorial must only begin after:
 - the user has logged in
 - authentication and initialization are fully resolved
 
-The tutorial should start on the first screen shown immediately after successful login.
+The tutorial should start after successful login and username setup, once the user reaches the main app (not during the daily Enter screen).
+
+`TutorialProvider` is enabled when `user && hasUsername && !showEnterScreen` (`App.js`).
 
 The tutorial must NOT appear:
 
 - during authentication loading
 - before app initialization completes
 - before navigation state is ready
-- for guest mode (out of scope for this pass)
+- while the daily **Enter** screen is showing
+- for guest mode / users without a username (out of scope)
 
 ---
 
@@ -346,18 +349,16 @@ Recommended:
 ## Highlighted Element
 
 Highlighted element should:
-- Remain fully visible
-- Visually elevated
-- Feel illuminated/focused
+- Remain fully visible through a transparent rounded cutout
+- Feel focused via dimmed surroundings (no colored border ring)
 
-Recommended techniques:
-- Transparent cutout
-- Glow/shadow
-- Slight scale emphasis
+Implemented:
+- SVG `evenodd` path cutout with radius matching target shape (circular for FAB)
+- `TutorialHighlightPassthrough` for required-action steps
 
 Avoid:
-- Harsh neon glow
-- Excessive blur
+- Harsh neon glow or green border rings
+- Sharp rectangular cutout corners
 
 ---
 
@@ -368,10 +369,10 @@ Animations should feel:
 - Calm
 - Modern
 
-Recommended:
-- Reanimated
-- Fade transitions
-- Gentle spring motion
+Implemented with React Native `Animated`:
+- Fade transitions on overlay and cards
+- Gentle spring on completion card
+- Reanimated may be adopted later for additional polish
 
 Avoid:
 - Bouncy cartoon animations
@@ -392,7 +393,9 @@ Tutorial should not:
 - Block accessibility navigation
 
 Include:
-- Skip tutorial option
+- **Skip** — exits entire tutorial (persists skipped state)
+- **Skip for now** — on goal-creation choice step only; continues tutorial without creating a goal
+- **Replay Tutorial** — Settings → Help
 
 ---
 
@@ -412,18 +415,24 @@ Before marking complete, verify:
 ---
 
 ## Interaction QA
-- Next buttons work correctly
-- Skip works correctly
-- Overlay blocks unintended interactions
-- Highlighted element remains interactable when intended
+- **Get Started** advances welcome → goal highlight
+- **Next** advances non-action steps (Journey, consistency)
+- **Skip** exits tutorial; **Skip for now** skips goal creation only
+- Highlight passthrough and real button both advance Step 2
+- Add Goal form is unobstructed (silent step 3)
+- Back from Add Goal (UI + Android hardware) returns to Step 2 card
+- Overlay blocks unintended interactions outside highlight hole
+- Highlighted element remains interactable when required
 
 ---
 
 ## State QA
-- Tutorial persists correctly
-- Completion saves correctly
+- Tutorial persists correctly (completed / skipped / awardGranted)
+- Completion saves correctly; skip persists skipped + completed
 - App relaunch bypasses onboarding after completion
+- **Replay Tutorial** resets completed/skipped but not awardGranted
 - Tutorial step order remains stable
+- Enter screen dismisses before tutorial can start
 
 ---
 
@@ -435,11 +444,26 @@ Before marking complete, verify:
 
 ---
 
-# Recommended Implementation Roadmap
+# Implementation Status
 
-IMPORTANT:
-Implement incrementally.
-DO NOT attempt full implementation in one pass.
+**All phases below are implemented.** The roadmap is kept for historical context and onboarding new contributors.
+
+Step IDs (in order): `welcome` → `highlight-add-goal` → `goal-creation` → `plant-growth` → `consistency` → `completion`
+
+| Index | ID | Mode | Highlight target | Registered in |
+|-------|-----|------|------------------|---------------|
+| 0 | `welcome` | centered | — | — |
+| 1 | `highlight-add-goal` | highlight | `addGoalButton` or `addGoalFab` | `GoalsScreen` |
+| 2 | `goal-creation` | flow (silent) | — | — |
+| 3 | `plant-growth` | highlight | `journeyTab` | `CenteredTabBar` |
+| 4 | `consistency` | highlight | `waterDrop` | `GardenScreen` |
+| 5 | `completion` | centered | — | — |
+
+Goal save advances step 2 via `notifyUserAction("goalCreationFlow")` in `AddGoalScreen`.
+
+---
+
+# Recommended Implementation Roadmap (Complete)
 
 ---
 
@@ -520,15 +544,17 @@ Deliverables:
 # Phase 6 — Goal Creation Guidance
 
 Goals:
-- Highlight Add Goal button
-- Attach overlay to UI targets
-- Guide creation flow
+- Highlight Add Goal button or FAB (based on existing goals)
+- Optional goal creation with Skip for now
+- Silent Add Goal step (no overlay during form)
 
 Deliverables:
 - Dynamic target tracking
+- `returnToGoalCreationChoice` on back navigation
 
 QA focus:
 - Correct positioning during navigation changes
+- Form controls not covered by tutorial UI
 
 ---
 
@@ -544,15 +570,15 @@ Deliverables:
 
 ---
 
-# Phase 8 — Completion Reward
+# Phase 8 — Completion
 
 Goals:
-- Trophy reward experience
-- Completion persistence
-- Tutorial exit
+- Completion congratulations card (no trophy image on card)
+- One-time `tutorialAwardGranted` persistence
+- Tutorial exit via **Done**
 
 Deliverables:
-- Completion screen
+- `TutorialCompletionCard`
 - AsyncStorage save
 
 ---
@@ -572,20 +598,17 @@ Deliverables:
 
 # Cursor Implementation Guidance
 
-IMPORTANT FOR CURSOR:
-
-When modifying files:
-- Only modify files relevant to the current phase
+When modifying tutorial code:
+- Stay scoped to `tutorial/`, `components/tutorial/`, `contexts/TutorialContext.js`, and screen integrations (`GoalsScreen`, `AddGoalScreen`, `GardenScreen`, `CenteredTabBar`, `SettingsScreen`, `App.js`)
 - Avoid broad refactors unless explicitly requested
-- Preserve component modularity
-- Avoid duplicate styling logic
-- Prefer reusable abstractions
+- Preserve component modularity and shared styles in `tutorialStyles.js`
+- Update this document when behavior changes
 
-Before implementing:
-1. Read this entire document
-2. Review wireframes in `/wireframes`
-3. Follow the current implementation phase only
-4. Maintain responsive behavior throughout implementation
+Before changing tutorial behavior:
+1. Read this document and `tutorial/steps.js`
+2. Review wireframes in `/wireframes` for visual intent
+3. Maintain responsive behavior and safe-area handling
+4. Run through the QA checklist at the bottom
 
 ---
 
@@ -612,10 +635,12 @@ Avoid:
 Architecture should support:
 - Additional tutorial flows
 - Feature walkthroughs
-- Achievement onboarding
+- Achievement onboarding (award flag exists; UI hook-up TBD)
 - Contextual tooltips
-- Settings reset
 - A/B onboarding experiments
+
+Already implemented:
+- Settings replay (`replayTutorial` in Help section)
 
 Design implementation with extensibility in mind.
 
@@ -646,8 +671,20 @@ Dev-only tutorial testing helpers have been removed. Users can replay the tutori
 
 - [ ] No **Developer** section in Settings
 - [ ] No `devConfig` or `TutorialDevPanel` imports remain
+- [ ] Tutorial waits until Enter screen is dismissed
 - [ ] Tutorial auto-starts only for first-time authenticated users who have not completed/skipped
-- [ ] **Replay Tutorial** in Settings restarts the full flow
+- [ ] Users with existing goals see FAB highlight (not empty-state button)
+- [ ] Optional goal hint appears only on Step 2 card, not during Add Goal form
+- [ ] **Skip for now** jumps to plant-growth; **Skip** exits tutorial entirely
+- [ ] Back from Add Goal (UI + hardware) returns to Step 2 decision card
+- [ ] **Replay Tutorial** in Settings restarts from welcome
 - [ ] Completing or skipping tutorial persists correctly in AsyncStorage
-- [ ] Replay does not re-grant one-time tutorial awards
+- [ ] Replay does not re-grant `tutorialAwardGranted`
+- [ ] Completion card shows congratulations only (no trophy image)
 
+## Known limitations
+
+- Tutorial progress is not persisted mid-flow — app restart during tutorial returns to welcome
+- `goals.length > 0` is a coarse signal for existing goals; storage-page-only goals rely on `GoalsScreen` visible count for final accuracy
+- Highlight touch panels use rectangular hit areas while the visual SVG cutout is rounded (minor corner tap differences)
+- Steps with `requiresUserAction: false` can be advanced via **Next** without interacting with the highlighted element (e.g. Journey tab, water drop)

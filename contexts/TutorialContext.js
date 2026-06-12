@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { StyleSheet, View } from "react-native";
+import { useGoals } from "../components/GoalsStore";
 import TutorialHost from "../components/tutorial/TutorialHost";
 import {
   TUTORIAL_STEP_COUNT,
@@ -49,12 +50,29 @@ export function TutorialProvider({
   const [targetLayouts, setTargetLayouts] = useState({});
   const targetsRef = useRef(new Map());
   const pendingNavigationStepIdRef = useRef(null);
+  const advancingFromActionRef = useRef(false);
+  const finishingTutorialRef = useRef(false);
+  const mountedRef = useRef(true);
   const [hasExistingGoals, setHasExistingGoals] = useState(false);
   const [tutorialAwardGranted, setTutorialAwardGranted] = useState(false);
+  const { goals } = useGoals();
 
   const setTutorialHasExistingGoals = useCallback((value) => {
     setHasExistingGoals(Boolean(value));
   }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (goals.length > 0) {
+      setHasExistingGoals(true);
+    }
+  }, [goals.length]);
 
   // Hydrate from AsyncStorage
   useEffect(() => {
@@ -144,6 +162,7 @@ export function TutorialProvider({
       }
 
       node.measureInWindow((x, y, width, height) => {
+        if (!mountedRef.current) return;
         if (width <= 0 || height <= 0) {
           if (attempt < 10) {
             setTimeout(() => measureTarget(targetKey, attempt + 1), 60 * (attempt + 1));
@@ -265,36 +284,54 @@ export function TutorialProvider({
   }, [syncStepNavigation]);
 
   const completeTutorial = useCallback(async () => {
+    if (finishingTutorialRef.current) return;
+    finishingTutorialRef.current = true;
+
     setCompleted(true);
     setSkipped(false);
     setCurrentStepIndex(TUTORIAL_STEP_COUNT - 1);
     pendingNavigationStepIdRef.current = null;
-    if (userId) {
-      const alreadyGranted = tutorialAwardGranted || await loadTutorialAwardGranted(userId);
-      if (!alreadyGranted) {
-        await persistTutorialAwardGranted(userId, true);
-        setTutorialAwardGranted(true);
+    try {
+      if (userId) {
+        const alreadyGranted =
+          tutorialAwardGranted || (await loadTutorialAwardGranted(userId));
+        if (!alreadyGranted) {
+          await persistTutorialAwardGranted(userId, true);
+          setTutorialAwardGranted(true);
+        }
+        await persistOnboardingCompleted(userId, true);
       }
-      await persistOnboardingCompleted(userId, true);
+    } finally {
+      finishingTutorialRef.current = false;
     }
   }, [tutorialAwardGranted, userId]);
 
   const skipTutorial = useCallback(async () => {
+    if (finishingTutorialRef.current) return;
+    finishingTutorialRef.current = true;
+
     setSkipped(true);
     setCompleted(true);
     pendingNavigationStepIdRef.current = null;
-    if (userId) {
-      await persistOnboardingSkipped(userId, true);
+    try {
+      if (userId) {
+        await persistOnboardingSkipped(userId, true);
+      }
+    } finally {
+      finishingTutorialRef.current = false;
     }
   }, [userId]);
 
   const replayTutorial = useCallback(async () => {
     if (!userId) return;
 
+    finishingTutorialRef.current = false;
+    advancingFromActionRef.current = false;
     await resetOnboardingState(userId);
     setCompleted(false);
     setSkipped(false);
     setCurrentStepIndex(0);
+    setTargetLayouts({});
     pendingNavigationStepIdRef.current = null;
 
     const welcomeStep = getTutorialStepByIndex(0);
@@ -340,9 +377,20 @@ export function TutorialProvider({
 
   const notifyUserAction = useCallback(
     (actionId) => {
-      if (!isTutorialActive || !currentStep) return false;
+      if (
+        !isTutorialActive ||
+        !currentStep ||
+        advancingFromActionRef.current
+      ) {
+        return false;
+      }
       if (!canAdvanceFromUserAction(currentStep, actionId)) return false;
+
+      advancingFromActionRef.current = true;
       nextStep();
+      requestAnimationFrame(() => {
+        advancingFromActionRef.current = false;
+      });
       return true;
     },
     [currentStep, isTutorialActive, nextStep]

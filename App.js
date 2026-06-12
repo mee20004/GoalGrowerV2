@@ -339,7 +339,7 @@ export default function App() {
         <GoalsProvider>
           <TutorialProvider
             userId={user?.uid ?? null}
-            enabled={tutorialEnabled}
+            enabled={tutorialEnabled && !showEnterScreen}
             navigationRef={navigationRef}
           >
             <NavigationContainer ref={navigationRef}>

@@ -7,6 +7,9 @@ function parseBool(value) {
 
 // Load persisted onboarding flags
 export async function loadOnboardingState(userId) {
+  if (!userId) {
+    return { completed: false, skipped: false, awardGranted: false };
+  }
   const keys = onboardingKeysForUser(userId);
   try {
     const [completedRaw, skippedRaw, awardGrantedRaw] = await Promise.all([
@@ -25,6 +28,7 @@ export async function loadOnboardingState(userId) {
 }
 
 export async function loadTutorialAwardGranted(userId) {
+  if (!userId) return false;
   const keys = onboardingKeysForUser(userId);
   try {
     return parseBool(await AsyncStorage.getItem(keys.awardGranted));
@@ -34,6 +38,7 @@ export async function loadTutorialAwardGranted(userId) {
 }
 
 export async function persistTutorialAwardGranted(userId, granted = true) {
+  if (!userId) return;
   const keys = onboardingKeysForUser(userId);
   try {
     if (granted) {
@@ -46,6 +51,7 @@ export async function persistTutorialAwardGranted(userId, granted = true) {
 
 // Write completion / skip state
 export async function persistOnboardingCompleted(userId, completed = true) {
+  if (!userId) return;
   const keys = onboardingKeysForUser(userId);
   try {
     await AsyncStorage.setItem(keys.completed, completed ? "true" : "false");
@@ -56,6 +62,7 @@ export async function persistOnboardingCompleted(userId, completed = true) {
 }
 
 export async function persistOnboardingSkipped(userId, skipped = true) {
+  if (!userId) return;
   const keys = onboardingKeysForUser(userId);
   try {
     await AsyncStorage.setItem(keys.skipped, skipped ? "true" : "false");
@@ -67,6 +74,7 @@ export async function persistOnboardingSkipped(userId, skipped = true) {
 
 // Clear persisted onboarding (settings reset)
 export async function resetOnboardingState(userId) {
+  if (!userId) return;
   const keys = onboardingKeysForUser(userId);
   try {
     await Promise.all([
