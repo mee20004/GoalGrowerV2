@@ -23,9 +23,18 @@ import {
   saveNotificationSettings,
 } from "../utils/notifications";
 import { getDateFormatSync, setDateFormat, FORMATS, getWeekStartSync, setWeekStart, WEEK_START_OPTIONS, getShowLast6DaysSync, setShowLast6Days } from '../utils/dateFormat';
+import { useSubscription } from '../components/SubscriptionProvider';
+import { PRO_ENTITLEMENT_DISPLAY_NAME } from '../constants/revenueCat';
 
 export default function SettingsScreen({ navigation }) {
   const { theme, setAccent } = useTheme();
+  const {
+    isPro,
+    actionLoading: subscriptionLoading,
+    openDefaultPaywall,
+    openCustomerCenter,
+    restorePurchases,
+  } = useSubscription();
   const [username, setUsername] = useState("");
   const [weekStart, setWeekStartState] = useState(getWeekStartSync());
   const [showLast6Days, setShowLast6DaysState] = useState(getShowLast6DaysSync());
@@ -681,7 +690,7 @@ export default function SettingsScreen({ navigation }) {
             <Text style={styles.switchHint}>Pick the accent color used in buttons and highlights.</Text>
             <View style={styles.colorOptionsRow}>
               {[
-                { label: 'Green', value: '#28b900' },
+                { label: 'Green', value: '#2ed600' },
                 { label: 'Blue', value: '#3b82f6' },
                 { label: 'Pink', value: '#ec4899' },
                 { label: 'Red', value: '#ef4444' },
@@ -749,7 +758,82 @@ export default function SettingsScreen({ navigation }) {
           </View>
         </View>
 
-        
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Subscription</Text>
+          <View style={styles.card}>
+            <Text style={styles.labelNoMargin}>
+              {isPro ? `${PRO_ENTITLEMENT_DISPLAY_NAME} active` : "Upgrade to Pro"}
+            </Text>
+            <Text style={styles.switchHint}>
+              {isPro
+                ? "Manage billing, change plans, or cancel from Customer Center."
+                : "Unlock premium features with Monthly, Yearly, or lifetime Coins."}
+            </Text>
+
+            {!isPro && (
+              <View style={[styles.actionButtonWrap, { marginTop: 16 }]}>
+                <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary, { backgroundColor: theme.accent }]} />
+                <Pressable
+                  onPress={openDefaultPaywall}
+                  disabled={subscriptionLoading}
+                  style={({ pressed }) => [
+                    styles.actionButtonFace,
+                    styles.saveButton,
+                    { backgroundColor: theme.accent },
+                    pressed && !subscriptionLoading && styles.actionButtonPressed,
+                    subscriptionLoading && styles.actionButtonDisabled,
+                  ]}
+                >
+                  {subscriptionLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.saveButtonText}>View Plans</Text>
+                  )}
+                </Pressable>
+              </View>
+            )}
+
+            {isPro && (
+              <View style={[styles.actionButtonWrap, { marginTop: 16 }]}>
+                <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary, { backgroundColor: theme.accent }]} />
+                <Pressable
+                  onPress={openCustomerCenter}
+                  disabled={subscriptionLoading}
+                  style={({ pressed }) => [
+                    styles.actionButtonFace,
+                    styles.saveButton,
+                    { backgroundColor: theme.accent },
+                    pressed && !subscriptionLoading && styles.actionButtonPressed,
+                    subscriptionLoading && styles.actionButtonDisabled,
+                  ]}
+                >
+                  {subscriptionLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.saveButtonText}>Manage Subscription</Text>
+                  )}
+                </Pressable>
+              </View>
+            )}
+
+            <View style={[styles.actionButtonWrap, { marginTop: 12 }]}>
+              <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary, { backgroundColor: '#64748b' }]} />
+              <Pressable
+                onPress={restorePurchases}
+                disabled={subscriptionLoading}
+                style={({ pressed }) => [
+                  styles.actionButtonFace,
+                  styles.saveButton,
+                  { backgroundColor: '#64748b' },
+                  pressed && !subscriptionLoading && styles.actionButtonPressed,
+                  subscriptionLoading && styles.actionButtonDisabled,
+                ]}
+              >
+                <Text style={styles.saveButtonText}>Restore Purchases</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Session</Text>

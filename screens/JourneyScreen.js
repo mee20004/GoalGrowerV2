@@ -6,6 +6,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { theme } from "../theme";
+import FireStreakIcon from "../assets/Icons/FireStreakIcon";
 import { getGoalTrophyRating, updateOverallScoreForUser } from "../utils/scoreUtils";
 import { getScoredGoalsForUser } from "../utils/scoreUtils";
 
@@ -462,6 +463,18 @@ export default function JourneyScreen() {
       <View style={[styles.section, styles.insetX]}>
         <Text style={styles.sectionTitle}>Summary</Text>
         <View style={styles.sectionCard}>
+          <View style={styles.appStreakRow}>
+            <View style={styles.appStreakIconWrap}>
+              <Image source={FireStreakIcon} style={styles.appStreakIcon} resizeMode="contain" />
+            </View>
+            <View style={styles.appStreakTextWrap}>
+              <Text style={styles.appStreakLabel}>App streak</Text>
+              <Text style={styles.appStreakValue}>
+                {loading ? "—" : metrics.appStreak} {metrics.appStreak === 1 ? "day" : "days"}
+              </Text>
+            </View>
+          </View>
+
           <View style={styles.summaryGrid}>
             <View style={styles.summaryTile}>
               <Text style={styles.summaryValue}>{unlockedAchievements.length}/{ACHIEVEMENT_TRACKS.length}</Text>
@@ -944,6 +957,47 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+  },
+  appStreakRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff4e8",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
+    gap: 12,
+  },
+  appStreakIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  appStreakIcon: {
+    width: 24,
+    height: 24,
+  },
+  appStreakTextWrap: {
+    flex: 1,
+  },
+  appStreakLabel: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: "#9a5b14",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    fontFamily: "CeraRoundProDEMO-Black",
+  },
+  appStreakValue: {
+    marginTop: 2,
+    fontSize: 22,
+    fontWeight: "900",
+    color: theme.text,
+    fontFamily: "CeraRoundProDEMO-Black",
+    letterSpacing: 0.1,
   },
   summaryTile: {
     width: "48%",

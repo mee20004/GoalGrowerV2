@@ -44,7 +44,7 @@ import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Page from "../components/Page";
-import theme, { useTheme } from "../theme";
+import theme, { getDarkerAccentColor, useTheme } from "../theme";
 import { useGoals, fromKey } from "../components/GoalsStore";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
@@ -408,9 +408,10 @@ function Pill({ label, active, onPress }) {
 }
 
 function PrimaryButton({ label, onPress, disabled, style, accent }) {
+  const accentShadowColor = getDarkerAccentColor(accent);
   return (
     <View style={[styles.actionButtonWrap, style]}>
-      <View pointerEvents="none" style={[styles.actionButtonShadow, { backgroundColor: accent }]} />
+      <View pointerEvents="none" style={[styles.actionButtonShadow, { backgroundColor: accentShadowColor }]} />
       <Pressable
         onPress={() => {
           if (disabled) return;

@@ -998,6 +998,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     return () => unsub && unsub();
   }, [isSharedGarden, sharedGardenId]);
   const insets = useSafeAreaInsets();
+  const drawerRef = useRef(null);
 
   const sharedGardenId = route?.params?.gardenId || route?.params?.sharedGardenId || null;
   const isSharedGarden = Boolean(sharedGardenId);
@@ -1043,6 +1044,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   const [allPlants, setAllPlants] = useState(shouldPersistState ? (persistedGardenState.allPlants || []) : []);
   const [pages, setPages] = useState([]);
   const [currentPageId, setCurrentPageId] = useState(shouldPersistState ? (persistedGardenState.currentPageId || "default") : "default");
+
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(shouldPersistState ? (persistedGardenState.isEditing || false) : false);
   const [globalDragging, setGlobalDragging] = useState(false);
@@ -1114,11 +1116,11 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     }
   }, [showSharedGardensModal, onboardingStep, onOnboardingAction]);
 
-  useEffect(() => {
-    if (onboardingStep === 'garden_tutorial' && showCustomization) {
+  const handleCustomizationChanged = useCallback(() => {
+    if (onboardingStep === 'garden_tutorial') {
       onOnboardingAction?.('customizedGarden');
     }
-  }, [showCustomization, onboardingStep, onOnboardingAction]);
+  }, [onboardingStep, onOnboardingAction]);
 
   useEffect(() => {
     if (onboardingStep !== 'garden_tutorial') return;
@@ -1190,7 +1192,6 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   }, [showSharedGardensModal, switcherOpenAnim]);
 
   const slotRefs = useRef({});
-  const drawerRef = useRef(null);
   const drawerScrollRef = useRef(null);
 
   useEffect(() => {
@@ -2165,21 +2166,15 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     setCurrentPageId(newPageRef.id);
   };
 
-  const [customizerType, setCustomizerType] = useState(null);
-  const handleCustomization = useCallback((type) => {
-    setCustomizerType(type);
-    setShowCustomization((prev) => {
-      if (prev) return true; // already open, don't close
-      return true;
-    });
-  }, []);
-
-  const handleSaveCustomization = (pageId, values) => {
-    setCustomizations((prev) => ({
-      ...prev,
-      [pageId]: values,
-    }));
-  };
+  const [customizerType, setCustomizerType] = useState('wall');
+  const handleCustomization = useCallback((type = 'wall') => {
+    if (currentPageId === STORAGE_PAGE_ID) {
+      Alert.alert("Can't customize trophies", "Switch to a garden page to customize its look.");
+      return;
+    }
+    setCustomizerType(type || 'wall');
+    setShowCustomization(true);
+  }, [currentPageId]);
 
   const handleResetPositions = async () => {
     if (isReadOnly || !auth.currentUser) return;
@@ -2829,19 +2824,18 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         }}
       >
         <View style={{ width, height, overflow: 'hidden' }}>
-          <ImageBackground 
+          <ImageBackground
             source={FAR_BG_ASSETS[farBgIdx]}
-            style={[styles.farBackground, { width, height }]} 
+            style={[styles.farBackground, { width, height }]}
             imageStyle={styles.farImageStyle}
             resizeMode="contain"
           >
-            <ImageBackground 
+            <ImageBackground
               source={WALLPAPER_ASSETS[wallBgIdx]}
-              style={[styles.gardenBackground, { width, height }]} 
+              style={[styles.gardenBackground, { width, height }]}
               imageStyle={styles.gardenImageStyle}
               resizeMode="cover"
             >
-              {/* Window frame rendered above wallpaper, behind shelves */}
               {FRAME_ASSETS[windowFrameIdx] && (
                 <Image
                   source={FRAME_ASSETS[windowFrameIdx]}
@@ -3213,7 +3207,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
 
     {/* Customization FAB only in edit mode, but modal is always rendered if showCustomization is true */}
     {!isReadOnly && isEditing && canCustomize && (
-      <TouchableOpacity style={styles.customizeFab} onPress={handleCustomization}>
+      <TouchableOpacity style={styles.customizeFab} onPress={() => handleCustomization('wall')}>
         <Ionicons name="color-palette" size={19} color="#fff" />
       </TouchableOpacity>
     )}
@@ -3229,12 +3223,11 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
             await savePersonalCustomizations(auth.currentUser.uid, pageId, values);
           }
         }}
+        onCustomizationChange={handleCustomizationChanged}
         selectedPageId={currentPageId}
         customizations={customizations}
         customizerType={customizerType}
         customizerTypeSetter={setCustomizerType}
-        drawerTop={drawerTop}
-        drawerAbsoluteTop={insets.top}
       />
     )}
     {!isReadOnly && isEditing && !canCustomize && (
@@ -3287,7 +3280,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       )}
       scrollEventThrottle={16}
       onMomentumScrollEnd={onPageScrollEnd}
-      scrollEnabled={!globalDragging}
+      scrollEnabled={!globalDragging && !showCustomization}
       getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
       initialScrollIndex={pageIndex >= 0 ? pageIndex : 0}
       renderItem={({ item }) => (
@@ -3347,7 +3340,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         </ScrollView>
       </View>
 
-      {!isReadOnly && drawerShouldShow && (
+      {!isReadOnly && drawerShouldShow && !showCustomization && (
         <>
           {/* Water drop button (left) */}
           <Animated.View
