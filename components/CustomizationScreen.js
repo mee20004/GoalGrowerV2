@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,14 @@ import { SHELF_COLOR_SCHEMES } from "../constants/ShelfColors";
 import { FAR_BG_ASSETS } from "../constants/FarBGAssets";
 import { WALLPAPER_ASSETS } from "../constants/WallpaperAssets";
 import { FRAME_ASSETS } from "../constants/FrameAssets";
+import { useShopInventory } from "./ShopInventoryProvider";
+
+function firstOwnedIndex(length, isOwned) {
+  for (let index = 0; index < length; index += 1) {
+    if (isOwned(index)) return index;
+  }
+  return 0;
+}
 
 const SECTIONS = [
   { key: "farbg", tabLabel: "Background" },
@@ -112,6 +120,29 @@ export default function CustomizationScreen({
   const accent = theme.accent;
   const insets = useSafeAreaInsets();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const {
+    isFarBgOwned,
+    isWindowFrameOwned,
+    isWallBgOwned,
+    isShelfColorOwned,
+  } = useShopInventory();
+
+  const ownedFarBgOptions = useMemo(
+    () => FAR_BG_ASSETS.map((asset, index) => ({ asset, index })).filter(({ index }) => isFarBgOwned(index)),
+    [isFarBgOwned]
+  );
+  const ownedWindowOptions = useMemo(
+    () => FRAME_ASSETS.map((asset, index) => ({ asset, index })).filter(({ index }) => isWindowFrameOwned(index)),
+    [isWindowFrameOwned]
+  );
+  const ownedWallOptions = useMemo(
+    () => WALLPAPER_ASSETS.map((asset, index) => ({ asset, index })).filter(({ index }) => isWallBgOwned(index)),
+    [isWallBgOwned]
+  );
+  const ownedShelfOptions = useMemo(
+    () => SHELF_COLOR_SCHEMES.map((scheme, index) => ({ scheme, index })).filter(({ index }) => isShelfColorOwned(index)),
+    [isShelfColorOwned]
+  );
 
   const [farBg, setFarBg] = useState(customizations?.[selectedPageId]?.farBg || 0);
   const [windowFrame, setWindowFrame] = useState(customizations?.[selectedPageId]?.windowFrame || 0);
@@ -131,6 +162,30 @@ export default function CustomizationScreen({
     setShelfColor(customizations?.[selectedPageId]?.shelfColor || 0);
     isInitialSaveSkipped.current = true;
   }, [selectedPageId, customizations]);
+
+  useEffect(() => {
+    if (!isFarBgOwned(farBg)) {
+      setFarBg(firstOwnedIndex(FAR_BG_ASSETS.length, isFarBgOwned));
+    }
+    if (!isWindowFrameOwned(windowFrame)) {
+      setWindowFrame(firstOwnedIndex(FRAME_ASSETS.length, isWindowFrameOwned));
+    }
+    if (!isWallBgOwned(wallBg)) {
+      setWallBg(firstOwnedIndex(WALLPAPER_ASSETS.length, isWallBgOwned));
+    }
+    if (!isShelfColorOwned(shelfColor)) {
+      setShelfColor(firstOwnedIndex(SHELF_COLOR_SCHEMES.length, isShelfColorOwned));
+    }
+  }, [
+    farBg,
+    windowFrame,
+    wallBg,
+    shelfColor,
+    isFarBgOwned,
+    isWindowFrameOwned,
+    isWallBgOwned,
+    isShelfColorOwned,
+  ]);
 
   useEffect(() => {
     if (!visible) return undefined;
@@ -189,20 +244,20 @@ export default function CustomizationScreen({
       case "farbg":
         return (
           <FlatList
-            data={FAR_BG_ASSETS}
+            data={ownedFarBgOptions}
             horizontal
             showsHorizontalScrollIndicator={false}
             extraData={farBg}
-            keyExtractor={(_, i) => `farbg-${i}`}
+            keyExtractor={({ index }) => `farbg-${index}`}
             contentContainerStyle={styles.carouselContent}
-            renderItem={({ item, index }) => (
+            renderItem={({ item: { asset, index } }) => (
               <SwatchCard
                 selected={farBg === index}
                 accent={accent}
                 onPress={() => setFarBg(index)}
                 imagePreview
               >
-                <Image source={item} style={styles.squarePreviewImage} resizeMode="cover" />
+                <Image source={asset} style={styles.squarePreviewImage} resizeMode="cover" />
               </SwatchCard>
             )}
           />
@@ -210,20 +265,20 @@ export default function CustomizationScreen({
       case "window":
         return (
           <FlatList
-            data={FRAME_ASSETS}
+            data={ownedWindowOptions}
             horizontal
             showsHorizontalScrollIndicator={false}
             extraData={windowFrame}
-            keyExtractor={(_, i) => `window-${i}`}
+            keyExtractor={({ index }) => `window-${index}`}
             contentContainerStyle={styles.carouselContent}
-            renderItem={({ item, index }) => (
+            renderItem={({ item: { asset, index } }) => (
               <SwatchCard
                 selected={windowFrame === index}
                 accent={accent}
                 onPress={() => setWindowFrame(index)}
                 imagePreview
               >
-                <Image source={item} style={styles.windowSquareImage} resizeMode="contain" />
+                <Image source={asset} style={styles.windowSquareImage} resizeMode="contain" />
               </SwatchCard>
             )}
           />
@@ -231,20 +286,20 @@ export default function CustomizationScreen({
       case "wall":
         return (
           <FlatList
-            data={WALLPAPER_ASSETS}
+            data={ownedWallOptions}
             horizontal
             showsHorizontalScrollIndicator={false}
             extraData={wallBg}
-            keyExtractor={(_, i) => `wall-${i}`}
+            keyExtractor={({ index }) => `wall-${index}`}
             contentContainerStyle={styles.carouselContent}
-            renderItem={({ item, index }) => (
+            renderItem={({ item: { asset, index } }) => (
               <SwatchCard
                 selected={wallBg === index}
                 accent={accent}
                 onPress={() => setWallBg(index)}
                 imagePreview
               >
-                <Image source={item} style={styles.wallSquareImage} resizeMode="cover" />
+                <Image source={asset} style={styles.wallSquareImage} resizeMode="cover" />
               </SwatchCard>
             )}
           />
@@ -252,15 +307,15 @@ export default function CustomizationScreen({
       case "shelf":
         return (
           <FlatList
-            data={SHELF_COLOR_SCHEMES}
+            data={ownedShelfOptions}
             horizontal
             showsHorizontalScrollIndicator={false}
             extraData={shelfColor}
-            keyExtractor={(_, i) => `shelf-${i}`}
+            keyExtractor={({ index }) => `shelf-${index}`}
             contentContainerStyle={styles.carouselContent}
-            renderItem={({ item, index }) => (
+            renderItem={({ item: { scheme, index } }) => (
               <SwatchCard selected={shelfColor === index} accent={accent} onPress={() => setShelfColor(index)}>
-                <View style={[styles.swatchFill, { backgroundColor: item.ledgeBg }]} />
+                <View style={[styles.swatchFill, { backgroundColor: scheme.ledgeBg }]} />
               </SwatchCard>
             )}
           />

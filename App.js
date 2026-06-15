@@ -393,6 +393,7 @@ function MainTabs({ onboardingStep, onboardingActions, onOnboardingAction, onGar
 import { FontProvider } from './components/FontProvider';
 import { GoalsProvider } from './components/GoalsStore';
 import { SubscriptionProvider } from './components/SubscriptionProvider';
+import { ShopInventoryProvider } from './components/ShopInventoryProvider';
 import EnterScreen from './screens/EnterScreen';
 import Login from './login';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -986,6 +987,7 @@ export default function App() {
     <FontProvider>
       <SafeAreaProvider>
         <SubscriptionProvider>
+          <ShopInventoryProvider>
           <GoalsProvider>
             <ThemeProvider accentColor={accentColor}>
             <NavigationContainer>
@@ -1126,6 +1128,7 @@ export default function App() {
             </NavigationContainer>
           </ThemeProvider>
         </GoalsProvider>
+        </ShopInventoryProvider>
         </SubscriptionProvider>
       </SafeAreaProvider>
     </FontProvider>

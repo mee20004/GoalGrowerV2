@@ -9,6 +9,7 @@ import { theme } from "../theme";
 import FireStreakIcon from "../assets/Icons/FireStreakIcon";
 import { getGoalTrophyRating, updateOverallScoreForUser } from "../utils/scoreUtils";
 import { getScoredGoalsForUser } from "../utils/scoreUtils";
+import { countCompletedDates } from "../utils/goalState";
 
 const ACHIEVEMENT_TRACKS = [
   {
@@ -134,36 +135,7 @@ function safeNumber(v) {
 }
 
 function countGoalCompletionDays(goal) {
-  const logs = goal?.logs || {};
-  const kind = goal?.kind || goal?.type || "completion";
-
-  if (kind === "completion") {
-    return Object.values(logs.completion || {}).filter((entry) => entry?.done).length;
-  }
-
-  if (kind === "numeric") {
-    const target = safeNumber(goal?.measurable?.target || goal?.target || 1);
-    return Object.values(logs.numeric || {}).filter((entry) => safeNumber(entry?.value) >= target).length;
-  }
-
-  if (kind === "timer") {
-    const targetSeconds = safeNumber(goal?.timer?.targetSeconds || 0);
-    return Object.values(logs.timer || {}).filter((entry) => safeNumber(entry?.seconds) >= targetSeconds).length;
-  }
-
-  if (kind === "checklist") {
-    const itemCount = Array.isArray(goal?.checklist?.items) ? goal.checklist.items.length : 0;
-    if (!itemCount) return 0;
-    return Object.values(logs.checklist || {}).filter((entry) => (entry?.checkedIds || []).length >= itemCount).length;
-  }
-
-  if (kind === "flex") {
-    const total = safeNumber(logs?.flex?.total);
-    const target = safeNumber(goal?.flex?.target || 0);
-    return total >= target && target > 0 ? 1 : 0;
-  }
-
-  return 0;
+  return countCompletedDates(goal, goal?.logs || {});
 }
 
 function ProgressBar({ value, target }) {

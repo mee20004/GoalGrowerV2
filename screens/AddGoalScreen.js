@@ -48,6 +48,7 @@ import theme, { getDarkerAccentColor, useTheme } from "../theme";
 import { useGoals, fromKey } from "../components/GoalsStore";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
+import { useShopInventory } from "../components/ShopInventoryProvider";
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { setAddGoalDirty } from '../utils/addGoalGuard';
 import SwipeCalendar from '../components/SwipeCalendar';
@@ -523,6 +524,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
   const [fontsLoaded] = useFonts({
     'CeraRoundProDEMO-Black': require('../assets/fonts/CeraRoundProDEMOBlack.otf'),
   });
+  const { isPlantOwned, isPotOwned } = useShopInventory();
 
   // Step state for multi-step form
   const [step, setStep] = useState(0);
@@ -868,7 +870,9 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
       );
     });
 
-    return validSpecies.map((species) => ({
+    return validSpecies
+      .filter((species) => isPlantOwned(species))
+      .map((species) => ({
       species,
       label: species.charAt(0).toUpperCase() + species.slice(1),
       preview:
@@ -877,7 +881,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
         PLANT_ASSETS?.[species]?.stage2?.alive ||
         PLANT_ASSETS?.[species]?.stage1?.alive,
     }));
-  }, []);
+  }, [isPlantOwned]);
 
   const selectedPlantIndex = useMemo(
     () => Math.max(0, plantOptions.findIndex((option) => option.species === selectedPlantSpecies)),
@@ -891,13 +895,14 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
 
   const potOptions = useMemo(() => {
     return Object.entries(POT_ASSETS || {})
+      .filter(([key]) => isPotOwned(key))
       .map(([key, preview]) => ({
         key,
         label: key.charAt(0).toUpperCase() + key.slice(1),
         preview,
       }))
       .filter((option) => !!option.preview);
-  }, []);
+  }, [isPotOwned]);
 
   const selectedPotIndex = useMemo(
     () => Math.max(0, potOptions.findIndex((option) => option.key === selectedPotType)),
@@ -914,6 +919,29 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     const option = potOptions[index];
     if (!option) return;
     setSelectedPotType(option.key);
+  };
+
+  useEffect(() => {
+    if (!plantOptions.length) return;
+    if (!plantOptions.some((option) => option.species === selectedPlantSpecies)) {
+      setSelectedPlantSpecies(plantOptions[0].species);
+    }
+  }, [plantOptions, selectedPlantSpecies]);
+
+  useEffect(() => {
+    if (!potOptions.length) return;
+    if (!potOptions.some((option) => option.key === selectedPotType)) {
+      setSelectedPotType(potOptions[0].key);
+    }
+  }, [potOptions, selectedPotType]);
+
+  const openGardenShop = () => {
+    const tabNav = navigation.getParent?.();
+    if (tabNav?.navigate) {
+      tabNav.navigate("Shop");
+      return;
+    }
+    navigation.navigate("Shop");
   };
 
   const measurableForType = useMemo(() => {
@@ -1263,6 +1291,14 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
               )}
             />
           </View>
+
+          <Pressable onPress={openGardenShop} style={styles.shopLinkRow}>
+            <Ionicons name="storefront-outline" size={18} color={theme.accent} />
+            <Text style={[styles.shopLinkText, { color: theme.accent }]}>
+              Visit the Garden Shop for more plants and pots
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color={theme.accent} />
+          </Pressable>
         </View>
       );
     }
@@ -2250,6 +2286,18 @@ const styles = StyleSheet.create({
   assetCarouselPotImageActive: {
     width: 60,
     height: 38,
+  },
+  shopLinkRow: {
+    marginTop: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 10,
+  },
+  shopLinkText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "CeraRoundProDEMO-Black",
   },
   plantOptionsSection: {
     marginTop: 0,

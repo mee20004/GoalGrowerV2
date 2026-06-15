@@ -3,6 +3,7 @@ import { doc, updateDoc, runTransaction, setDoc, increment, arrayUnion, getDoc, 
 import { getPlantHealthState, calculateGoalStreak, isGoalDoneForDate } from "../utils/goalState";
 import { fromKey } from "../components/GoalsStore";
 import { updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
+import { awardGoalCompletionCoins } from "../utils/shopInventory";
 import { auth, db } from "../firebaseConfig";
 
 // STORAGE_PAGE_ID must match all screens
@@ -418,6 +419,14 @@ export async function toggleGoalTransaction({
       }
     }
     if (clearLocalOptimisticProgress) clearLocalOptimisticProgress();
+
+    if (shouldAwardCompletion && !isSharedGoalView) {
+      try {
+        await awardGoalCompletionCoins();
+      } catch (coinError) {
+        console.error("Goal completion coin reward failed:", coinError);
+      }
+    }
   } catch (error) {
     if (clearLocalOptimisticProgress) clearLocalOptimisticProgress();
     console.error("Error toggling goal status (shared):", error);

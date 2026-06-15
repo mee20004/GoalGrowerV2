@@ -883,7 +883,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 0,
     borderColor: '#d9e6f4',
-    ...cpShadow({ color: theme.accent, offset: { width: 0, height: 6 }, opacity: 0.16, radius: 0, elevation: 3 }),
+    ...cpShadow({ color: "#000000", offset: { width: 0, height: 6 }, opacity: 0.16, radius: 0, elevation: 3 }),
     marginTop: 8,
     marginBottom: 12,
   },
