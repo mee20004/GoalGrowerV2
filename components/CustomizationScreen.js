@@ -151,7 +151,6 @@ export default function CustomizationScreen({
 
   const activeSection = customizerType || "wall";
   const isInitialSaveSkipped = useRef(true);
-  const scrimOpacity = useRef(new Animated.Value(0)).current;
   const sheetTranslate = useRef(new Animated.Value(32)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -213,13 +212,14 @@ export default function CustomizationScreen({
 
   useEffect(() => {
     if (!visible) return;
-    scrimOpacity.setValue(0);
     sheetTranslate.setValue(32);
-    Animated.parallel([
-      Animated.timing(scrimOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.timing(sheetTranslate, { toValue: 0, duration: 250, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-    ]).start();
-  }, [visible, scrimOpacity, sheetTranslate]);
+    Animated.timing(sheetTranslate, {
+      toValue: 0,
+      duration: 250,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [visible, sheetTranslate]);
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -330,9 +330,7 @@ export default function CustomizationScreen({
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
       <View style={styles.root} pointerEvents="box-none">
-        <HapticPressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close customization">
-          <Animated.View pointerEvents="none" style={[styles.scrim, { opacity: scrimOpacity }]} />
-        </HapticPressable>
+        <HapticPressable style={styles.dismissLayer} onPress={onClose} accessibilityLabel="Close customization" />
 
         <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
           {FIXED_HOTSPOTS.map((spot) => (
@@ -393,9 +391,9 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
-  scrim: {
+  dismissLayer: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(10, 14, 30, 0.35)",
+    backgroundColor: "transparent",
   },
   sheet: {
     position: "absolute",

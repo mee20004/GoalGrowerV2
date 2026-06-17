@@ -466,7 +466,7 @@ const GardenAmbientParticles = () => {
 
 // --- 1. PLANT VISUAL COMPONENT ---
 
-const PlantVisual = ({ plant, isDraggingHighlight }) => {
+const PlantVisual = ({ plant, isDraggingHighlight, educationDemo }) => {
   const total = Number(plant.totalCompletions) || 0;
   // Only use getStoragePlantRating for badge visuals, not for health
   const isTrophy = plant?.shelfPosition?.pageId === STORAGE_PAGE_ID;
@@ -496,8 +496,26 @@ const PlantVisual = ({ plant, isDraggingHighlight }) => {
   const { status } = getPlantHealthState(plant, new Date(), auth.currentUser?.uid);
   const species = plant?.plantSpecies || ((plant?.type !== "completion" && plant?.type !== "quantity") ? plant?.type : "fern");
   const speciesAssets = PLANT_ASSETS[species] || PLANT_ASSETS.fern;
-  const plantSource =
-    speciesAssets?.[stage]?.[status]
+
+  const resolveEducationDemoSource = () => {
+    if (!educationDemo) return null;
+    if (educationDemo.mode === "growth") {
+      const stageKeys = ["stage1", "stage2", "stage3", "stage4"];
+      const demoStage = stageKeys[educationDemo.frame] || "stage1";
+      return speciesAssets?.[demoStage]?.alive || PLANT_ASSETS.fern?.stage1?.alive;
+    }
+    if (educationDemo.mode === "health") {
+      if (educationDemo.frame === 1) {
+        return speciesAssets?.[stage]?.dying || speciesAssets?.[stage]?.dry || speciesAssets?.[stage]?.alive;
+      }
+      return speciesAssets?.[stage]?.alive || PLANT_ASSETS.fern?.stage1?.alive;
+    }
+    return null;
+  };
+
+  const educationDemoSource = resolveEducationDemoSource();
+  const plantSource = educationDemoSource
+    || speciesAssets?.[stage]?.[status]
     || speciesAssets?.[stage]?.alive
     || PLANT_ASSETS.fern?.stage1?.alive;
 
@@ -726,7 +744,7 @@ const PlantVisual = ({ plant, isDraggingHighlight }) => {
 };
 
 // --- 2. DRAGGABLE WRAPPER ---
-const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDragStart, onDragEnd, onDelete, onPlantTap, globalPan, globalDragRef, disabled = false, onCompletionTargetRef, instantDrag = false }) => {
+const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDragStart, onDragEnd, onDelete, onPlantTap, globalPan, globalDragRef, disabled = false, onCompletionTargetRef, instantDrag = false, educationDemo = null }) => {
   const [isHidden, setIsHidden] = useState(false);
   const latestProps = useRef({ plant, onDragStart, onDragEnd, onDelete, onPlantTap, isEditing, instantDrag });
   latestProps.current = { plant, onDragStart, onDragEnd, onDelete, onPlantTap, isEditing, instantDrag };
@@ -953,7 +971,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
         { opacity: isHidden ? 0 : 1 } 
       ]}
     >
-      <PlantVisual plant={plant} isDraggingHighlight={false} />
+      <PlantVisual plant={plant} isDraggingHighlight={false} educationDemo={educationDemo} />
     </Animated.View>
   );
 });
@@ -966,6 +984,20 @@ const GARDEN_TUTORIAL_TASKS = [
   { key: 'addedPage', label: 'Add a new page' },
   { key: 'customizedGarden', label: 'Open customization' },
   { key: 'openedGardenSwitcher', label: 'Open garden switcher' },
+];
+
+const GROWTH_EDUCATION_LABELS = ["Sprout", "Growing", "Blooming", "Full bloom"];
+const GROWTH_EDUCATION_HINTS = [
+  "Your plant today.",
+  "After a few check-ins.",
+  "More progress unlocked.",
+  "Your long-term goal.",
+];
+const HEALTH_EDUCATION_LABELS = ["Healthy", "Wilting", "Thriving"];
+const HEALTH_EDUCATION_HINTS = [
+  "Water on schedule.",
+  "Miss days and it wilts.",
+  "Get back on track.",
 ];
 
 const TUTORIAL_HOTSPOT_WIDTH = 104;
@@ -1073,7 +1105,7 @@ function getGardenTutorialHotspotLabel(taskKey, isEditing) {
     case 'exitedEditMode':
       return 'Tap here';
     case 'completedGoal':
-      return 'Water goal';
+      return 'Water';
     case 'reenteredEditMode':
       return 'Long press';
     case 'addedPage':
@@ -1405,6 +1437,9 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   const addPageFabRef = useRef(null);
   const waterDropRef = useRef(null);
   const [tutorialHotspot, setTutorialHotspot] = useState(null);
+  const [educationPanelMode, setEducationPanelMode] = useState(null);
+  const [educationDemoFrame, setEducationDemoFrame] = useState(0);
+  const [tutorialPlantId, setTutorialPlantId] = useState(null);
 
   const sharedGardenId = route?.params?.gardenId || route?.params?.sharedGardenId || null;
   const isSharedGarden = Boolean(sharedGardenId);
@@ -1497,6 +1532,72 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   const drawerShouldShowRef = useRef((shouldPersistState ? (persistedGardenState.currentPageId || "default") : "default") !== STORAGE_PAGE_ID);
   const sharedDropOverridesRef = useRef({});
 
+  const handleEducationDismiss = useCallback(() => {
+    const mode = educationPanelMode;
+    if (mode === "growth") {
+      onOnboardingAction?.("viewedGrowthEducation");
+    } else if (mode === "health") {
+      onOnboardingAction?.("viewedHealthEducation");
+    }
+    setEducationPanelMode(null);
+    setEducationDemoFrame(0);
+  }, [educationPanelMode, onOnboardingAction]);
+
+  const handleEducationNext = useCallback(() => {
+    if (!educationPanelMode) return;
+    const totalFrames = educationPanelMode === "growth" ? 4 : 3;
+    if (educationDemoFrame >= totalFrames - 1) {
+      handleEducationDismiss();
+      return;
+    }
+    setEducationDemoFrame((prev) => prev + 1);
+  }, [educationDemoFrame, educationPanelMode, handleEducationDismiss]);
+
+  useEffect(() => {
+    if (onboardingStep !== "garden_tutorial") {
+      setEducationPanelMode(null);
+      return undefined;
+    }
+    if (educationPanelMode) return undefined;
+
+    if (
+      onboardingActions?.exitedEditMode
+      && onboardingActions?.movedGoal
+      && !onboardingActions?.viewedGrowthEducation
+    ) {
+      setEducationDemoFrame(0);
+      setEducationPanelMode("growth");
+    } else if (onboardingActions?.completedGoal && !onboardingActions?.viewedHealthEducation) {
+      setEducationDemoFrame(0);
+      setEducationPanelMode("health");
+    }
+
+    return undefined;
+  }, [
+    educationPanelMode,
+    onboardingStep,
+    onboardingActions?.exitedEditMode,
+    onboardingActions?.movedGoal,
+    onboardingActions?.viewedGrowthEducation,
+    onboardingActions?.completedGoal,
+    onboardingActions?.viewedHealthEducation,
+  ]);
+
+  useEffect(() => {
+    if (onboardingStep !== "garden_tutorial" || tutorialPlantId) return undefined;
+    if (!onboardingActions?.movedGoal) return undefined;
+
+    const candidate = allPlants
+      .filter((plant) => plant.shelfPosition && plant.shelfPosition.pageId !== STORAGE_PAGE_ID)
+      .sort((left, right) => (Number(left.totalCompletions) || 0) - (Number(right.totalCompletions) || 0))[0];
+
+    if (candidate?.id) {
+      setTutorialPlantId(candidate.id);
+    }
+
+    return undefined;
+  }, [allPlants, onboardingActions?.movedGoal, onboardingStep, tutorialPlantId]);
+
   useEffect(() => {
     currentPageRef.current = currentPageId;
   }, [currentPageId]);
@@ -1529,6 +1630,16 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       return;
     }
 
+    const showingEducation = educationPanelMode
+      || (
+        onboardingActions?.exitedEditMode
+        && onboardingActions?.movedGoal
+        && !onboardingActions?.viewedGrowthEducation
+      )
+      || (onboardingActions?.completedGoal && !onboardingActions?.viewedHealthEducation);
+
+    if (showingEducation) return;
+
     const nextTask = GARDEN_TUTORIAL_TASKS.find((item) => !onboardingActions?.[item.key]);
     const taskKey = nextTask?.key ?? 'complete';
 
@@ -1557,7 +1668,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
         useNativeDriver: true,
       }),
     ]).start();
-  }, [onboardingStep, onboardingActions, showCustomization, bubbleScale, bubbleTranslate]);
+  }, [onboardingStep, onboardingActions, showCustomization, bubbleScale, bubbleTranslate, educationPanelMode]);
 
   useEffect(() => {
     if (onboardingStep !== 'garden_tutorial') {
@@ -1599,7 +1710,21 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       return;
     }
 
-    if (showCustomization) {
+    if (showCustomization || educationPanelMode) {
+      setTutorialHotspot(null);
+      return;
+    }
+
+    if (
+      onboardingActions?.exitedEditMode
+      && onboardingActions?.movedGoal
+      && !onboardingActions?.viewedGrowthEducation
+    ) {
+      setTutorialHotspot(null);
+      return;
+    }
+
+    if (onboardingActions?.completedGoal && !onboardingActions?.viewedHealthEducation) {
       setTutorialHotspot(null);
       return;
     }
@@ -1662,10 +1787,14 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     }
 
     targetRef.current.measureInWindow((x, y, w, h) => applyMeasuredHotspot(nextTask, x, y, w, h));
-  }, [onboardingStep, onboardingActions, isEditing, width, height, insets, allPlants, showCustomization, drawerTop]);
+  }, [onboardingStep, onboardingActions, isEditing, width, height, insets, allPlants, showCustomization, drawerTop, educationPanelMode]);
 
   useEffect(() => {
     if (onboardingStep !== 'garden_tutorial') {
+      setTutorialHotspot(null);
+      return;
+    }
+    if (educationPanelMode) {
       setTutorialHotspot(null);
       return;
     }
@@ -1681,6 +1810,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     currentPageId,
     allPlants,
     measureTutorialHotspot,
+    educationPanelMode,
   ]);
 
   useEffect(() => {
@@ -1858,12 +1988,16 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       });
       if (onboardingStep === 'garden_tutorial') {
         onOnboardingAction?.('completedGoal');
+        if (!onboardingActions?.viewedHealthEducation) {
+          setEducationDemoFrame(0);
+          setEducationPanelMode('health');
+        }
       }
     } catch (error) {
       console.error("Error toggling goal status (GardenScreen):", error);
       Alert.alert("Error", "Could not update goal progress.");
     }
-  }, [allPlants, findFirstOpenSharedStorageSlot, findFirstOpenStorageSlot, isReadOnly, onboardingStep, onOnboardingAction, sharedGardenId]);
+  }, [allPlants, findFirstOpenSharedStorageSlot, findFirstOpenStorageSlot, isReadOnly, onboardingActions?.viewedHealthEducation, onboardingStep, onOnboardingAction, sharedGardenId]);
 
   const findCompletionTargetId = useCallback(async (moveX, moveY) => {
     const visiblePlantIds = allPlants
@@ -2395,6 +2529,10 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     setIsEditing(false);
     if (shouldPersistState) persistedGardenState.isEditing = false;
     if (onboardingStep === 'garden_tutorial' && onboardingActions?.movedGoal) {
+      if (!onboardingActions?.viewedGrowthEducation) {
+        setEducationDemoFrame(0);
+        setEducationPanelMode('growth');
+      }
       onOnboardingAction?.('exitedEditMode');
     }
   }, [isEditing, isReadOnly, onboardingActions, onboardingStep, onOnboardingAction, shouldPersistState]);
@@ -2488,6 +2626,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       if (dest) {
         if (onboardingStep === 'garden_tutorial') {
           onOnboardingAction?.('movedGoal');
+          setTutorialPlantId(plant.id);
         }
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         const baseOldPos = dragStartShelfPosition
@@ -3258,6 +3397,12 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         {Array.from({ length: config.slots }).map((_, idx) => {
           const occupant = plantsOnPage.find(p => p.shelfPosition?.shelfName === shelfName && p.shelfPosition?.slotIndex === idx);
           const slotKey = `${pageId}_${shelfName}_${idx}`;
+          const tutorialEducationDemo = (
+            onboardingStep === "garden_tutorial"
+            && pageId === currentPageId
+            && occupant?.id === tutorialPlantId
+            && educationPanelMode
+          ) ? { mode: educationPanelMode, frame: educationDemoFrame } : null;
           return (
             <View key={slotKey} ref={el => slotRefs.current[slotKey] = el} style={[styles.slot, isEditing && styles.slotEditBox]} collapsable={false}>
               {occupant && (
@@ -3270,6 +3415,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                   instantDrag={isEditing}
                   onDragStart={handleDragStart} onDragEnd={handleDragEnd}
                   onDelete={() => clearPlantFromLayout(occupant.id)}
+                  educationDemo={tutorialEducationDemo}
                 />
               )}
             </View>
@@ -3506,23 +3652,80 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
   const showGardenTutorialCard = onboardingStep === 'garden_tutorial';
   const tutorialComplete = GARDEN_TUTORIAL_TASKS.every((item) => !!onboardingActions?.[item.key]);
   const nextTutorialTask = GARDEN_TUTORIAL_TASKS.find((item) => !onboardingActions?.[item.key]);
+  const tutorialStepNumber = nextTutorialTask
+    ? GARDEN_TUTORIAL_TASKS.findIndex((item) => item.key === nextTutorialTask.key) + 1
+    : GARDEN_TUTORIAL_TASKS.length;
+  const educationActive = Boolean(educationPanelMode);
+  const showingEducationPreview = educationActive
+    || (
+      onboardingStep === 'garden_tutorial'
+      && onboardingActions?.exitedEditMode
+      && onboardingActions?.movedGoal
+      && !onboardingActions?.viewedGrowthEducation
+    )
+    || (
+      onboardingStep === 'garden_tutorial'
+      && onboardingActions?.completedGoal
+      && !onboardingActions?.viewedHealthEducation
+    );
+  const effectiveEducationMode = educationPanelMode
+    || (
+      onboardingStep === 'garden_tutorial'
+      && onboardingActions?.exitedEditMode
+      && onboardingActions?.movedGoal
+      && !onboardingActions?.viewedGrowthEducation
+      ? 'growth'
+      : onboardingStep === 'garden_tutorial'
+        && onboardingActions?.completedGoal
+        && !onboardingActions?.viewedHealthEducation
+        ? 'health'
+        : null
+    );
+  const educationTotalFrames = effectiveEducationMode === "growth" ? 4 : effectiveEducationMode === "health" ? 3 : 0;
+  const educationOnLastFrame = showingEducationPreview && educationDemoFrame >= educationTotalFrames - 1;
+  const educationLabels = effectiveEducationMode === "growth" ? GROWTH_EDUCATION_LABELS : HEALTH_EDUCATION_LABELS;
+  const educationHints = effectiveEducationMode === "growth" ? GROWTH_EDUCATION_HINTS : HEALTH_EDUCATION_HINTS;
+  const educationBubbleLabel = educationLabels[educationDemoFrame] || educationLabels[0];
+  const educationBubbleHint = educationHints[educationDemoFrame] || educationHints[0];
   const tutorialBubbleText = showCustomization && nextTutorialTask?.key === 'openedGardenSwitcher'
-    ? 'Tap Done to finish customizing, then tap the garden switcher in the top right.'
+    ? 'Tap Done, then the garden switcher.'
     : !nextTutorialTask
-    ? 'Nice work. Finishing up your garden tutorial...'
+    ? 'Almost done!'
     : nextTutorialTask.key === 'movedGoal'
-      ? 'Drag your new goal onto a shelf to place it in your garden.'
+      ? 'Drag your goal onto a shelf.'
       : nextTutorialTask.key === 'exitedEditMode'
-        ? (isEditing ? 'Tap anywhere in the garden to exit edit mode.' : 'Great. You are out of edit mode.')
+        ? 'Tap anywhere to finish placing.'
       : nextTutorialTask.key === 'completedGoal'
-        ? 'Now drag the water drop onto your goal to complete it.'
+        ? 'Drag water onto your plant.'
       : nextTutorialTask.key === 'reenteredEditMode'
-        ? (isEditing ? 'Perfect, edit mode is back on.' : 'Long-press anywhere in the garden to enter edit mode again.')
+        ? (isEditing ? 'Edit mode is on.' : 'Long-press to edit again.')
       : nextTutorialTask.key === 'addedPage'
-        ? (isEditing ? 'Tap the + button on the right to add another page.' : 'Long-press the garden to enter edit mode, then add a page.')
+        ? (isEditing ? 'Tap + to add a page.' : 'Long-press, then tap +.')
         : nextTutorialTask.key === 'customizedGarden'
-          ? (isEditing ? 'Tap the palette button to customize your garden.' : 'Long-press the garden, then tap the palette to customize it.')
-          : 'Tap the garden switcher in the top right to see your gardens.';
+          ? (isEditing ? 'Tap the palette.' : 'Long-press, then palette.')
+          : 'Tap the garden switcher.';
+  const tutorialTaskTitle = !nextTutorialTask
+    ? 'All set'
+    : nextTutorialTask.key === 'movedGoal'
+      ? 'Place your goal'
+      : nextTutorialTask.key === 'exitedEditMode'
+        ? 'Finish placing'
+      : nextTutorialTask.key === 'completedGoal'
+        ? 'Water your plant'
+      : nextTutorialTask.key === 'reenteredEditMode'
+        ? 'Edit your garden'
+      : nextTutorialTask.key === 'addedPage'
+        ? 'Add a page'
+      : nextTutorialTask.key === 'customizedGarden'
+        ? 'Customize'
+        : 'Garden switcher';
+
+  const tutorialRightEnabled = showingEducationPreview || tutorialComplete;
+  const tutorialRightLabel = showingEducationPreview
+    ? (educationOnLastFrame
+      ? "Got it"
+      : `Next ${educationDemoFrame + 1}/${educationTotalFrames}`)
+    : (tutorialComplete ? "Next" : "Finish tasks first");
 
   return (
   <View style={styles.container}>
@@ -3531,6 +3734,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         <Animated.View
           style={[
             styles.mascotBubble,
+            showingEducationPreview && styles.mascotBubbleEducation,
             {
               transform: [
                 { scale: bubbleScale },
@@ -3552,15 +3756,41 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
             },
           ]}
         >
-          <Text style={styles.mascotBubbleTitle}>Garden Tutorial</Text>
-          {nextTutorialTask?.key === 'addedPage' && isEditing ? (
-            <Text style={styles.mascotBubbleText}>
-              {'Tap the  '}
-              <Image source={require('../assets/Icons/addPageBlack.png')} style={{ width: 13, height: 13 }} />
-              {'  button on the right to add another page.'}
-            </Text>
+          {showingEducationPreview ? (
+            <>
+              <Text style={styles.educationModeLabel}>
+                {effectiveEducationMode === "growth" ? "GROWTH PREVIEW" : "HEALTH PREVIEW"}
+              </Text>
+              <Text style={styles.mascotBubbleTitle}>{educationBubbleLabel}</Text>
+              <Text style={styles.mascotBubbleText}>{educationBubbleHint}</Text>
+              <View style={styles.educationProgressRow}>
+                {Array.from({ length: educationTotalFrames }).map((_, index) => (
+                  <View
+                    key={`education-progress-${index}`}
+                    style={[
+                      styles.educationProgressDot,
+                      index <= educationDemoFrame && styles.educationProgressDotActive,
+                    ]}
+                  />
+                ))}
+              </View>
+            </>
           ) : (
-            <Text style={styles.mascotBubbleText}>{tutorialBubbleText}</Text>
+            <>
+              <Text style={styles.tutorialStepLabel}>
+                {`STEP ${tutorialStepNumber} OF ${GARDEN_TUTORIAL_TASKS.length}`}
+              </Text>
+              <Text style={styles.mascotBubbleTitle}>{tutorialTaskTitle}</Text>
+              {nextTutorialTask?.key === 'addedPage' && isEditing ? (
+                <Text style={styles.mascotBubbleText}>
+                  {'Tap  '}
+                  <Image source={require('../assets/Icons/addPageBlack.png')} style={{ width: 13, height: 13 }} />
+                  {'  to add a page.'}
+                </Text>
+              ) : (
+                <Text style={styles.mascotBubbleText}>{tutorialBubbleText}</Text>
+              )}
+            </>
           )}
         </Animated.View>
         <Image source={GARDEN_MASCOT} style={styles.mascotImage} resizeMode="contain" />
@@ -3576,15 +3806,15 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                 onOnboardingAction?.(nextTutorialTask.key);
               }
             }}
-            disabled={!nextTutorialTask}
+            disabled={!nextTutorialTask || showingEducationPreview}
             style={({ pressed }) => [
               styles.tutorialNextButtonFace,
               styles.tutorialSkipButtonFaceColor,
-              !nextTutorialTask && styles.tutorialSkipButtonFaceDisabled,
-              pressed && !!nextTutorialTask && styles.tutorialNextButtonPressed,
+              (!nextTutorialTask || showingEducationPreview) && styles.tutorialSkipButtonFaceDisabled,
+              pressed && !!nextTutorialTask && !showingEducationPreview && styles.tutorialNextButtonPressed,
             ]}
           >
-            <Text style={[styles.tutorialSkipBtnText, !nextTutorialTask && styles.tutorialSkipBtnTextDisabled]}>Skip</Text>
+            <Text style={[styles.tutorialSkipBtnText, (!nextTutorialTask || showingEducationPreview) && styles.tutorialSkipBtnTextDisabled]}>Skip</Text>
           </HapticPressable>
         </View>
       </View>
@@ -3594,16 +3824,16 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         <View style={styles.tutorialNextButtonWrap}>
           <View pointerEvents="none" style={[styles.tutorialNextButtonShadow, styles.tutorialNextButtonShadowColor]} />
           <HapticPressable
-            onPress={tutorialComplete ? onGardenTutorialNext : undefined}
-            disabled={!tutorialComplete}
+            onPress={showingEducationPreview ? handleEducationNext : (tutorialComplete ? onGardenTutorialNext : undefined)}
+            disabled={!tutorialRightEnabled}
             style={({ pressed }) => [
               styles.tutorialNextButtonFace,
               styles.tutorialNextButtonFaceColor,
-              pressed && !tutorialComplete === false && styles.tutorialNextButtonPressed,
-              !tutorialComplete && styles.tutorialNextButtonFaceDisabled,
+              pressed && tutorialRightEnabled && styles.tutorialNextButtonPressed,
+              !tutorialRightEnabled && styles.tutorialNextButtonFaceDisabled,
             ]}
           >
-            <Text style={[styles.tutorialNextBtnText, !tutorialComplete && styles.tutorialNextBtnTextDisabled]}>{tutorialComplete ? 'Next' : 'Finish tasks first'}</Text>
+            <Text style={[styles.tutorialNextBtnText, !tutorialRightEnabled && styles.tutorialNextBtnTextDisabled]}>{tutorialRightLabel}</Text>
           </HapticPressable>
         </View>
       </View>
@@ -3958,7 +4188,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
           </Animated.View>
         </Animated.View>
       )}
-    {showGardenTutorialCard && tutorialHotspot && !showCustomization && (
+    {showGardenTutorialCard && tutorialHotspot && !showCustomization && !showingEducationPreview && (
       <GardenTutorialHotspot
         left={tutorialHotspot.left}
         top={tutorialHotspot.top}
@@ -3992,6 +4222,40 @@ const styles = StyleSheet.create({
     elevation: 4,
     marginBottom: 0,
     marginRight: 45,
+  },
+  mascotBubbleEducation: {
+    borderWidth: 2,
+    borderColor: '#9be35d',
+    backgroundColor: 'rgba(248, 255, 242, 0.98)',
+  },
+  educationModeLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#58a700',
+    letterSpacing: 0.6,
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
+  tutorialStepLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#8a9aaa',
+    letterSpacing: 0.6,
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
+  educationProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  educationProgressDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#d8e6d0',
+  },
+  educationProgressDotActive: {
+    backgroundColor: '#58cc02',
   },
   mascotBubbleTitle: {
     fontSize: 16,

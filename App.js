@@ -429,6 +429,8 @@ const ONBOARDING_ACTION_DEFAULTS = {
   addedPage: false,
   openedGardenSwitcher: false,
   customizedGarden: false,
+  viewedGrowthEducation: false,
+  viewedHealthEducation: false,
 };
 
 function AccountPromptScreen({ onDone, onLoginInstead }) {
