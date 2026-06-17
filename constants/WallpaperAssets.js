@@ -9,6 +9,14 @@ export const WALLPAPER_OPTIONS = [
     image: require('../assets/Wallpapers/Blue_p.png'),
     previewColor: '#678ec1',
   },
+  {
+    image: require('../assets/Wallpapers/flowers_p.png'),
+    previewColor: '#f5d9c8',
+  },
+  {
+    image: require('../assets/Wallpapers/grass_p.png'),
+    previewColor: '#a8c686',
+  },
 ];
 
 // Backwards-compatible image array for existing screens.

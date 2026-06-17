@@ -138,6 +138,46 @@ export const SHOP_ITEMS = [
     price: 150,
   },
   {
+    id: "farbg_2",
+    category: SHOP_CATEGORIES.BACKGROUNDS,
+    type: DECOR_TYPES.FARBG,
+    assetIndex: 2,
+    assetKey: "2",
+    name: "Countryside",
+    description: "Rolling hills and a cozy cottage path.",
+    price: 180,
+  },
+  {
+    id: "farbg_3",
+    category: SHOP_CATEGORIES.BACKGROUNDS,
+    type: DECOR_TYPES.FARBG,
+    assetIndex: 3,
+    assetKey: "3",
+    name: "Desert Dunes",
+    description: "Warm sands and open sky beyond the window.",
+    price: 200,
+  },
+  {
+    id: "farbg_4",
+    category: SHOP_CATEGORIES.BACKGROUNDS,
+    type: DECOR_TYPES.FARBG,
+    assetIndex: 4,
+    assetKey: "4",
+    name: "River Valley",
+    description: "A peaceful river winding through the hills.",
+    price: 220,
+  },
+  {
+    id: "farbg_5",
+    category: SHOP_CATEGORIES.BACKGROUNDS,
+    type: DECOR_TYPES.FARBG,
+    assetIndex: 5,
+    assetKey: "5",
+    name: "Lighthouse Coast",
+    description: "Seaside cliffs with a guiding lighthouse.",
+    price: 260,
+  },
+  {
     id: "window_0",
     category: SHOP_CATEGORIES.WINDOWS,
     type: DECOR_TYPES.WINDOW,
@@ -159,6 +199,26 @@ export const SHOP_ITEMS = [
     price: 100,
   },
   {
+    id: "window_2",
+    category: SHOP_CATEGORIES.WINDOWS,
+    type: DECOR_TYPES.WINDOW,
+    assetIndex: 2,
+    assetKey: "2",
+    name: "Vintage Bar",
+    description: "Classic lattice trim with old-world charm.",
+    price: 130,
+  },
+  {
+    id: "window_3",
+    category: SHOP_CATEGORIES.WINDOWS,
+    type: DECOR_TYPES.WINDOW,
+    assetIndex: 3,
+    assetKey: "3",
+    name: "Wood Blinds",
+    description: "Cozy wooden slats for a softer look.",
+    price: 170,
+  },
+  {
     id: "wall_0",
     category: SHOP_CATEGORIES.WALLS,
     type: DECOR_TYPES.WALL,
@@ -178,6 +238,26 @@ export const SHOP_ITEMS = [
     name: "Sky Blue",
     description: "Cool and calming wall color.",
     price: 120,
+  },
+  {
+    id: "wall_2",
+    category: SHOP_CATEGORIES.WALLS,
+    type: DECOR_TYPES.WALL,
+    assetIndex: 2,
+    assetKey: "2",
+    name: "Floral Bloom",
+    description: "Soft petals scattered on cream wallpaper.",
+    price: 150,
+  },
+  {
+    id: "wall_3",
+    category: SHOP_CATEGORIES.WALLS,
+    type: DECOR_TYPES.WALL,
+    assetIndex: 3,
+    assetKey: "3",
+    name: "Meadow Grass",
+    description: "Gentle green waves with leafy accents.",
+    price: 180,
   },
   {
     id: "shelf_0",
@@ -229,16 +309,24 @@ export const DEFAULT_OWNED_POTS = {
 export const DEFAULT_OWNED_FARBG = {
   0: true,
   1: false,
+  2: false,
+  3: false,
+  4: false,
+  5: false,
 };
 
 export const DEFAULT_OWNED_WINDOW_FRAMES = {
   0: true,
   1: false,
+  2: false,
+  3: false,
 };
 
 export const DEFAULT_OWNED_WALL_BG = {
   0: true,
   1: false,
+  2: false,
+  3: false,
 };
 
 export const DEFAULT_OWNED_SHELF_COLORS = {
