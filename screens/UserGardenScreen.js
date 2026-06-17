@@ -10,10 +10,10 @@ import {
   Image,
   ImageBackground,
   useWindowDimensions,
-  TouchableOpacity,
   FlatList,
   Easing,
 } from "react-native";
+import HapticTouchableOpacity from "../components/HapticTouchableOpacity";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -976,9 +976,9 @@ export default function UserGardenScreen({ route, navigation }) {
     return (
       <View style={styles.container}>
         <View style={styles.readOnlyHeader}>
-          <TouchableOpacity style={styles.readOnlyBackBtn} onPress={() => navigation.goBack()}>
+          <HapticTouchableOpacity style={styles.readOnlyBackBtn} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={20} color="#fff" />
-          </TouchableOpacity>
+          </HapticTouchableOpacity>
           <Text style={styles.readOnlyHeaderTitle} numberOfLines={1}>{username || "User"}'s Garden</Text>
         </View>
 
@@ -997,9 +997,9 @@ export default function UserGardenScreen({ route, navigation }) {
   return (
     <View style={[styles.container, { paddingTop: (insets.top || 0) + 62 }]}> 
       <View style={styles.readOnlyHeader}>
-        <TouchableOpacity style={styles.readOnlyBackBtn} onPress={() => navigation.goBack()}>
+        <HapticTouchableOpacity style={styles.readOnlyBackBtn} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={20} color="#fff" />
-        </TouchableOpacity>
+        </HapticTouchableOpacity>
         <Text style={styles.readOnlyHeaderTitle} numberOfLines={1}>{username || "User"}'s Garden</Text>
       </View>
 

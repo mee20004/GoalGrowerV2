@@ -1,5 +1,7 @@
 import React, { useMemo } from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
+import HapticPressable from "../components/HapticPressable";
+import { HapticType } from "../utils/haptics";
 import { Ionicons } from "@expo/vector-icons";
 import Page from "../components/Page";
 import { cpShadow } from "../utils/shadows";
@@ -30,9 +32,9 @@ export default function HomeScreen({ navigation }) {
       <View style={[styles.root, { backgroundColor: BG }]}>
         <View style={styles.header}>
           <Text style={styles.title}>Today</Text>
-          <Pressable onPress={() => navigation.navigate("Settings")} style={styles.iconBtn}>
+          <HapticPressable onPress={() => navigation.navigate("Settings")} style={styles.iconBtn}>
             <Ionicons name="settings-outline" size={22} color={MUTED} />
-          </Pressable>
+          </HapticPressable>
         </View>
 
         {/* Progress */}
@@ -47,9 +49,9 @@ export default function HomeScreen({ navigation }) {
         {goalsForDate.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyText}>Nothing scheduled yet</Text>
-            <Pressable onPress={() => navigation.navigate("Add")} style={styles.plantBtn}>
+            <HapticPressable onPress={() => navigation.navigate("Add")} style={styles.plantBtn}>
               <Ionicons name="leaf" size={44} color="#C4B896" />
-            </Pressable>
+            </HapticPressable>
             <Text style={styles.emptyHint}>Add a goal</Text>
           </View>
         ) : (
@@ -57,8 +59,9 @@ export default function HomeScreen({ navigation }) {
             {goalsForDate.map((g) => {
               const done = store?.isGoalDone ? store.isGoalDone(g.id, selectedDateKey) : !!g?.done;
               return (
-                <Pressable
+                <HapticPressable
                   key={g.id}
+                  haptic={HapticType.MEDIUM}
                   onPress={() => store?.toggleGoalCompletion?.(g.id, selectedDateKey)}
                   style={({ pressed }) => [
                     styles.row,
@@ -84,7 +87,7 @@ export default function HomeScreen({ navigation }) {
                   <View style={[styles.checkRing, done && { backgroundColor: ACCENT, borderColor: ACCENT }]}>
                     {done && <Ionicons name="checkmark" size={12} color="#fff" />}
                   </View>
-                </Pressable>
+                </HapticPressable>
               );
             })}
           </View>

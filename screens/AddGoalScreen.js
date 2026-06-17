@@ -21,7 +21,6 @@ import {
   Text,
   TextInput,
   StyleSheet,
-  Pressable,
   LayoutAnimation,
   KeyboardAvoidingView,
   Platform,
@@ -41,14 +40,16 @@ import {
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import * as solidIcons from '@fortawesome/free-solid-svg-icons';
-import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import HapticPressable from "../components/HapticPressable";
+import { HapticType, triggerHaptic } from "../utils/haptics";
 import Page from "../components/Page";
 import theme, { getDarkerAccentColor, useTheme } from "../theme";
 import { useGoals, fromKey } from "../components/GoalsStore";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
 import { useShopInventory } from "../components/ShopInventoryProvider";
+import CoinIcon from "../components/CoinIcon";
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { setAddGoalDirty } from '../utils/addGoalGuard';
 import SwipeCalendar from '../components/SwipeCalendar';
@@ -76,13 +77,7 @@ function GoalIcon({ name, size, color }) {
   return <FontAwesomeIcon icon={iconDef} size={size} color={color} />;
 }
 
-const triggerSelectionHaptic = () => {
-  Haptics.selectionAsync().catch(() => {});
-};
-
-const triggerButtonHaptic = () => {
-  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-};
+const SHOP_TASKBAR_ICON = require("../assets/Icons/Taskbar/Shop.png");
 
 const DAYS = [
   { label: "Sun", day: 0 },
@@ -110,11 +105,8 @@ function Chip({ label, active, onPress, variant = "default", accent }) {
   const isFilter = variant === "filter";
 
   return (
-    <Pressable
-      onPress={() => {
-        triggerSelectionHaptic();
-        onPress?.();
-      }}
+    <HapticPressable
+      onPress={onPress}
       style={[
         styles.chip,
         isFilter && styles.filterStyleChip,
@@ -132,31 +124,25 @@ function Chip({ label, active, onPress, variant = "default", accent }) {
       >
         {label}
       </Text>
-    </Pressable>
+    </HapticPressable>
   );
 }
 
 function Segmented({ left, right, value, onChange, accent }) {
   return (
     <View style={styles.segmentWrap}>
-      <Pressable
-        onPress={() => {
-          triggerSelectionHaptic();
-          onChange(left.value);
-        }}
+      <HapticPressable
+        onPress={() => onChange(left.value)}
         style={[styles.segment, value === left.value && [styles.segmentActive, { backgroundColor: accent, borderColor: accent }]]}
       >
         <Text style={[styles.segmentText, value === left.value && styles.segmentTextActive]}>{left.label}</Text>
-      </Pressable>
-      <Pressable
-        onPress={() => {
-          triggerSelectionHaptic();
-          onChange(right.value);
-        }}
+      </HapticPressable>
+      <HapticPressable
+        onPress={() => onChange(right.value)}
         style={[styles.segment, value === right.value && [styles.segmentActive, { backgroundColor: accent, borderColor: accent }]]}
       >
         <Text style={[styles.segmentText, value === right.value && styles.segmentTextActive]}>{right.label}</Text>
-      </Pressable>
+      </HapticPressable>
     </View>
   );
 }
@@ -242,11 +228,8 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 
 // --- 2. OPTIMIZED ICON COMPONENT ---
 const IconItem = memo(({ iconName, isActive, onSelect }) => (
-  <Pressable 
-    onPress={() => {
-      triggerSelectionHaptic();
-      onSelect(iconName);
-    }} 
+  <HapticPressable
+    onPress={() => onSelect(iconName)}
     style={[styles.iconBox, isActive && styles.iconBoxActive]}
   >
     {isActive && (
@@ -255,7 +238,7 @@ const IconItem = memo(({ iconName, isActive, onSelect }) => (
       </View>
     )}
     <GoalIcon name={iconName} size={45} color={isActive ? "#FFFFFF" : "#111111"} />
-  </Pressable>
+  </HapticPressable>
 ));
 
 const ASSET_CAROUSEL_ITEM_SIZE = 76;
@@ -280,35 +263,84 @@ const CenteredAssetCarousel = memo(function CenteredAssetCarousel({
   const listRef = useRef(null);
   const [carouselWidth, setCarouselWidth] = useState(0);
   const isMomentumScrollingRef = useRef(false);
-  const lastOffsetRef = useRef(0);
+  const isUserDraggingRef = useRef(false);
+  const isTapAnimatingRef = useRef(false);
+  const skipNextSyncRef = useRef(false);
+  const animationTargetRef = useRef(selectedIndex);
+  const scrollTokenRef = useRef(0);
   const selectedIndexRef = useRef(selectedIndex);
 
   const sidePadding = Math.max(0, (carouselWidth - itemSize) / 2);
 
-  useEffect(() => {
-    selectedIndexRef.current = selectedIndex;
-  }, [selectedIndex]);
+  const scrollToIndex = useCallback((index, animated = false) => {
+    if (!listRef.current || !data.length) return;
+    const safeIndex = Math.max(0, Math.min(data.length - 1, index));
+    animationTargetRef.current = safeIndex;
+    if (animated) {
+      isTapAnimatingRef.current = true;
+      const scrollId = scrollTokenRef.current + 1;
+      scrollTokenRef.current = scrollId;
+      listRef.current.scrollToOffset({
+        offset: safeIndex * itemSize,
+        animated: true,
+      });
+      setTimeout(() => {
+        if (scrollTokenRef.current !== scrollId || !isTapAnimatingRef.current) return;
+        isTapAnimatingRef.current = false;
+        listRef.current?.scrollToOffset({
+          offset: animationTargetRef.current * itemSize,
+          animated: false,
+        });
+      }, 320);
+      return;
+    }
+    isTapAnimatingRef.current = false;
+    listRef.current.scrollToOffset({
+      offset: safeIndex * itemSize,
+      animated: false,
+    });
+  }, [data.length, itemSize]);
 
-  const settleToNearestItem = (offsetX, animateToCenter = false) => {
+  const finalizeTapAnimation = useCallback((offsetX) => {
+    if (!isTapAnimatingRef.current) return;
+    const targetOffset = animationTargetRef.current * itemSize;
+    if (Math.abs(offsetX - targetOffset) <= 2) {
+      isTapAnimatingRef.current = false;
+      return;
+    }
+    listRef.current?.scrollToOffset({
+      offset: targetOffset,
+      animated: false,
+    });
+  }, [itemSize]);
+
+  const settleToNearestItem = useCallback((offsetX) => {
     const nextIndex = Math.round(offsetX / itemSize);
     const safeIndex = Math.max(0, Math.min(data.length - 1, nextIndex));
     if (safeIndex !== selectedIndexRef.current) {
-      triggerSelectionHaptic();
+      selectedIndexRef.current = safeIndex;
+      animationTargetRef.current = safeIndex;
+      triggerHaptic(HapticType.SELECTION);
       onSelectIndex(safeIndex);
     }
-    listRef.current?.scrollToOffset({
-      offset: safeIndex * itemSize,
-      animated: animateToCenter,
-    });
-  };
+    scrollToIndex(safeIndex, false);
+  }, [data.length, itemSize, onSelectIndex, scrollToIndex]);
 
   useEffect(() => {
-    if (!listRef.current || !carouselWidth || !data.length) return;
-    listRef.current.scrollToOffset({
-      offset: Math.max(0, Math.min(data.length - 1, selectedIndex)) * itemSize,
-      animated: false,
-    });
-  }, [carouselWidth, data.length, itemSize, selectedIndex]);
+    if (!carouselWidth || !data.length) return;
+    scrollToIndex(selectedIndexRef.current, false);
+  }, [carouselWidth, data.length, scrollToIndex]);
+
+  useEffect(() => {
+    selectedIndexRef.current = selectedIndex;
+    animationTargetRef.current = selectedIndex;
+    if (skipNextSyncRef.current) {
+      skipNextSyncRef.current = false;
+      return;
+    }
+    if (!carouselWidth || !data.length) return;
+    scrollToIndex(selectedIndex, false);
+  }, [selectedIndex, carouselWidth, data.length, scrollToIndex]);
 
   if (!data.length) return null;
 
@@ -330,7 +362,8 @@ const CenteredAssetCarousel = memo(function CenteredAssetCarousel({
           bounces={false}
           snapToInterval={itemSize}
           snapToAlignment="start"
-          decelerationRate="normal"
+          decelerationRate="fast"
+          disableIntervalMomentum
           contentContainerStyle={{ paddingHorizontal: sidePadding }}
           getItemLayout={(_, index) => ({
             length: itemSize,
@@ -340,14 +373,14 @@ const CenteredAssetCarousel = memo(function CenteredAssetCarousel({
           renderItem={({ item, index }) => {
             const isActive = index === selectedIndex;
             return (
-              <Pressable
+              <HapticPressable
                 onPress={() => {
-                  triggerSelectionHaptic();
+                  if (index === selectedIndexRef.current) return;
+                  selectedIndexRef.current = index;
+                  animationTargetRef.current = index;
+                  skipNextSyncRef.current = true;
+                  scrollToIndex(index, true);
                   onSelectIndex(index);
-                  listRef.current?.scrollToOffset({
-                    offset: index * itemSize,
-                    animated: true,
-                  });
                 }}
                 style={[
                   styles.assetCarouselItem,
@@ -357,11 +390,12 @@ const CenteredAssetCarousel = memo(function CenteredAssetCarousel({
                 ]}
               >
                 {renderPreview(item, isActive)}
-              </Pressable>
+              </HapticPressable>
             );
           }}
-          onScroll={(event) => {
-            lastOffsetRef.current = event.nativeEvent.contentOffset.x;
+          onScrollBeginDrag={() => {
+            isUserDraggingRef.current = true;
+            isTapAnimatingRef.current = false;
           }}
           onMomentumScrollBegin={() => {
             isMomentumScrollingRef.current = true;
@@ -369,17 +403,27 @@ const CenteredAssetCarousel = memo(function CenteredAssetCarousel({
           onMomentumScrollEnd={(event) => {
             isMomentumScrollingRef.current = false;
             const offsetX = event.nativeEvent.contentOffset.x;
-            lastOffsetRef.current = offsetX;
-            settleToNearestItem(offsetX, false);
+            if (isUserDraggingRef.current) {
+              isUserDraggingRef.current = false;
+              settleToNearestItem(offsetX);
+              return;
+            }
+            finalizeTapAnimation(offsetX);
           }}
           onScrollEndDrag={(event) => {
             const offsetX = event.nativeEvent.contentOffset.x;
-            lastOffsetRef.current = offsetX;
-            requestAnimationFrame(() => {
-              if (!isMomentumScrollingRef.current) {
-                settleToNearestItem(lastOffsetRef.current, true);
-              }
-            });
+            if (isUserDraggingRef.current) {
+              requestAnimationFrame(() => {
+                if (!isMomentumScrollingRef.current && isUserDraggingRef.current) {
+                  isUserDraggingRef.current = false;
+                  settleToNearestItem(offsetX);
+                }
+              });
+              return;
+            }
+            if (isTapAnimatingRef.current) {
+              finalizeTapAnimation(offsetX);
+            }
           }}
         />
         {showCenterRing ? <View pointerEvents="none" style={[styles.assetCarouselCenterRing, { width: itemSize }]} /> : null}
@@ -396,15 +440,12 @@ function measureRef(ref, cb) {
 
 function Pill({ label, active, onPress }) {
   return (
-    <Pressable
-      onPress={() => {
-        triggerSelectionHaptic();
-        onPress?.();
-      }}
+    <HapticPressable
+      onPress={onPress}
       style={[styles.pill, active && styles.pillActive]}
     >
      <Text style={[styles.pillText, active && styles.pillTextActive, { fontFamily: 'CeraRoundProDEMO-Black' }]}>{label}</Text>
-    </Pressable>
+    </HapticPressable>
   );
 }
 
@@ -413,10 +454,10 @@ function PrimaryButton({ label, onPress, disabled, style, accent }) {
   return (
     <View style={[styles.actionButtonWrap, style]}>
       <View pointerEvents="none" style={[styles.actionButtonShadow, { backgroundColor: accentShadowColor }]} />
-      <Pressable
+      <HapticPressable
+        haptic={HapticType.LIGHT}
         onPress={() => {
           if (disabled) return;
-          triggerButtonHaptic();
           onPress?.();
         }}
         disabled={disabled}
@@ -429,7 +470,7 @@ function PrimaryButton({ label, onPress, disabled, style, accent }) {
         ]}
       >
        <Text style={[styles.actionButtonText, styles.actionButtonTextPrimary, disabled && styles.actionButtonTextDisabled, { fontFamily: 'CeraRoundProDEMO-Black' }]}>{label}</Text>
-      </Pressable>
+      </HapticPressable>
     </View>
   );
 }
@@ -438,10 +479,10 @@ function GhostButton({ label, onPress, disabled, style, accent }) {
   return (
     <View style={[styles.actionButtonWrap, style]}>
       <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowSecondary]} />
-      <Pressable
+      <HapticPressable
+        haptic={HapticType.LIGHT}
         onPress={() => {
           if (disabled) return;
-          triggerButtonHaptic();
           onPress?.();
         }}
         disabled={disabled}
@@ -453,7 +494,40 @@ function GhostButton({ label, onPress, disabled, style, accent }) {
         ]}
       >
         <Text style={[styles.actionButtonText, styles.actionButtonTextSecondary, { color: accent }, disabled && styles.actionButtonTextDisabled]}>{label}</Text>
-      </Pressable>
+      </HapticPressable>
+    </View>
+  );
+}
+
+function GardenShopCta({ onPress, coinBalance, lockedCount, accent }) {
+  const subtitle =
+    lockedCount > 0
+      ? `Unlock more items in the shop!`
+      : "Browse plants, pots & garden decor";
+
+  return (
+    <View style={[styles.actionButtonWrap, styles.shopCtaWrap]}>
+      <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowSecondary]} />
+      <HapticPressable
+        haptic={HapticType.LIGHT}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.actionButtonFace,
+          styles.actionButtonSecondary,
+          styles.shopCtaFace,
+          pressed && styles.actionButtonPressed,
+        ]}
+      >
+        <Image source={SHOP_TASKBAR_ICON} style={styles.shopCtaIcon} resizeMode="contain" />
+        <View style={styles.shopCtaBody}>
+          <Text style={[styles.shopCtaTitle, { color: accent }]}>Garden Shop</Text>
+          <Text style={styles.shopCtaSubtitle}>{subtitle}</Text>
+        </View>
+        <View style={styles.shopCtaBalancePill}>
+          <CoinIcon size={16} />
+          <Text style={styles.shopCtaBalanceText}>{coinBalance}</Text>
+        </View>
+      </HapticPressable>
     </View>
   );
 }
@@ -469,15 +543,15 @@ function CoachMark({ visible, title, body, onClose }) {
   if (!visible) return null;
   return (
     <Modal transparent visible={visible} animationType="fade">
-      <Pressable style={styles.coachOverlay} onPress={onClose}>
+      <HapticPressable style={styles.coachOverlay} onPress={onClose}>
         <View style={styles.coachBox}>
           <Text style={styles.coachTitle}>{title}</Text>
           <Text style={styles.coachBody}>{body}</Text>
-          <Pressable style={styles.coachCloseBtn} onPress={onClose}>
+          <HapticPressable haptic={HapticType.LIGHT} style={styles.coachCloseBtn} onPress={onClose}>
            <Text style={[styles.coachCloseText, { fontFamily: 'CeraRoundProDEMO-Black' }]}>Close</Text>
-          </Pressable>
+          </HapticPressable>
         </View>
-      </Pressable>
+      </HapticPressable>
     </Modal>
   );
 }
@@ -524,7 +598,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
   const [fontsLoaded] = useFonts({
     'CeraRoundProDEMO-Black': require('../assets/fonts/CeraRoundProDEMOBlack.otf'),
   });
-  const { isPlantOwned, isPotOwned } = useShopInventory();
+  const { isPlantOwned, isPotOwned, coinBalance } = useShopInventory();
 
   // Step state for multi-step form
   const [step, setStep] = useState(0);
@@ -909,17 +983,17 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     [potOptions, selectedPotType]
   );
 
-  const selectPlantByIndex = (index) => {
+  const selectPlantByIndex = useCallback((index) => {
     const option = plantOptions[index];
     if (!option) return;
     setSelectedPlantSpecies(option.species);
-  };
+  }, [plantOptions]);
 
-  const selectPotByIndex = (index) => {
+  const selectPotByIndex = useCallback((index) => {
     const option = potOptions[index];
     if (!option) return;
     setSelectedPotType(option.key);
-  };
+  }, [potOptions]);
 
   useEffect(() => {
     if (!plantOptions.length) return;
@@ -934,6 +1008,12 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
       setSelectedPotType(potOptions[0].key);
     }
   }, [potOptions, selectedPotType]);
+
+  const lockedShopItemCount = useMemo(() => {
+    const lockedPlants = Object.keys(PLANT_ASSETS || {}).filter((species) => !isPlantOwned(species)).length;
+    const lockedPots = Object.keys(POT_ASSETS || {}).filter((key) => !isPotOwned(key)).length;
+    return lockedPlants + lockedPots;
+  }, [isPlantOwned, isPotOwned]);
 
   const openGardenShop = () => {
     const tabNav = navigation.getParent?.();
@@ -1087,7 +1167,6 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     // - In 'everyday': pressing a day deselects it and switches to custom with all days except that one
     // - In 'weekdays': pressing a weekend day adds it and switches to custom; pressing a weekday removes it and switches to custom
     // - In 'days': toggle the day and auto-upgrade to weekdays/everyday when the set matches
-    triggerSelectionHaptic();
     if (mode === 'everyday') {
       const all = [0,1,2,3,4,5,6];
       const newDays = all.filter((x) => x !== d);
@@ -1158,7 +1237,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
   ]);
 
   const canSave = !formError;
-  const shouldEnableScroll = contentHeight > scrollViewHeight + 8;
+  const shouldEnableScroll = step !== 1 && contentHeight > scrollViewHeight + 8;
 
   const renderStepContent = () => {
     if (step === 0) {
@@ -1184,7 +1263,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
               <Switch
                 value={isPrivate}
                 onValueChange={(value) => {
-                  triggerSelectionHaptic();
+                  triggerHaptic(HapticType.SELECTION);
                   setIsPrivate(value);
                 }}
                 trackColor={{ false: theme.outline, true: theme.accent }}
@@ -1217,7 +1296,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
                 <Switch
                   value={multiUserWateringEnabled}
                   onValueChange={(value) => {
-                    triggerSelectionHaptic();
+                    triggerHaptic(HapticType.SELECTION);
                     setMultiUserWateringEnabled(value);
                   }}
                   trackColor={{ false: theme.outline, true: theme.accent }}
@@ -1269,36 +1348,40 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
               )}
             />
 
-            <CenteredAssetCarousel
-              carouselKey="visible-pot-options"
-              title="Pot options"
-              data={potOptions}
-              selectedIndex={selectedPotIndex}
-              onSelectIndex={selectPotByIndex}
-              itemSize={92}
-              showTitle={false}
-              showCenterRing={false}
-              sectionStyle={styles.potOptionsSection}
-              wrapStyle={styles.potOptionsWrap}
-              itemStyle={styles.potOptionsItem}
-              activeItemStyle={styles.potOptionsItemActive}
-              renderPreview={(item, isActive) => (
-                <Image
-                  source={item.preview}
-                  resizeMode="contain"
-                  style={[styles.potOptionsImage, isActive && styles.potOptionsImageActive]}
-                />
-              )}
-            />
+            <View style={styles.potOptionsSection}>
+              <View style={styles.potOptionsTouchSpacer} pointerEvents="none" />
+              <CenteredAssetCarousel
+                carouselKey="visible-pot-options"
+                title="Pot options"
+                data={potOptions}
+                selectedIndex={selectedPotIndex}
+                onSelectIndex={selectPotByIndex}
+                itemSize={92}
+                showTitle={false}
+                showCenterRing={false}
+                sectionStyle={styles.potOptionsCarouselSection}
+                wrapStyle={styles.potOptionsWrap}
+                itemStyle={styles.potOptionsItem}
+                activeItemStyle={styles.potOptionsItemActive}
+                renderPreview={(item, isActive) => (
+                  <Image
+                    source={item.preview}
+                    resizeMode="contain"
+                    style={[styles.potOptionsImage, isActive && styles.potOptionsImageActive]}
+                  />
+                )}
+              />
+            </View>
           </View>
 
-          <Pressable onPress={openGardenShop} style={styles.shopLinkRow}>
-            <Ionicons name="storefront-outline" size={18} color={theme.accent} />
-            <Text style={[styles.shopLinkText, { color: theme.accent }]}>
-              Visit the Garden Shop for more plants and pots
-            </Text>
-            <Ionicons name="chevron-forward" size={16} color={theme.accent} />
-          </Pressable>
+          {!onboardingMode ? (
+            <GardenShopCta
+              onPress={openGardenShop}
+              coinBalance={coinBalance}
+              lockedCount={lockedShopItemCount}
+              accent={theme.accent}
+            />
+          ) : null}
         </View>
       );
     }
@@ -1318,15 +1401,12 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
                 autoCapitalize="none"
               />
               {!!searchTerm && (
-                <Pressable
-                  onPress={() => {
-                    triggerSelectionHaptic();
-                    setSearchTerm("");
-                  }}
+                <HapticPressable
+                  onPress={() => setSearchTerm("")}
                   hitSlop={8}
                 >
                   <Ionicons name="close-circle" size={18} color={theme.muted} />
-                </Pressable>
+                </HapticPressable>
               )}
             </View>
             <View style={styles.iconSelectedRow}>
@@ -1358,15 +1438,12 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
               <Text style={styles.iconLoadHint}>Showing popular icons first for faster loading.</Text>
             )}
             {hasMoreIcons && (
-              <Pressable
+              <HapticPressable
                 style={styles.loadMoreIconsBtn}
-                onPress={() => {
-                  triggerSelectionHaptic();
-                  setVisibleIconCount((prev) => prev + 120);
-                }}
+                onPress={() => setVisibleIconCount((prev) => prev + 120)}
               >
                 <Text style={styles.loadMoreIconsText}>Show more icons</Text>
-              </Pressable>
+              </HapticPressable>
             )}
           </ScrollView>
         </View>
@@ -1417,13 +1494,13 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
             {getScheduleDays().map((d) => {
               const isSelected = mode === 'everyday' ? true : mode === 'weekdays' ? (d.day >= 1 && d.day <= 5) : days.includes(d.day);
               return (
-                <Pressable
+                <HapticPressable
                   key={d.label}
                   onPress={() => handleDayPress(d.day)}
                   style={[styles.dayPill, isSelected && [styles.dayPillActive, { backgroundColor: theme.accent, borderColor: theme.accent }]]}
                 >
                   <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>{d.label}</Text>
-                </Pressable>
+                </HapticPressable>
               );
             })}
           </View>
@@ -1683,7 +1760,8 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
                     styles.onboardingSkipButtonShadowColor,
                   ]}
                 />
-                <Pressable
+                <HapticPressable
+                  haptic={HapticType.LIGHT}
                   onPress={onSkipOnboarding}
                   disabled={isSaving}
                   style={({ pressed }) => [
@@ -1701,7 +1779,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
                   >
                     Skip
                   </Text>
-                </Pressable>
+                </HapticPressable>
               </View>
             </View>
           )}
@@ -1788,7 +1866,7 @@ const styles = StyleSheet.create({
   headerWrapper: {
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderRadius: 24,
-    shadowColor: theme.accent,
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.16,
     shadowRadius: 0,
@@ -2287,16 +2365,50 @@ const styles = StyleSheet.create({
     width: 60,
     height: 38,
   },
-  shopLinkRow: {
+  shopCtaWrap: {
     marginTop: 14,
+    flex: 0,
+    width: "100%",
+    height: 68,
+  },
+  shopCtaFace: {
+    height: 64,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingVertical: 10,
+    justifyContent: "flex-start",
+    paddingHorizontal: 14,
+    gap: 12,
   },
-  shopLinkText: {
+  shopCtaIcon: {
+    width: 34,
+    height: 34,
+  },
+  shopCtaBody: {
     flex: 1,
+    gap: 2,
+  },
+  shopCtaTitle: {
+    fontSize: 15,
+    fontFamily: "CeraRoundProDEMO-Black",
+  },
+  shopCtaSubtitle: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: theme.muted,
+    fontFamily: "CeraRoundProDEMO-Black",
+  },
+  shopCtaBalancePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#ffffff",
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  shopCtaBalanceText: {
     fontSize: 13,
+    color: "#0f172a",
     fontFamily: "CeraRoundProDEMO-Black",
   },
   plantOptionsSection: {
@@ -2335,9 +2447,14 @@ const styles = StyleSheet.create({
     elevation: 1,
     overflow: "visible",
   },
+  potOptionsTouchSpacer: {
+    height: 34,
+  },
+  potOptionsCarouselSection: {
+    marginTop: 0,
+  },
   potOptionsWrap: {
-    height: 116,
-    paddingTop: 34,
+    height: 82,
     overflow: "visible",
   },
   potOptionsItem: {

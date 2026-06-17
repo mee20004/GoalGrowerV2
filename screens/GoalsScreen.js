@@ -1,26 +1,32 @@
 ﻿// ...existing code...
 // screens/GoalsScreen.js
-import React, { useState, useEffect, useRef, useMemo } from "react";
-import { View, Text, StyleSheet, Pressable, FlatList, ActivityIndicator, Image, Animated, Easing } from "react-native";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, Image, Animated, Easing } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Haptics from "expo-haptics";
+import { useFocusEffect } from "@react-navigation/native";
 
 import { getFirestore, collection, onSnapshot, query, where, getDocs, doc, updateDoc, runTransaction, setDoc, increment, arrayUnion, getDoc } from "firebase/firestore";
 import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
 // import { getAuth } from "firebase/auth";
 import { Ionicons } from "@expo/vector-icons";
+import HapticPressable from "../components/HapticPressable";
 import Page from "../components/Page";
+import { HapticType } from "../utils/haptics";
 import theme, { getDarkerAccentColor, getLighterAccentColor, useTheme } from "../theme";
 import { cpShadow } from "../utils/shadows";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
 import { WALLPAPER_OPTIONS } from "../constants/WallpaperAssets";
 import { useGoals, isScheduledOn, toKey, fromKey } from "../components/GoalsStore";
+import { useSubscription } from "../components/SubscriptionProvider";
+import { tryNavigateToAddGoal } from "../utils/subscriptionLimits";
 import { Alert } from "react-native";
 import { db } from "../firebaseConfig";
 import { auth } from "../firebaseConfig";
 import { updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
 import { subscribePersonalCustomizations, subscribeSharedCustomizations } from "../utils/customizationFirestore";
+import { onFirestoreListenerError } from "../utils/firestoreListener";
+import { recordQuestActivity } from "../utils/questEngine";
 import { getAuth } from "firebase/auth";
 import {
   calculateGoalStreak,
@@ -167,6 +173,14 @@ export default function GoalsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const { isDoneForDay, selectedDateKey } = useGoals();
+  const { isPro, openDefaultPaywall } = useSubscription();
+
+  useFocusEffect(
+    useCallback(() => {
+      recordQuestActivity("goals");
+    }, [])
+  );
+
   const sharedGoalCardShadow = useMemo(
     () =>
       cpShadow({
@@ -290,31 +304,53 @@ export default function GoalsScreen({ navigation }) {
     let unsubSharedCustomizations = [];
     let isMounted = true;
 
+    const clearFirestoreListeners = () => {
+      if (unsubGoals) unsubGoals();
+      if (unsubLayout) unsubLayout();
+      if (unsubPersonalCustomization) unsubPersonalCustomization();
+      unsubSharedLayouts.forEach((unsub) => unsub());
+      unsubSharedCustomizations.forEach((unsub) => unsub());
+      unsubGoals = null;
+      unsubLayout = null;
+      unsubPersonalCustomization = null;
+      unsubSharedLayouts = [];
+      unsubSharedCustomizations = [];
+    };
+
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      clearFirestoreListeners();
       if (user) {
         setLoading(true);
         const goalsRef = collection(DB, "users", user.uid, "goals");
         const layoutRef = collection(DB, "users", user.uid, "gardenLayout");
 
-        unsubGoals = onSnapshot(goalsRef, (snapshot) => {
-          const goalsData = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
-          if (isMounted) setGoals(goalsData);
-        });
+        unsubGoals = onSnapshot(
+          goalsRef,
+          (snapshot) => {
+            const goalsData = snapshot.docs.map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+            }));
+            if (isMounted) setGoals(goalsData);
+          },
+          onFirestoreListenerError('GoalsScreen goals listener')
+        );
 
         unsubPersonalCustomization = subscribePersonalCustomizations(user.uid, (data) => {
           if (isMounted) setPersonalCustomizations(data || {});
         });
 
-        unsubLayout = onSnapshot(layoutRef, (snapshot) => {
-          const layoutData = {};
-          snapshot.docs.forEach((doc) => {
-            layoutData[doc.id] = doc.data();
-          });
-          if (isMounted) setLayout(layoutData);
-        });
+        unsubLayout = onSnapshot(
+          layoutRef,
+          (snapshot) => {
+            const layoutData = {};
+            snapshot.docs.forEach((doc) => {
+              layoutData[doc.id] = doc.data();
+            });
+            if (isMounted) setLayout(layoutData);
+          },
+          onFirestoreListenerError('GoalsScreen layout listener')
+        );
 
         // Fetch shared gardens and their layouts
         const sharedGardensQuery = query(collection(DB, "sharedGardens"), where("memberIds", "array-contains", user.uid));
@@ -352,34 +388,30 @@ export default function GoalsScreen({ navigation }) {
 
           const layoutCol = collection(DB, "sharedGardens", gardenId, "layout");
           return new Promise((resolve) => {
-            const unsub = onSnapshot(layoutCol, (snap) => {
-              const gardenGoals = [];
-              snap.docs.forEach((doc) => {
-                const data = doc.data();
-                gardenGoals.push({ ...data, id: doc.id, sharedGardenId: gardenId });
-                sharedLayoutsObj[doc.id] = data;
-              });
-              gardenLayoutSnapshots[gardenId] = gardenGoals;
-              if (isMounted) {
-                updateAllSharedGoals();
-                setSharedLayouts((prev) => ({ ...prev, ...sharedLayoutsObj }));
-                setSharedGardenNames((prev) => ({ ...prev, ...sharedGardenNamesObj }));
-              }
-              resolve();
-            });
+            const unsub = onSnapshot(
+              layoutCol,
+              (snap) => {
+                const gardenGoals = [];
+                snap.docs.forEach((doc) => {
+                  const data = doc.data();
+                  gardenGoals.push({ ...data, id: doc.id, sharedGardenId: gardenId });
+                  sharedLayoutsObj[doc.id] = data;
+                });
+                gardenLayoutSnapshots[gardenId] = gardenGoals;
+                if (isMounted) {
+                  updateAllSharedGoals();
+                  setSharedLayouts((prev) => ({ ...prev, ...sharedLayoutsObj }));
+                  setSharedGardenNames((prev) => ({ ...prev, ...sharedGardenNamesObj }));
+                }
+                resolve();
+              },
+              onFirestoreListenerError('GoalsScreen shared layout listener')
+            );
             unsubSharedLayouts.push(unsub);
           });
         });
         await Promise.all(promises);
         setLoading(false);
-
-        return () => {
-          if (unsubGoals) unsubGoals();
-          if (unsubLayout) unsubLayout();
-          if (unsubPersonalCustomization) unsubPersonalCustomization();
-          unsubSharedLayouts.forEach((unsub) => unsub());
-          unsubSharedCustomizations.forEach((unsub) => unsub());
-        };
       } else {
         setGoals([]);
         setLayout({});
@@ -393,11 +425,7 @@ export default function GoalsScreen({ navigation }) {
 
     return () => {
       isMounted = false;
-      if (unsubGoals) unsubGoals();
-      if (unsubLayout) unsubLayout();
-      if (unsubPersonalCustomization) unsubPersonalCustomization();
-      unsubSharedLayouts.forEach((unsub) => unsub());
-      unsubSharedCustomizations.forEach((unsub) => unsub());
+      clearFirestoreListeners();
       unsubscribe();
     };
   }, []);
@@ -416,7 +444,7 @@ export default function GoalsScreen({ navigation }) {
   }, [goals, sharedGoals, layout]);
 
   const handleAddGoal = () => {
-    navigation.navigate("AddGoal");
+    tryNavigateToAddGoal({ navigation, isPro, goals, openDefaultPaywall });
   };
 
   const handleCalendar = () => {
@@ -428,20 +456,11 @@ export default function GoalsScreen({ navigation }) {
   };
 
   const handleGoalPress = (goalId, sharedGardenId, ownerId, sourceGoalId) => {
-    Haptics.selectionAsync().catch(() => {});
     if (sharedGardenId) {
       navigation.navigate("Goal", { goalId, sharedGardenId, ownerId, sourceGoalId });
     } else {
       navigation.navigate("Goal", { goalId });
     }
-  };
-
-  const triggerGoalButtonHaptic = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-  };
-
-  const triggerFilterHaptic = () => {
-    Haptics.selectionAsync().catch(() => {});
   };
 
   const getGoalPreviewBackdropColor = (goal) => {
@@ -610,7 +629,8 @@ export default function GoalsScreen({ navigation }) {
         item.sharedGardenId ? sharedGoalCardShadow : null,
         !isForSelectedDay && styles.goalCardDimmed,
       ]}>
-        <Pressable
+        <HapticPressable
+          haptic={HapticType.SELECTION}
           onPress={() => handleGoalPress(item.id, item.sharedGardenId, item.ownerId, item.sourceGoalId)}
           style={styles.goalMainPressable}
         >
@@ -626,7 +646,7 @@ export default function GoalsScreen({ navigation }) {
               {item.sharedGardenId && sharedGardenNames[item.sharedGardenId] ? ` \u2022 ${sharedGardenNames[item.sharedGardenId]}` : ""}
             </Text>
           </View>
-        </Pressable>
+        </HapticPressable>
         <View style={[styles.goalStatusButton, { width: actionButtonSize, height: actionButtonSize + 4 }]}> 
           <View
             pointerEvents="none"
@@ -638,11 +658,9 @@ export default function GoalsScreen({ navigation }) {
               },
             ]}
           />
-          <Pressable
+          <HapticPressable
+            haptic={HapticType.MEDIUM}
             hitSlop={8}
-            onPressIn={() => {
-              if (isForSelectedDay) triggerGoalButtonHaptic();
-            }}
             onPress={() => {
               if (isForSelectedDay && !isTapCoolingDown) {
                 startTapCooldown(item.id, item.sharedGardenId, 600); // 600ms cooldown
@@ -721,7 +739,7 @@ export default function GoalsScreen({ navigation }) {
             ) : (
               <Ionicons name={isDone ? "close" : "checkmark"} size={actionIconSize} color={buttonIconColor} />
             )}
-          </Pressable>
+          </HapticPressable>
         </View>
       </View>
     );
@@ -778,33 +796,27 @@ export default function GoalsScreen({ navigation }) {
             <Text style={styles.headerTitle}>Goals</Text>
 
             <View style={styles.filterRow}>
-              <Pressable
+              <HapticPressable
+                haptic={HapticType.SELECTION}
                 style={[styles.filterBtn, goalFilter === 'all' && { backgroundColor: theme.accent, borderColor: theme.accent }]}
-                onPress={() => {
-                  triggerFilterHaptic();
-                  setGoalFilter('all');
-                }}
+                onPress={() => setGoalFilter('all')}
               >
                 <Text style={[styles.filterBtnText, goalFilter === 'all' && styles.filterBtnTextActive]}>All</Text>
-              </Pressable>
-              <Pressable
+              </HapticPressable>
+              <HapticPressable
+                haptic={HapticType.SELECTION}
                 style={[styles.filterBtn, goalFilter === 'personal' && { backgroundColor: theme.accent, borderColor: theme.accent }]}
-                onPress={() => {
-                  triggerFilterHaptic();
-                  setGoalFilter('personal');
-                }}
+                onPress={() => setGoalFilter('personal')}
               >
                 <Text style={[styles.filterBtnText, goalFilter === 'personal' && styles.filterBtnTextActive]}>Personal</Text>
-              </Pressable>
-              <Pressable
+              </HapticPressable>
+              <HapticPressable
+                haptic={HapticType.SELECTION}
                 style={[styles.filterBtn, goalFilter === 'shared' && { backgroundColor: theme.accent, borderColor: theme.accent }]}
-                onPress={() => {
-                  triggerFilterHaptic();
-                  setGoalFilter('shared');
-                }}
+                onPress={() => setGoalFilter('shared')}
               >
                 <Text style={[styles.filterBtnText, goalFilter === 'shared' && styles.filterBtnTextActive]}>Shared</Text>
-              </Pressable>
+              </HapticPressable>
             </View>
           </View>
         </View>
@@ -814,9 +826,9 @@ export default function GoalsScreen({ navigation }) {
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No goals yet</Text>
           <Text style={styles.emptySubtext}>Create your first goal to get started</Text>
-          <Pressable onPress={handleAddGoal} style={styles.addBtn}>
+          <HapticPressable onPress={handleAddGoal} style={styles.addBtn}>
             <Text style={styles.addBtnText}>+ Add Goal</Text>
-          </Pressable>
+          </HapticPressable>
         </View>
       ) : (
         <FlatList
@@ -830,7 +842,7 @@ export default function GoalsScreen({ navigation }) {
       )}
 
       <View style={[styles.fab, { bottom: insets.bottom + 85 }]}>
-        <Pressable
+        <HapticPressable
           style={styles.fabPressable}
           onPress={handleAddGoal}
           android_ripple={{ color: "#fff" }}
@@ -838,7 +850,7 @@ export default function GoalsScreen({ navigation }) {
           accessibilityLabel="Add goal"
         >
           <Ionicons name="add" size={22} color="#fff" />
-        </Pressable>
+        </HapticPressable>
       </View>
     </Page>
   );

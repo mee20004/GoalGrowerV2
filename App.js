@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { useCallback } from "react";
 import { Asset } from 'expo-asset';
 import { StackActions } from '@react-navigation/native';
-import { Text, View, Image, Alert, Pressable, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import { Text, View, Image, Alert, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import HapticPressable from './components/HapticPressable';
 import { StatusBar } from "expo-status-bar";
 import { AppState } from "react-native";
 import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
@@ -39,6 +40,8 @@ import GardenScreen from './screens/GardenScreen'; // <-- 1. IMPORT GARDEN SCREE
 import JourneyScreen from './screens/JourneyScreen';
 import ShopScreen from './screens/ShopScreen';
 import WelcomeScreen from './screens/WelcomeScreen';
+import VerifyEmailScreen from './screens/VerifyEmailScreen';
+import { needsEmailVerification } from './utils/emailVerification';
 
 const TASKBAR_ICON_MAP = {
   Rank: require("./assets/Icons/Taskbar/TrophyIcon.png"),
@@ -99,6 +102,7 @@ function ProfileStack() {
       <Stack.Screen name="AddFriends" component={AddFriendsScreen} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} />
       <Stack.Screen name="UserGarden" component={UserGardenScreen} />
+      <Stack.Screen name="UserJourney" component={JourneyScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ gestureEnabled: false }} />
       <Stack.Screen name="FollowingListScreen" component={FollowingListScreen} />
       <Stack.Screen name="FollowersListScreen" component={FollowersListScreen} />
@@ -112,6 +116,7 @@ function RankStack() {
       <Stack.Screen name="RankHome" component={RankScreen} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} />
       <Stack.Screen name="UserGarden" component={UserGardenScreen} />
+      <Stack.Screen name="UserJourney" component={JourneyScreen} />
     </Stack.Navigator>
   );
 }
@@ -591,7 +596,7 @@ function AccountPromptScreen({ onDone, onLoginInstead }) {
           {/* Primary button */}
           <View style={[accountStyles.actionButtonWrap, { marginTop: 22 }]}>
             <View pointerEvents="none" style={[accountStyles.actionButtonShadow, accountStyles.actionButtonShadowPrimary]} />
-            <Pressable
+            <HapticPressable
               disabled={submitting}
               onPress={isAnonymous ? handleFinalizeAccount : onDone}
               style={({ pressed }) => [
@@ -608,14 +613,14 @@ function AccountPromptScreen({ onDone, onLoginInstead }) {
                   {isAnonymous ? 'Create Account' : 'Continue'}
                 </Text>
               )}
-            </Pressable>
+            </HapticPressable>
           </View>
 
           {/* Secondary button */}
           {isAnonymous ? (
             <View style={[accountStyles.actionButtonWrap, { marginTop: 12 }]}>
               <View pointerEvents="none" style={[accountStyles.actionButtonShadow, accountStyles.actionButtonShadowSecondary]} />
-              <Pressable
+              <HapticPressable
                 disabled={submitting}
                 onPress={onLoginInstead}
                 style={({ pressed }) => [
@@ -625,7 +630,7 @@ function AccountPromptScreen({ onDone, onLoginInstead }) {
                 ]}
               >
                 <Text style={accountStyles.actionButtonTextSecondary}>Log in instead</Text>
-              </Pressable>
+              </HapticPressable>
             </View>
           ) : null}
 
@@ -738,7 +743,7 @@ function CreateGoalIntroScreen({ onNext, onBack }) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingHorizontal: 16, paddingTop: 96, paddingBottom: 28 }}>
       <View style={{ position: 'absolute', top: 56, left: 16, zIndex: 10 }}>
-        <Pressable
+        <HapticPressable
           onPress={onBack}
           style={{
             width: 42,
@@ -755,7 +760,7 @@ function CreateGoalIntroScreen({ onNext, onBack }) {
           }}
         >
           <Ionicons name="chevron-back" size={26} color={theme.accent} />
-        </Pressable>
+        </HapticPressable>
       </View>
 
       <View style={{ marginBottom: 40 }}>
@@ -778,7 +783,7 @@ function CreateGoalIntroScreen({ onNext, onBack }) {
         <View style={{ height: 3, backgroundColor: '#cfcfcf', marginTop: 4, marginBottom: 22, marginHorizontal: 14, borderRadius: 100 }} />
         <View style={{ width: '100%', alignSelf: 'center', maxWidth: 420, height: 56, position: 'relative' }}>
           <View pointerEvents="none" style={{ position: 'absolute', top: 4, left: 0, right: 0, bottom: 0, borderRadius: 20, backgroundColor: '#509a18' }} />
-          <Pressable
+          <HapticPressable
             onPress={onNext}
             style={({ pressed }) => ({
               borderRadius: 20,
@@ -790,7 +795,7 @@ function CreateGoalIntroScreen({ onNext, onBack }) {
             })}
           >
             <Text style={{ fontSize: 19, fontWeight: '800', color: '#ffffff', textAlign: 'center', fontFamily: 'CeraRoundProDEMO-Black' }}>Next</Text>
-          </Pressable>
+          </HapticPressable>
         </View>
       </View>
     </View>
@@ -799,6 +804,7 @@ function CreateGoalIntroScreen({ onNext, onBack }) {
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [authUserVersion, setAuthUserVersion] = useState(0);
   const [accentColor, setAccentColor] = useState(theme.accent);
   const [initializing, setInitializing] = useState(true);
   const [hasUsername, setHasUsername] = useState(false);
@@ -931,7 +937,6 @@ export default function App() {
             }
             setHasUsername(false);
             setInitializing(false);
-            checkEnterScreen(firebaseUser.uid, "onSnapshotError");
           }
         );
       } else {
@@ -962,14 +967,39 @@ export default function App() {
     updateOnboardingStep(ONBOARDING_STEP.ACCOUNT_PROMPT, { goalId: null });
   }, [updateOnboardingStep]);
 
+  const handleEmailVerified = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      await currentUser.reload();
+      // reload() mutates User in place; bump version so gate re-reads emailVerified
+      setAuthUserVersion((version) => version + 1);
+      setUser(auth.currentUser);
+    }
+    if (onboardingStep !== ONBOARDING_STEP.DONE) {
+      await updateOnboardingStep(ONBOARDING_STEP.DONE);
+    }
+  }, [onboardingStep, updateOnboardingStep]);
+
   useEffect(() => {
-    if (onboardingStep === ONBOARDING_STEP.ACCOUNT_PROMPT && hasUsername && !auth.currentUser?.isAnonymous) {
+    const currentUser = auth.currentUser;
+    if (
+      onboardingStep === ONBOARDING_STEP.ACCOUNT_PROMPT &&
+      hasUsername &&
+      currentUser &&
+      !currentUser.isAnonymous &&
+      currentUser.emailVerified
+    ) {
       updateOnboardingStep(ONBOARDING_STEP.DONE);
     }
-  }, [onboardingStep, hasUsername, updateOnboardingStep]);
+  }, [onboardingStep, hasUsername, updateOnboardingStep, user?.emailVerified]);
 
   if (initializing) return null;
   if (user && hasUsername && !onboardingLoaded) return null;
+
+  const activeAuthUser = auth.currentUser ?? user;
+  void authUserVersion;
+  const userNeedsEmailVerification =
+    activeAuthUser && hasUsername && needsEmailVerification(activeAuthUser);
 
   const handleEnterScreenDone = async () => {
     const today = new Date().toLocaleDateString('en-CA');
@@ -994,7 +1024,13 @@ export default function App() {
               <StatusBar style="dark" />
               <RootStack.Navigator screenOptions={{ headerShown: false }}>
                 {user && hasUsername ? (
-                  onboardingStep === ONBOARDING_STEP.WELCOME ? (
+                  userNeedsEmailVerification ? (
+                    <RootStack.Screen name="VerifyEmail" options={{ headerShown: false }}>
+                      {() => (
+                        <VerifyEmailScreen onVerified={handleEmailVerified} />
+                      )}
+                    </RootStack.Screen>
+                  ) : onboardingStep === ONBOARDING_STEP.WELCOME ? (
                     <RootStack.Screen name="Welcome" options={onboardingTransitionOptions}>
                       {(props) => (
                         <WelcomeScreen

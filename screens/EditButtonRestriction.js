@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Pressable } from "react-native";
-import * as Haptics from "expo-haptics";
+import HapticPressable from "../components/HapticPressable";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
@@ -32,10 +31,9 @@ export default function EditButtonRestriction({ goal, sharedGardens, openEditMod
   }, [goal?.sharedGardenId, sharedGardens, auth.currentUser?.uid]);
 
   return (
-    <Pressable
+    <HapticPressable
       onPress={() => {
         if (editDisabled) return;
-        Haptics.selectionAsync().catch(() => {});
         openEditModal?.();
       }}
       hitSlop={20}
@@ -44,6 +42,6 @@ export default function EditButtonRestriction({ goal, sharedGardens, openEditMod
       accessibilityLabel={editDisabled ? "Editing is disabled for this shared garden." : undefined}
     >
       <Ionicons name="create-outline" size={22} color={editDisabled ? theme.muted : theme.accent} />
-    </Pressable>
+    </HapticPressable>
   );
 }

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, View, ActivityIndicator, StyleSheet, Pressable } from 'react-native';
+import { Text, View, ActivityIndicator, StyleSheet } from 'react-native';
+import HapticPressable from '../components/HapticPressable';
 import { useNavigation } from '@react-navigation/native';
 import { useUsernames } from '../hooks/useUsernames';
 
@@ -20,7 +21,7 @@ export function ContributorsTodaySection({ contributorIds }) {
           <View style={styles.contributorsGrid}>
             {contributorIds.map((uid, idx) => (
               <View style={styles.contributorCell} key={uid}>
-                <Pressable
+                <HapticPressable
                   style={[styles.contributorBadge, uid === currentUserId && styles.youBadge]}
                   android_ripple={{ color: '#e0e0e0' }}
                   onPress={() => {
@@ -32,7 +33,7 @@ export function ContributorsTodaySection({ contributorIds }) {
                   }}
                 >
                   <Text style={[styles.contributorBadgeText, uid === currentUserId && styles.youBadgeText]}>{uid === currentUserId ? 'You' : (usernames[uid] || uid)}</Text>
-                </Pressable>
+                </HapticPressable>
               </View>
             ))}
           </View>

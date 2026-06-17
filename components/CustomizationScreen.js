@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Pressable,
   Image,
   FlatList,
   Modal,
@@ -11,6 +10,7 @@ import {
   Animated,
   Easing,
 } from "react-native";
+import HapticPressable from "./HapticPressable";
 import { useTheme, getDarkerAccentColor, getLighterAccentColor } from "../theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SHELF_COLOR_SCHEMES } from "../constants/ShelfColors";
@@ -55,7 +55,7 @@ function SwatchCard({ selected, accent, onPress, children, imagePreview = false 
   ];
 
   return (
-    <Pressable onPress={onPress} style={styles.swatchCardWrap}>
+    <HapticPressable onPress={onPress} style={styles.swatchCardWrap}>
       <View
         pointerEvents="none"
         style={[
@@ -66,7 +66,7 @@ function SwatchCard({ selected, accent, onPress, children, imagePreview = false 
       <View style={faceStyle}>
         {children}
       </View>
-    </Pressable>
+    </HapticPressable>
   );
 }
 
@@ -87,7 +87,7 @@ function HotspotButton({ left, top, label, sectionKey, activeKey, accent, onPres
       }}
     >
       <Animated.View style={{ transform: [{ scale: isActive ? pulseAnim : 1 }] }}>
-        <Pressable
+        <HapticPressable
           onPress={() => onPress(sectionKey)}
           style={[
             styles.hotspotRing,
@@ -95,7 +95,7 @@ function HotspotButton({ left, top, label, sectionKey, activeKey, accent, onPres
           ]}
         >
           <View style={[styles.hotspotDot, isActive && { backgroundColor: accent }]} />
-        </Pressable>
+        </HapticPressable>
       </Animated.View>
       <View style={[styles.hotspotLabel, isActive && { backgroundColor: accent }]}>
         <Text style={styles.hotspotLabelText} numberOfLines={1}>
@@ -330,9 +330,9 @@ export default function CustomizationScreen({
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
       <View style={styles.root} pointerEvents="box-none">
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close customization">
+        <HapticPressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close customization">
           <Animated.View pointerEvents="none" style={[styles.scrim, { opacity: scrimOpacity }]} />
-        </Pressable>
+        </HapticPressable>
 
         <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
           {FIXED_HOTSPOTS.map((spot) => (
@@ -368,7 +368,7 @@ export default function CustomizationScreen({
             {SECTIONS.map((section) => {
               const active = activeSection === section.key;
               return (
-                <Pressable
+                <HapticPressable
                   key={section.key}
                   onPress={() => selectSection(section.key)}
                   style={[
@@ -377,7 +377,7 @@ export default function CustomizationScreen({
                   ]}
                 >
                   <Text style={[styles.tabChipText, active && styles.tabChipTextActive]}>{section.tabLabel}</Text>
-                </Pressable>
+                </HapticPressable>
               );
             })}
           </View>

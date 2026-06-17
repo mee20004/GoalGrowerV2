@@ -1,7 +1,8 @@
 
 import React, { useState } from "react";
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { View, Text, StyleSheet, Pressable, SafeAreaView, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, SafeAreaView, ActivityIndicator } from "react-native";
+import HapticPressable from "../components/HapticPressable";
 import { useGoals } from "../components/GoalsStore";
 import { auth } from "../firebaseConfig";
 import { toKey } from "../components/GoalsStore";
@@ -84,7 +85,7 @@ export default function EnterScreen({ onDone }) {
       <View style={styles.buttonContainer}>
         <View style={styles.actionButtonWrap}>
           <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
-          <Pressable
+          <HapticPressable
             style={({ pressed }) => [
               styles.actionButtonFace,
               styles.saveButton,
@@ -98,7 +99,7 @@ export default function EnterScreen({ onDone }) {
             ) : (
               <Text style={styles.saveButtonText}>Start Today</Text>
             )}
-          </Pressable>
+          </HapticPressable>
         </View>
       </View>
     </SafeAreaView>

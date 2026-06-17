@@ -1,5 +1,7 @@
 import React from 'react';
-import { View, Pressable, StyleSheet, Text } from 'react-native';
+import { View, StyleSheet, Text } from 'react-native';
+import HapticPressable from './HapticPressable';
+import { HapticType } from '../utils/haptics';
 
 /**
  * GoalActionButton
@@ -18,11 +20,12 @@ export default function GoalActionButton({
   disabled,
   children,
   backgroundColor = '#0bd700',
-  shadowColor = '#4aa93a',
+  shadowColor = '#9aa3ad',
   style,
   faceStyle,
   borderRadius = 22,
   size = 58,
+  haptic = HapticType.LIGHT,
   ...props
 }) {
   return (
@@ -33,7 +36,8 @@ export default function GoalActionButton({
           styles.buttonShadow,
           {
             borderRadius,
-            backgroundColor: shadowColor || '#2e5d1a',
+            backgroundColor: shadowColor,
+            shadowColor,
             top: 8,
             left: 0,
             right: 0,
@@ -41,9 +45,10 @@ export default function GoalActionButton({
           },
         ]}
       />
-      <Pressable
+      <HapticPressable
         hitSlop={8}
         disabled={disabled}
+        haptic={disabled ? false : haptic}
         onPress={onPress}
         style={({ pressed }) => [
           styles.buttonFace,
@@ -60,7 +65,7 @@ export default function GoalActionButton({
         {...props}
       >
         {children}
-      </Pressable>
+      </HapticPressable>
     </View>
   );
 }
@@ -73,11 +78,7 @@ const styles = StyleSheet.create({
   },
   buttonShadow: {
     position: 'absolute',
-    // top, left, right, bottom are set dynamically for better control
-    // backgroundColor is set dynamically
     zIndex: 0,
-    // Optionally add shadow for iOS/Android
-    shadowColor: '#2e5d1a',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.18,
     shadowRadius: 8,

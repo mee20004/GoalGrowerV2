@@ -2,6 +2,7 @@
   "expo": {
     "name": "Goal Grower",
     "slug": "goal-grower",
+    "scheme": "goalgrower",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/Goal_Grower_Logo.png",
@@ -15,6 +16,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ziyu.goalgrower",
+      "associatedDomains": [
+        "applinks:goalgrower-2a859.firebaseapp.com"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -27,6 +31,41 @@
       },
       "enableProguardInReleaseBuilds": true,
       "edgeToEdgeEnabled": true,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "category": ["BROWSABLE", "DEFAULT"],
+          "data": [
+            {
+              "scheme": "https",
+              "host": "goalgrower-2a859.firebaseapp.com",
+              "pathPrefix": "/__/auth/links"
+            }
+          ]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "category": ["BROWSABLE", "DEFAULT"],
+          "data": [
+            {
+              "scheme": "https",
+              "host": "goalgrower-2a859.firebaseapp.com",
+              "pathPrefix": "/__/auth/action"
+            }
+          ]
+        },
+        {
+          "action": "VIEW",
+          "category": ["BROWSABLE", "DEFAULT"],
+          "data": [
+            {
+              "scheme": "goalgrower"
+            }
+          ]
+        }
+      ],
       "permissions": [
         "NOTIFICATIONS",
         "VIBRATE",

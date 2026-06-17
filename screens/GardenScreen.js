@@ -1,8 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect, memo } from "react";
 import {
   View, Text, StyleSheet, ActivityIndicator, ScrollView, FlatList,
-  Animated, TouchableOpacity, Platform, UIManager, LayoutAnimation, PanResponder, Image, ImageBackground, useWindowDimensions, TouchableWithoutFeedback, Pressable, Modal, TextInput, Alert, Easing,
+  Animated, Platform, UIManager, LayoutAnimation, PanResponder, Image, ImageBackground, useWindowDimensions, Modal, TextInput, Alert, Easing,
 } from "react-native";
+import HapticPressable from "../components/HapticPressable";
+import HapticTouchableOpacity from "../components/HapticTouchableOpacity";
+import { triggerSelectionHaptic, triggerLightHaptic, triggerMediumHaptic } from "../utils/haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StackActions } from "@react-navigation/native";
 import { collection, doc, onSnapshot, setDoc, writeBatch, increment, updateDoc, getDoc, getDocs, arrayUnion, query, where, deleteDoc, runTransaction, deleteField } from "firebase/firestore";
@@ -21,7 +24,15 @@ import { WALLPAPER_ASSETS } from "../constants/WallpaperAssets";
 import { SHELF_COLOR_SCHEMES } from "../constants/ShelfColors";
 
 import CustomizationScreen from "../components/CustomizationScreen";
-import { toKey } from "../components/GoalsStore";
+import { toKey, useGoals } from "../components/GoalsStore";
+import { useSubscription } from "../components/SubscriptionProvider";
+import {
+  canAddGardenPage,
+  canCreateSharedGarden,
+  canJoinSharedGarden,
+  showSubscriptionLimitAlert,
+  tryNavigateToAddGoal,
+} from "../utils/subscriptionLimits";
 
 import {
   subscribeSharedCustomizations,
@@ -30,7 +41,8 @@ import {
   savePersonalCustomizations,
 } from "../utils/customizationFirestore";
 
-import { ACHIEVEMENTS } from "../AchievementsStore";
+import { useFocusEffect } from "@react-navigation/native";
+import { recordQuestActivity } from "../utils/questEngine";
 import {
   updateOverallScoreForUser,
   updateOverallScoresForSharedGardenMembers,
@@ -821,6 +833,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
           clearLongPressTimeout();
           longPressTimeoutRef.current = setTimeout(() => {
             longPressTriggeredRef.current = true;
+            triggerMediumHaptic();
             startDrag(lastTouchRef.current);
           }, 400);
         }
@@ -849,6 +862,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
           // If the gesture moved significantly, treat it as a swipe/drag cancel
           const moved = Math.abs(gesture.dx || 0) > 10 || Math.abs(gesture.dy || 0) > 10;
           if (!moved) {
+            triggerLightHaptic();
             latestProps.current.onPlantTap?.(latestProps.current.plant);
           }
         } else if (isHidden) {
@@ -888,6 +902,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
         longPressTriggeredRef.current = false;
         longPressTimeoutRef.current = setTimeout(() => {
           longPressTriggeredRef.current = true;
+          triggerMediumHaptic();
           startDrag(lastTouchRef.current);
         }, 400);
       }}
@@ -927,6 +942,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
         const TAP_THRESHOLD = 10; // px
         const moved = Math.abs(pageX - (lastTouchRef.current.x || 0)) > TAP_THRESHOLD || Math.abs(pageY - (lastTouchRef.current.y || 0)) > TAP_THRESHOLD;
         if (!moved) {
+          triggerLightHaptic();
           latestProps.current.onPlantTap?.(latestProps.current.plant);
         }
         longPressTriggeredRef.current = false;
@@ -941,6 +957,379 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
     </Animated.View>
   );
 });
+
+const GARDEN_TUTORIAL_TASKS = [
+  { key: 'movedGoal', label: 'Move a goal to a different spot' },
+  { key: 'exitedEditMode', label: 'Tap anywhere to exit edit mode' },
+  { key: 'completedGoal', label: 'Drag the water drop to complete a goal' },
+  { key: 'reenteredEditMode', label: 'Long-press anywhere to enter edit mode' },
+  { key: 'addedPage', label: 'Add a new page' },
+  { key: 'customizedGarden', label: 'Open customization' },
+  { key: 'openedGardenSwitcher', label: 'Open garden switcher' },
+];
+
+const TUTORIAL_HOTSPOT_WIDTH = 104;
+const TUTORIAL_HOTSPOT_HEIGHT = 72;
+const TUTORIAL_HOTSPOT_RING_SIZE = 44;
+const TUTORIAL_HOTSPOT_RING_OFFSET = TUTORIAL_HOTSPOT_RING_SIZE / 2;
+
+function getTutorialHotspotBounds(left, top) {
+  const halfW = TUTORIAL_HOTSPOT_WIDTH / 2;
+  const anchorTop = top - TUTORIAL_HOTSPOT_RING_OFFSET;
+  return {
+    left: left - halfW,
+    top: anchorTop,
+    right: left + halfW,
+    bottom: anchorTop + TUTORIAL_HOTSPOT_HEIGHT,
+  };
+}
+
+function getTutorialMascotExclusionRect(screenWidth, screenHeight, insets) {
+  const zoneWidth = 310;
+  const zoneHeight = 370;
+  const anchorBottom = insets.bottom + 138;
+
+  return {
+    left: screenWidth - 18 - zoneWidth,
+    top: screenHeight - anchorBottom - zoneHeight,
+    right: screenWidth,
+    bottom: screenHeight - anchorBottom + 16,
+  };
+}
+
+function tutorialHotspotOverlapsMascot(left, top, screenWidth, screenHeight, insets) {
+  const hotspot = getTutorialHotspotBounds(left, top);
+  const zone = getTutorialMascotExclusionRect(screenWidth, screenHeight, insets);
+  return (
+    hotspot.left < zone.right
+    && hotspot.right > zone.left
+    && hotspot.top < zone.bottom
+    && hotspot.bottom > zone.top
+  );
+}
+
+function offsetTutorialHotspotFromMascot(left, top, screenWidth, screenHeight, insets) {
+  const zone = getTutorialMascotExclusionRect(screenWidth, screenHeight, insets);
+  let nextLeft = left;
+  let nextTop = top;
+
+  if (left > zone.left - 20 && top > zone.top - 40) {
+    nextLeft = zone.left - 36;
+  }
+  if (tutorialHotspotOverlapsMascot(nextLeft, nextTop, screenWidth, screenHeight, insets)) {
+    nextTop = zone.top - 48;
+  }
+  if (tutorialHotspotOverlapsMascot(nextLeft, nextTop, screenWidth, screenHeight, insets)) {
+    nextLeft = Math.min(nextLeft, screenWidth * 0.38);
+    nextTop = Math.min(nextTop, zone.top - 60);
+  }
+
+  return {
+    left: Math.max(
+      TUTORIAL_HOTSPOT_WIDTH / 2 + 8,
+      Math.min(nextLeft, screenWidth - TUTORIAL_HOTSPOT_WIDTH / 2 - 8)
+    ),
+    top: Math.max(56, nextTop),
+  };
+}
+
+function isGardenTapHoldTask(taskKey, isEditing) {
+  return (
+    taskKey === 'exitedEditMode'
+    || taskKey === 'reenteredEditMode'
+    || ((taskKey === 'addedPage' || taskKey === 'customizedGarden') && !isEditing)
+  );
+}
+
+function getGardenTapHoldHotspotPosition(screenWidth, screenHeight, drawerTop, insets) {
+  const targetTop = drawerTop > 0 ? drawerTop - 56 : screenHeight * 0.68;
+  return {
+    left: screenWidth * 0.38,
+    top: Math.max(120, Math.min(targetTop, screenHeight - insets.bottom - 330)),
+  };
+}
+
+function isAnchoredTutorialHotspot(taskKey, isEditing) {
+  if (taskKey === 'movedGoal' || taskKey === 'completedGoal' || taskKey === 'openedGardenSwitcher') return true;
+  if (isGardenTapHoldTask(taskKey, isEditing)) return true;
+  if (isEditing && (taskKey === 'addedPage' || taskKey === 'customizedGarden')) return true;
+  return false;
+}
+
+function getTutorialHotspotCenter(taskKey, isEditing, x, y, w, h) {
+  if (taskKey === 'movedGoal') {
+    return {
+      left: x + w / 2,
+      top: y + h * 0.5,
+    };
+  }
+  return { left: x + w / 2, top: y + h / 2 };
+}
+
+function getGardenTutorialHotspotLabel(taskKey, isEditing) {
+  switch (taskKey) {
+    case 'movedGoal':
+      return 'Drag here';
+    case 'exitedEditMode':
+      return 'Tap here';
+    case 'completedGoal':
+      return 'Water goal';
+    case 'reenteredEditMode':
+      return 'Long press';
+    case 'addedPage':
+      return isEditing ? 'Add page' : 'Long press';
+    case 'customizedGarden':
+      return isEditing ? 'Customize' : 'Long press';
+    case 'openedGardenSwitcher':
+      return 'Gardens';
+    default:
+      return '';
+  }
+}
+
+function getGardenTutorialActionType(taskKey, isEditing) {
+  switch (taskKey) {
+    case 'movedGoal':
+    case 'completedGoal':
+      return 'drag';
+    case 'reenteredEditMode':
+      return 'longPress';
+    case 'addedPage':
+    case 'customizedGarden':
+      return isEditing ? 'tap' : 'longPress';
+    default:
+      return 'tap';
+  }
+}
+
+function getGardenTutorialHotspotRef(taskKey, isEditing, refs) {
+  switch (taskKey) {
+    case 'movedGoal':
+      return refs.drawerFirstPlant?.current ? refs.drawerFirstPlant : refs.drawer;
+    case 'exitedEditMode':
+    case 'reenteredEditMode':
+      return refs.gardenMain;
+    case 'completedGoal':
+      return refs.waterDrop;
+    case 'addedPage':
+      return isEditing ? refs.addPageFab : refs.gardenMain;
+    case 'customizedGarden':
+      return isEditing ? refs.customizeFab : refs.gardenMain;
+    case 'openedGardenSwitcher':
+      return refs.gardenSwitcher;
+    default:
+      return null;
+  }
+}
+
+function GardenTutorialHotspot({ left, top, label, taskKey, actionType }) {
+  const mainScale = useRef(new Animated.Value(1)).current;
+  const dragX = useRef(new Animated.Value(0)).current;
+  const dragY = useRef(new Animated.Value(0)).current;
+  const rippleScale = useRef(new Animated.Value(1)).current;
+  const rippleOpacity = useRef(new Animated.Value(0)).current;
+  const holdRingScale = useRef(new Animated.Value(1)).current;
+  const holdRingOpacity = useRef(new Animated.Value(0)).current;
+  const dragUpRight = taskKey === 'completedGoal';
+  const halfWidth = TUTORIAL_HOTSPOT_WIDTH / 2;
+
+  useEffect(() => {
+    const resetDrag = () => {
+      dragX.setValue(0);
+      dragY.setValue(0);
+    };
+    const resetRipple = () => {
+      rippleScale.setValue(1);
+      rippleOpacity.setValue(0);
+    };
+    const resetHoldRing = () => {
+      holdRingScale.setValue(1);
+      holdRingOpacity.setValue(0);
+    };
+
+    let loop;
+
+    if (actionType === 'tap') {
+      loop = Animated.loop(
+        Animated.sequence([
+          Animated.parallel([
+            Animated.sequence([
+              Animated.timing(mainScale, {
+                toValue: 0.86,
+                duration: 110,
+                easing: Easing.out(Easing.quad),
+                useNativeDriver: true,
+              }),
+              Animated.spring(mainScale, {
+                toValue: 1,
+                friction: 5,
+                tension: 180,
+                useNativeDriver: true,
+              }),
+            ]),
+            Animated.sequence([
+              Animated.timing(rippleOpacity, { toValue: 0.65, duration: 60, useNativeDriver: true }),
+              Animated.parallel([
+                Animated.timing(rippleScale, {
+                  toValue: 2,
+                  duration: 450,
+                  easing: Easing.out(Easing.quad),
+                  useNativeDriver: true,
+                }),
+                Animated.timing(rippleOpacity, {
+                  toValue: 0,
+                  duration: 450,
+                  easing: Easing.out(Easing.quad),
+                  useNativeDriver: true,
+                }),
+              ]),
+            ]),
+          ]),
+          Animated.delay(550),
+        ])
+      );
+      loop.start();
+      return () => {
+        loop.stop();
+        mainScale.setValue(1);
+        resetRipple();
+      };
+    }
+
+    if (actionType === 'longPress') {
+      loop = Animated.loop(
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(mainScale, {
+              toValue: 0.76,
+              duration: 600,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: true,
+            }),
+            Animated.sequence([
+              Animated.timing(holdRingOpacity, { toValue: 0.55, duration: 300, useNativeDriver: true }),
+              Animated.timing(holdRingScale, {
+                toValue: 1.55,
+                duration: 600,
+                easing: Easing.out(Easing.quad),
+                useNativeDriver: true,
+              }),
+            ]),
+          ]),
+          Animated.delay(280),
+          Animated.parallel([
+            Animated.spring(mainScale, { toValue: 1, friction: 6, useNativeDriver: true }),
+            Animated.timing(holdRingOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+            Animated.timing(holdRingScale, { toValue: 1, duration: 200, useNativeDriver: true }),
+          ]),
+          Animated.delay(480),
+        ])
+      );
+      loop.start();
+      return () => {
+        loop.stop();
+        mainScale.setValue(1);
+        resetHoldRing();
+      };
+    }
+
+    loop = Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(dragY, {
+            toValue: -50,
+            duration: 850,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+          Animated.timing(dragX, {
+            toValue: dragUpRight ? 36 : 0,
+            duration: 850,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.delay(180),
+        Animated.parallel([
+          Animated.timing(dragY, {
+            toValue: 0,
+            duration: 350,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(dragX, {
+            toValue: 0,
+            duration: 350,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.delay(400),
+      ])
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      mainScale.setValue(1);
+      resetDrag();
+    };
+  }, [actionType, dragUpRight, mainScale, dragX, dragY, rippleScale, rippleOpacity, holdRingScale, holdRingOpacity]);
+
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        styles.tutorialHotspotWrap,
+        {
+          left: left - halfWidth,
+          top: top - TUTORIAL_HOTSPOT_RING_OFFSET,
+          width: TUTORIAL_HOTSPOT_WIDTH,
+        },
+      ]}
+    >
+      {actionType === 'tap' && (
+        <Animated.View
+          style={[
+            styles.tutorialHotspotRipple,
+            {
+              opacity: rippleOpacity,
+              transform: [{ scale: rippleScale }],
+            },
+          ]}
+        />
+      )}
+      {actionType === 'longPress' && (
+        <Animated.View
+          style={[
+            styles.tutorialHotspotRipple,
+            {
+              opacity: holdRingOpacity,
+              transform: [{ scale: holdRingScale }],
+            },
+          ]}
+        />
+      )}
+      <Animated.View
+        style={{
+          transform: [
+            { translateX: dragX },
+            { translateY: dragY },
+            { scale: mainScale },
+          ],
+        }}
+      >
+        <View style={styles.tutorialHotspotRing}>
+          <View style={styles.tutorialHotspotDot} />
+        </View>
+      </Animated.View>
+      <View style={styles.tutorialHotspotLabel}>
+        <Text style={styles.tutorialHotspotLabelText} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 // --- 3. MAIN GARDEN SCREEN ---
 export default function GardenScreen({ route, navigation, onboardingStep, onboardingActions = {}, onOnboardingAction, onGardenTutorialNext }) {
@@ -974,6 +1363,13 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       setDrawerTop(shelfLayout.y + shelfLayout.height + gap);
     }
   }, [shelfLayout]);
+
+  useFocusEffect(
+    useCallback(() => {
+      recordQuestActivity("garden");
+    }, [])
+  );
+
     // --- Customization State ---
     const { theme } = useTheme();
     const [showCustomization, setShowCustomization] = useState(false);
@@ -998,7 +1394,17 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     return () => unsub && unsub();
   }, [isSharedGarden, sharedGardenId]);
   const insets = useSafeAreaInsets();
+  const { isPro, openDefaultPaywall } = useSubscription();
+  const { goals } = useGoals();
+  const { width, height } = useWindowDimensions();
   const drawerRef = useRef(null);
+  const drawerFirstPlantRef = useRef(null);
+  const gardenMainRef = useRef(null);
+  const gardenSwitcherRef = useRef(null);
+  const customizeFabRef = useRef(null);
+  const addPageFabRef = useRef(null);
+  const waterDropRef = useRef(null);
+  const [tutorialHotspot, setTutorialHotspot] = useState(null);
 
   const sharedGardenId = route?.params?.gardenId || route?.params?.sharedGardenId || null;
   const isSharedGarden = Boolean(sharedGardenId);
@@ -1087,6 +1493,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   const bubbleScale = useRef(new Animated.Value(0.8)).current;
   const bubbleTranslate = useRef(new Animated.ValueXY({ x: 40, y: 40 })).current;
   const bubbleSway = useRef(new Animated.Value(0)).current;
+  const lastBubbleTutorialTaskRef = useRef(null);
   const drawerShouldShowRef = useRef((shouldPersistState ? (persistedGardenState.currentPageId || "default") : "default") !== STORAGE_PAGE_ID);
   const sharedDropOverridesRef = useRef({});
 
@@ -1116,14 +1523,24 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     }
   }, [showSharedGardensModal, onboardingStep, onOnboardingAction]);
 
-  const handleCustomizationChanged = useCallback(() => {
-    if (onboardingStep === 'garden_tutorial') {
-      onOnboardingAction?.('customizedGarden');
-    }
-  }, [onboardingStep, onOnboardingAction]);
-
   useEffect(() => {
-    if (onboardingStep !== 'garden_tutorial') return;
+    if (onboardingStep !== 'garden_tutorial') {
+      lastBubbleTutorialTaskRef.current = null;
+      return;
+    }
+
+    const nextTask = GARDEN_TUTORIAL_TASKS.find((item) => !onboardingActions?.[item.key]);
+    const taskKey = nextTask?.key ?? 'complete';
+
+    if (lastBubbleTutorialTaskRef.current === taskKey) return;
+    lastBubbleTutorialTaskRef.current = taskKey;
+
+    if (showCustomization && taskKey === 'openedGardenSwitcher') {
+      bubbleScale.setValue(1);
+      bubbleTranslate.setValue({ x: 0, y: 0 });
+      return;
+    }
+
     bubbleScale.setValue(0.6);
     bubbleTranslate.setValue({ x: 100, y: 200 });
     Animated.parallel([
@@ -1140,7 +1557,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
         useNativeDriver: true,
       }),
     ]).start();
-  }, [onboardingActions, isEditing]);
+  }, [onboardingStep, onboardingActions, showCustomization, bubbleScale, bubbleTranslate]);
 
   useEffect(() => {
     if (onboardingStep !== 'garden_tutorial') {
@@ -1175,6 +1592,96 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     swayLoop.start();
     return () => swayLoop.stop();
   }, [onboardingStep, bubbleSway]);
+
+  const measureTutorialHotspot = useCallback(() => {
+    if (onboardingStep !== 'garden_tutorial') {
+      setTutorialHotspot(null);
+      return;
+    }
+
+    if (showCustomization) {
+      setTutorialHotspot(null);
+      return;
+    }
+
+    const nextTask = GARDEN_TUTORIAL_TASKS.find((item) => !onboardingActions?.[item.key]);
+    if (!nextTask) {
+      setTutorialHotspot(null);
+      return;
+    }
+
+    if (isGardenTapHoldTask(nextTask.key, isEditing)) {
+      const { left, top } = getGardenTapHoldHotspotPosition(width, height, drawerTop, insets);
+      setTutorialHotspot({
+        left,
+        top,
+        label: getGardenTutorialHotspotLabel(nextTask.key, isEditing),
+        taskKey: nextTask.key,
+      });
+      return;
+    }
+
+    const applyMeasuredHotspot = (task, x, y, w, h) => {
+      let { left, top } = getTutorialHotspotCenter(task.key, isEditing, x, y, w, h);
+
+      if (!isAnchoredTutorialHotspot(task.key, isEditing)
+        && tutorialHotspotOverlapsMascot(left, top, width, height, insets)) {
+        ({ left, top } = offsetTutorialHotspotFromMascot(left, top, width, height, insets));
+      }
+
+      setTutorialHotspot({
+        left,
+        top,
+        label: getGardenTutorialHotspotLabel(task.key, isEditing),
+        taskKey: task.key,
+      });
+    };
+
+    if (nextTask.key === 'movedGoal') {
+      const firstDrawerPlant = allPlants.find((plant) => !plant.shelfPosition);
+      const plantNode = firstDrawerPlant && completionTargetRefs.current[firstDrawerPlant.id];
+      if (plantNode) {
+        plantNode.measureInWindow((x, y, w, h) => applyMeasuredHotspot(nextTask, x, y, w, h));
+        return;
+      }
+    }
+
+    const targetRef = getGardenTutorialHotspotRef(nextTask.key, isEditing, {
+      drawer: drawerRef,
+      drawerFirstPlant: drawerFirstPlantRef,
+      gardenMain: gardenMainRef,
+      waterDrop: waterDropRef,
+      addPageFab: addPageFabRef,
+      customizeFab: customizeFabRef,
+      gardenSwitcher: gardenSwitcherRef,
+    });
+
+    if (!targetRef?.current) {
+      setTutorialHotspot(null);
+      return;
+    }
+
+    targetRef.current.measureInWindow((x, y, w, h) => applyMeasuredHotspot(nextTask, x, y, w, h));
+  }, [onboardingStep, onboardingActions, isEditing, width, height, insets, allPlants, showCustomization, drawerTop]);
+
+  useEffect(() => {
+    if (onboardingStep !== 'garden_tutorial') {
+      setTutorialHotspot(null);
+      return;
+    }
+    const timer = setTimeout(measureTutorialHotspot, 80);
+    return () => clearTimeout(timer);
+  }, [
+    onboardingStep,
+    onboardingActions,
+    isEditing,
+    drawerTop,
+    drawerShouldShow,
+    showCustomization,
+    currentPageId,
+    allPlants,
+    measureTutorialHotspot,
+  ]);
 
   useEffect(() => {
     const next = currentPageId !== STORAGE_PAGE_ID;
@@ -1278,10 +1785,17 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   const setCompletionTargetRef = useCallback((plantId, node) => {
     if (node) {
       completionTargetRefs.current[plantId] = node;
+      if (
+        onboardingStep === 'garden_tutorial'
+        && !onboardingActions?.movedGoal
+        && allPlants.find((plant) => !plant.shelfPosition)?.id === plantId
+      ) {
+        requestAnimationFrame(() => measureTutorialHotspot());
+      }
       return;
     }
     delete completionTargetRefs.current[plantId];
-  }, []);
+  }, [onboardingStep, onboardingActions, allPlants, measureTutorialHotspot]);
 
   const calculateStreakForLogs = useCallback((goal, newLogs) => {
     return calculateGoalStreak(goal, newLogs, toKey(new Date()));
@@ -1312,28 +1826,6 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     } catch (error) {
       console.error(error);
       return 0;
-    }
-  }, []);
-
-  const checkAchievements = useCallback(async (currentAppStreak) => {
-    if (!auth.currentUser) return;
-    try {
-      const userRef = doc(db, "users", auth.currentUser.uid);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) return;
-      const userData = userSnap.data();
-      const unlockedIds = userData.unlockedAchievements || [];
-      const currentStats = { appStreak: currentAppStreak, overallScore: userData.overallScore || 0 };
-      const newlyUnlocked = ACHIEVEMENTS.filter((achievement) => !unlockedIds.includes(achievement.id) && achievement.check(currentStats));
-
-      if (newlyUnlocked.length > 0) {
-        const newIds = newlyUnlocked.map(achievement => achievement.id);
-        const updateData = { unlockedAchievements: arrayUnion(...newIds) };
-        console.log('[checkAchievements] updateData:', JSON.stringify(updateData));
-        await updateDoc(userRef, updateData);
-      }
-    } catch (error) {
-      console.error(error);
     }
   }, []);
 
@@ -1470,6 +1962,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       return Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2;
     },
     onPanResponderGrant: () => {
+      triggerLightHaptic();
       setWaterDragging(true);
       waterPan.setValue({ x: 0, y: 0 });
     },
@@ -1484,6 +1977,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       try {
         const targetId = await findCompletionTargetId(releaseX, releaseY);
         if (targetId) {
+          triggerMediumHaptic();
           // Fire the animation immediately, write to DB in background
           resetWaterDrop({ hit: true, x: releaseX, y: releaseY });
           markPlantCompletedFromDrop(targetId).catch((err) =>
@@ -1523,7 +2017,6 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   };
 
   const flatListRef = useRef(null);
-  const { width, height } = useWindowDimensions();
   const pageScrollX = useRef(new Animated.Value(0)).current;
 
   const scrollToPageId = (pageId) => {
@@ -1886,6 +2379,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     }
 
     if (!isEditing) {
+      triggerMediumHaptic();
       setIsEditing(true);
       if (shouldPersistState) persistedGardenState.isEditing = true;
       if (onboardingStep === 'garden_tutorial' && onboardingActions?.completedGoal) {
@@ -1897,6 +2391,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
 
   const exitEditModeFromTap = useCallback(() => {
     if (isReadOnly || !isEditing) return;
+    triggerSelectionHaptic();
     setIsEditing(false);
     if (shouldPersistState) persistedGardenState.isEditing = false;
     if (onboardingStep === 'garden_tutorial' && onboardingActions?.movedGoal) {
@@ -2156,6 +2651,15 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       Alert.alert("Restricted", "Only the owner can customize this garden.");
       return;
     }
+
+    const shouldCheckPageLimit = !isSharedGarden || isOwner;
+    if (shouldCheckPageLimit) {
+      const pageLimit = canAddGardenPage({ isPro, pages });
+      if (showSubscriptionLimitAlert(pageLimit, openDefaultPaywall)) {
+        return;
+      }
+    }
+
     const uid = auth.currentUser.uid;
     const newPageRef = isSharedGarden
       ? doc(collection(db, "sharedGardens", sharedGardenId, "pages"))
@@ -2174,7 +2678,10 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     }
     setCustomizerType(type || 'wall');
     setShowCustomization(true);
-  }, [currentPageId]);
+    if (onboardingStep === 'garden_tutorial' && !onboardingActions?.customizedGarden) {
+      onOnboardingAction?.('customizedGarden');
+    }
+  }, [currentPageId, onboardingStep, onboardingActions, onOnboardingAction]);
 
   const handleResetPositions = async () => {
     if (isReadOnly || !auth.currentUser) return;
@@ -2257,9 +2764,14 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     const trimmedName = String(rawName || '').trim();
     if (!trimmedName || isReadOnly || !auth.currentUser || creatingSharedGarden) return;
 
+    const uid = auth.currentUser.uid;
+    const createLimit = canCreateSharedGarden({ isPro, gardens: sharedGardens, uid });
+    if (showSubscriptionLimitAlert(createLimit, openDefaultPaywall)) {
+      return;
+    }
+
     try {
       setCreatingSharedGarden(true);
-      const uid = auth.currentUser.uid;
       const gardenRef = doc(collection(db, 'sharedGardens'));
       const nextName = trimmedName;
       const createdAt = Date.now();
@@ -2294,6 +2806,15 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
 
   const handleCreateSharedGarden = () => {
     if (isReadOnly || !auth.currentUser || creatingSharedGarden) return;
+
+    const createLimit = canCreateSharedGarden({
+      isPro,
+      gardens: sharedGardens,
+      uid: auth.currentUser.uid,
+    });
+    if (showSubscriptionLimitAlert(createLimit, openDefaultPaywall)) {
+      return;
+    }
 
     if (Platform.OS === 'ios' && typeof Alert.prompt === 'function') {
       Alert.prompt(
@@ -2363,6 +2884,12 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     try {
       setAcceptingInviteId(invite.id);
       const uid = auth.currentUser.uid;
+
+      const joinLimit = canJoinSharedGarden({ isPro, gardens: sharedGardens, uid });
+      if (showSubscriptionLimitAlert(joinLimit, openDefaultPaywall)) {
+        return;
+      }
+
       const gardenRef = doc(db, 'sharedGardens', invite.gardenId);
       const gardenSnap = await getDoc(gardenRef);
 
@@ -2816,7 +3343,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
     const previewWidth = width;
     const previewHeight = height;
     return (
-      <TouchableWithoutFeedback
+      <HapticPressable
         delayLongPress={350}
         onLongPress={isReadOnly ? undefined : activateEditMode}
         onPress={() => {
@@ -2848,7 +3375,16 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                 <View style={styles.pageDrawerUnderlayTopBandPrimary} />
                 <View style={styles.pageDrawerUnderlayTopBandSecondary} />
               </View>
-              <View style={styles.gardenMain} onLayout={onGardenMainLayout}>
+              <View
+                ref={page.id === currentPageId ? gardenMainRef : undefined}
+                style={styles.gardenMain}
+                onLayout={(e) => {
+                  onGardenMainLayout(e);
+                  if (onboardingStep === 'garden_tutorial' && page.id === currentPageId) {
+                    measureTutorialHotspot();
+                  }
+                }}
+              >
                 {["topShelf", "middleShelf", "bottomShelf"].map((shelfName) =>
                   renderShelf(
                     page.id,
@@ -2863,7 +3399,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
           </ImageBackground>
           <GardenAmbientParticles />
         </View>
-      </TouchableWithoutFeedback>
+      </HapticPressable>
     );
   };
 
@@ -2968,18 +3504,11 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
   });
 
   const showGardenTutorialCard = onboardingStep === 'garden_tutorial';
-  const tutorialChecklist = [
-    { key: 'movedGoal', label: 'Move a goal to a different spot' },
-    { key: 'exitedEditMode', label: 'Tap anywhere to exit edit mode' },
-    { key: 'completedGoal', label: 'Drag the water drop to complete a goal' },
-    { key: 'reenteredEditMode', label: 'Long-press anywhere to enter edit mode' },
-    { key: 'addedPage', label: 'Add a new page' },
-    { key: 'customizedGarden', label: 'Open customization' },
-    { key: 'openedGardenSwitcher', label: 'Open garden switcher' },
-  ];
-  const tutorialComplete = tutorialChecklist.every((item) => !!onboardingActions?.[item.key]);
-  const nextTutorialTask = tutorialChecklist.find((item) => !onboardingActions?.[item.key]);
-  const tutorialBubbleText = !nextTutorialTask
+  const tutorialComplete = GARDEN_TUTORIAL_TASKS.every((item) => !!onboardingActions?.[item.key]);
+  const nextTutorialTask = GARDEN_TUTORIAL_TASKS.find((item) => !onboardingActions?.[item.key]);
+  const tutorialBubbleText = showCustomization && nextTutorialTask?.key === 'openedGardenSwitcher'
+    ? 'Tap Done to finish customizing, then tap the garden switcher in the top right.'
+    : !nextTutorialTask
     ? 'Nice work. Finishing up your garden tutorial...'
     : nextTutorialTask.key === 'movedGoal'
       ? 'Drag your new goal onto a shelf to place it in your garden.'
@@ -3041,7 +3570,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       <View style={[styles.tutorialNextWrap, { left: 24, bottom: insets.bottom + 10 }]}>
         <View style={styles.tutorialNextButtonWrap}>
           <View pointerEvents="none" style={[styles.tutorialNextButtonShadow, styles.tutorialSkipButtonShadowColor]} />
-          <Pressable
+          <HapticPressable
             onPress={() => {
               if (nextTutorialTask?.key) {
                 onOnboardingAction?.(nextTutorialTask.key);
@@ -3056,7 +3585,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
             ]}
           >
             <Text style={[styles.tutorialSkipBtnText, !nextTutorialTask && styles.tutorialSkipBtnTextDisabled]}>Skip</Text>
-          </Pressable>
+          </HapticPressable>
         </View>
       </View>
     )}
@@ -3064,7 +3593,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       <View style={[styles.tutorialNextWrap, { right: 24, bottom: insets.bottom + 10 }]}> 
         <View style={styles.tutorialNextButtonWrap}>
           <View pointerEvents="none" style={[styles.tutorialNextButtonShadow, styles.tutorialNextButtonShadowColor]} />
-          <Pressable
+          <HapticPressable
             onPress={tutorialComplete ? onGardenTutorialNext : undefined}
             disabled={!tutorialComplete}
             style={({ pressed }) => [
@@ -3075,16 +3604,16 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
             ]}
           >
             <Text style={[styles.tutorialNextBtnText, !tutorialComplete && styles.tutorialNextBtnTextDisabled]}>{tutorialComplete ? 'Next' : 'Finish tasks first'}</Text>
-          </Pressable>
+          </HapticPressable>
         </View>
       </View>
     )}
 
     {isReadOnly && !isSharedGarden && (
       <View style={styles.readOnlyHeader}>
-        <TouchableOpacity style={styles.readOnlyBackBtn} onPress={() => navigation.goBack()}>
+        <HapticTouchableOpacity style={styles.readOnlyBackBtn} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={20} color="#fff" />
-        </TouchableOpacity>
+        </HapticTouchableOpacity>
         <Text style={styles.readOnlyHeaderTitle} numberOfLines={1}>{viewedUsername}'s Garden</Text>
       </View>
     )}
@@ -3092,18 +3621,22 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
     {!isReadOnly && !isEditing && (
       <>
         {showSharedGardensModal && (
-          <Pressable style={styles.gardenSwitcherDismissZone} onPress={() => setShowSharedGardensModal(false)} />
+          <HapticPressable style={styles.gardenSwitcherDismissZone} onPress={() => setShowSharedGardensModal(false)} />
         )}
 
-        <View style={[styles.gardenSwitcherShell, showSharedGardensModal && styles.gardenSwitcherShellExpanded]}>
-          <TouchableOpacity
+        <View
+          ref={gardenSwitcherRef}
+          style={[styles.gardenSwitcherShell, showSharedGardensModal && styles.gardenSwitcherShellExpanded]}
+          onLayout={measureTutorialHotspot}
+        >
+          <HapticTouchableOpacity
             style={[styles.gardenSwitcherButton, showSharedGardensModal && styles.gardenSwitcherButtonExpanded]}
             onPress={() => setShowSharedGardensModal((prev) => !prev)}
             activeOpacity={0.9}
           >
             <Text style={styles.gardenSwitcherText} numberOfLines={1}>{isSharedGarden ? (viewedUsername || 'Garden') : 'Personal'}</Text>
             <Ionicons name={showSharedGardensModal ? "chevron-up" : "chevron-down"} size={14} color="#fff" />
-          </TouchableOpacity>
+          </HapticTouchableOpacity>
 
           <Animated.View
             pointerEvents={showSharedGardensModal ? 'auto' : 'none'}
@@ -3119,17 +3652,17 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.gardenBinContent, { flexGrow: 0 }]}> 
                 {isSharedGarden && (
                   <View style={styles.gardenBinGroup}>
-                    <TouchableOpacity style={[styles.gardenBinRow, styles.gardenBinRowCurrent]} onPress={openPersonalGarden} activeOpacity={0.9}>
+                    <HapticTouchableOpacity style={[styles.gardenBinRow, styles.gardenBinRowCurrent]} onPress={openPersonalGarden} activeOpacity={0.9}>
                       <Text style={styles.gardenBinRowLabel} numberOfLines={1}>Personal</Text>
-                    </TouchableOpacity>
+                    </HapticTouchableOpacity>
                   </View>
                 )}
                 {otherSharedGardens.length ? (
                   otherSharedGardens.map((garden) => (
                     <View key={garden.id} style={styles.gardenBinGroup}>
-                      <TouchableOpacity style={styles.gardenBinRow} onPress={() => openSharedGarden(garden)} activeOpacity={0.9}>
+                      <HapticTouchableOpacity style={styles.gardenBinRow} onPress={() => openSharedGarden(garden)} activeOpacity={0.9}>
                         <Text style={styles.gardenBinRowLabel} numberOfLines={1}>{garden.name || 'Other'}</Text>
-                      </TouchableOpacity>
+                      </HapticTouchableOpacity>
                     </View>
                   ))
                 ) : !isSharedGarden ? (
@@ -3140,20 +3673,20 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                   sharedGardenInvites.map((invite) => (
                     <View key={invite.id} style={styles.gardenBinInviteCard}>
                       <Text style={styles.gardenBinRowLabel} numberOfLines={1}>{invite.gardenName || 'Other'}</Text>
-                      <TouchableOpacity
+                      <HapticTouchableOpacity
                         style={styles.gardenBinAcceptButton}
                         onPress={() => handleAcceptSharedGardenInvite(invite)}
                         disabled={acceptingInviteId === invite.id}
                       >
                         <Text style={styles.gardenBinAcceptButtonText}>{acceptingInviteId === invite.id ? '...' : 'Join'}</Text>
-                      </TouchableOpacity>
+                      </HapticTouchableOpacity>
                     </View>
                   ))
                 ) : null}
 
                 {isSharedGarden && (
                   <View style={styles.gardenBinGroup}>
-                    <TouchableOpacity
+                    <HapticTouchableOpacity
                       style={[styles.gardenBinCreateButton, { backgroundColor: '#637fa6' }]}
                       onPress={() => {
                         setShowSharedGardensModal(false);
@@ -3165,13 +3698,13 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                       activeOpacity={0.9}
                     >
                       <Text style={styles.gardenBinCreateText}>Settings</Text>
-                    </TouchableOpacity>
+                    </HapticTouchableOpacity>
                   </View>
                 )}
 
-                <TouchableOpacity style={styles.gardenBinCreateButton} onPress={handleCreateSharedGarden} disabled={creatingSharedGarden}>
+                <HapticTouchableOpacity style={styles.gardenBinCreateButton} onPress={handleCreateSharedGarden} disabled={creatingSharedGarden}>
                   <Text style={styles.gardenBinCreateText}>{creatingSharedGarden ? 'Creating...' : 'New Garden'}</Text>
-                </TouchableOpacity>
+                </HapticTouchableOpacity>
               </ScrollView>
           </Animated.View>
         </View>
@@ -3192,12 +3725,12 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                 onSubmitEditing={handleConfirmCreateSharedGarden}
               />
               <View style={styles.createGardenModalActions}>
-                <TouchableOpacity style={[styles.createGardenModalButton, styles.createGardenModalButtonSecondary]} onPress={closeCreateSharedGardenModal}>
+                <HapticTouchableOpacity style={[styles.createGardenModalButton, styles.createGardenModalButtonSecondary]} onPress={closeCreateSharedGardenModal}>
                   <Text style={styles.createGardenModalButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.createGardenModalButton, styles.createGardenModalButtonPrimary, { backgroundColor: theme.accent }]} onPress={handleConfirmCreateSharedGarden}>
+                </HapticTouchableOpacity>
+                <HapticTouchableOpacity style={[styles.createGardenModalButton, styles.createGardenModalButtonPrimary, { backgroundColor: theme.accent }]} onPress={handleConfirmCreateSharedGarden}>
                   <Text style={[styles.createGardenModalButtonText, styles.createGardenModalButtonTextPrimary]}>Create</Text>
-                </TouchableOpacity>
+                </HapticTouchableOpacity>
               </View>
             </View>
           </View>
@@ -3207,9 +3740,9 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
 
     {/* Customization FAB only in edit mode, but modal is always rendered if showCustomization is true */}
     {!isReadOnly && isEditing && canCustomize && (
-      <TouchableOpacity style={styles.customizeFab} onPress={() => handleCustomization('wall')}>
+      <HapticTouchableOpacity ref={customizeFabRef} style={styles.customizeFab} onPress={() => handleCustomization('wall')}>
         <Ionicons name="color-palette" size={19} color="#fff" />
-      </TouchableOpacity>
+      </HapticTouchableOpacity>
     )}
     {showCustomization && (
       <CustomizationScreen
@@ -3223,7 +3756,6 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
             await savePersonalCustomizations(auth.currentUser.uid, pageId, values);
           }
         }}
-        onCustomizationChange={handleCustomizationChanged}
         selectedPageId={currentPageId}
         customizations={customizations}
         customizerType={customizerType}
@@ -3231,27 +3763,27 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       />
     )}
     {!isReadOnly && isEditing && !canCustomize && (
-      <TouchableOpacity style={styles.customizeFab} onPress={() => Alert.alert("Restricted", "Only the owner can customize this garden.") }>
+      <HapticTouchableOpacity ref={customizeFabRef} style={styles.customizeFab} onPress={() => Alert.alert("Restricted", "Only the owner can customize this garden.") }>
         <Ionicons name="color-palette" size={19} color="#fff" />
-      </TouchableOpacity>
+      </HapticTouchableOpacity>
     )}
 
     {!isReadOnly && isEditing && canCustomize && (
-      <TouchableOpacity style={styles.removePageFab} onPress={handleRemoveCurrentPage}>
+      <HapticTouchableOpacity style={styles.removePageFab} onPress={handleRemoveCurrentPage}>
         <Ionicons name="trash" size={17} color="#fff" />
-      </TouchableOpacity>
+      </HapticTouchableOpacity>
     )}
 
     {!isReadOnly && isEditing && canEditPlants && (
-      <TouchableOpacity style={styles.resetFab} onPress={handleResetPositions}>
+      <HapticTouchableOpacity style={styles.resetFab} onPress={handleResetPositions}>
         <Ionicons name="refresh" size={18} color="#fff" />
-      </TouchableOpacity>
+      </HapticTouchableOpacity>
     )}
 
     {!isReadOnly && isEditing && canCustomize && (
-      <TouchableOpacity style={styles.addPageSideFab} onPress={handleAddPage}>
+      <HapticTouchableOpacity ref={addPageFabRef} style={styles.addPageSideFab} onPress={handleAddPage}>
         <Image source={require('../assets/Icons/addPage.png')} style={{ width: 20, height: 20 }} resizeMode="contain" />
-      </TouchableOpacity>
+      </HapticTouchableOpacity>
     )}
 
     <Animated.FlatList
@@ -3296,6 +3828,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
     </View>
 
       <View
+        ref={drawerRef}
         pointerEvents={drawerShouldShow ? 'auto' : 'none'}
         style={[
           styles.drawer,
@@ -3303,8 +3836,8 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
           !isReadOnly && isEditing && styles.drawerEditBox,
           !drawerShouldShow && styles.drawerHidden,
         ]}
-        ref={drawerRef}
         collapsable={false}
+        onLayout={measureTutorialHotspot}
       >
         <View style={styles.drawerTopBandPrimary} />
         <View style={styles.drawerTopBandSecondary} />
@@ -3325,8 +3858,14 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
             if (shouldPersistState) persistedGardenState.drawerScrollOffset = x;
           }}
         >
-          {drawerPlants.map(plant => (
-            <View key={plant.id} style={styles.drawerPlantItem}>
+          {drawerPlants.map((plant, index) => (
+            <View
+              key={plant.id}
+              ref={index === 0 ? drawerFirstPlantRef : undefined}
+              collapsable={false}
+              style={styles.drawerPlantItem}
+              onLayout={index === 0 ? measureTutorialHotspot : undefined}
+            >
               <DraggablePlant 
                 plant={plant} isEditing={isEditing} disabled={isReadOnly} wiggleAnim={wiggleAnim} 
                 onCompletionTargetRef={setCompletionTargetRef}
@@ -3344,6 +3883,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         <>
           {/* Water drop button (left) */}
           <Animated.View
+            ref={waterDropRef}
             {...waterPanResponder.panHandlers}
             style={[
               styles.waterDropHandle,
@@ -3355,6 +3895,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                 bottom: insets.bottom + 85,
               },
             ]}
+            onLayout={measureTutorialHotspot}
           >
             <Animated.View style={{ opacity: waterDropOpacity, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="water" size={22} color="#fff" />
@@ -3362,13 +3903,13 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
           </Animated.View>
 
           {/* Plus button (right) */}
-          <TouchableOpacity
+          <HapticTouchableOpacity
             style={[styles.waterDropHandle, styles.waterDropHandleAddGoal, { right: 32, left: undefined, bottom: insets.bottom + 85 }]}
             activeOpacity={0.8}
-            onPress={() => navigation.navigate('AddGoal')}
+            onPress={() => tryNavigateToAddGoal({ navigation, isPro, goals, openDefaultPaywall })}
           >
             <Ionicons name="add" size={22} color="#fff" />
-          </TouchableOpacity>
+          </HapticTouchableOpacity>
         </>
       )}
 
@@ -3417,6 +3958,15 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
           </Animated.View>
         </Animated.View>
       )}
+    {showGardenTutorialCard && tutorialHotspot && !showCustomization && (
+      <GardenTutorialHotspot
+        left={tutorialHotspot.left}
+        top={tutorialHotspot.top}
+        label={tutorialHotspot.label}
+        taskKey={tutorialHotspot.taskKey}
+        actionType={getGardenTutorialActionType(tutorialHotspot.taskKey, isEditing)}
+      />
+    )}
     </View>
   );
 }
@@ -3461,6 +4011,62 @@ const styles = StyleSheet.create({
     width: 142,
     height: 142,
     left: 40,
+    opacity: 0,
+  },
+  tutorialHotspotWrap: {
+    position: 'absolute',
+    alignItems: 'center',
+    zIndex: 14000,
+    elevation: 14000,
+  },
+  tutorialHotspotRing: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2.5,
+    borderStyle: 'dashed',
+    borderColor: '#ffffff',
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  tutorialHotspotDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ffffff',
+  },
+  tutorialHotspotRipple: {
+    position: 'absolute',
+    top: 0,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+    backgroundColor: 'transparent',
+  },
+  tutorialHotspotLabel: {
+    marginTop: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignSelf: 'center',
+    minWidth: 76,
+    alignItems: 'center',
+  },
+  tutorialHotspotLabelText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '800',
+    textAlign: 'center',
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
   tutorialNextWrap: {
     position: 'absolute',

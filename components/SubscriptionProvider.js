@@ -31,6 +31,7 @@ import {
   resolveOffering,
   restorePurchases,
 } from "../utils/revenueCat";
+import { processMonthlyProCoinGrant } from "../utils/proCoinGrants";
 
 const SubscriptionContext = createContext(null);
 
@@ -41,6 +42,17 @@ export function SubscriptionProvider({ children }) {
   const [offerings, setOfferings] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   const syncedUidRef = useRef(undefined);
+
+  const handleCustomerInfoUpdate = useCallback(async (info) => {
+    setCustomerInfo(info);
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    try {
+      await processMonthlyProCoinGrant(info);
+    } catch (error) {
+      console.error("Monthly Pro coin grant failed:", error);
+    }
+  }, []);
 
   const isSupported = isRevenueCatSupported();
   const isUISupported = isRevenueCatUISupported();
@@ -94,7 +106,7 @@ export function SubscriptionProvider({ children }) {
         if (cancelled || !configured) return;
 
         removeCustomerInfoListener = Purchases.addCustomerInfoUpdateListener((info) => {
-          setCustomerInfo(info);
+          handleCustomerInfoUpdate(info);
         });
 
         const initialUser = auth.currentUser;
@@ -107,6 +119,9 @@ export function SubscriptionProvider({ children }) {
         if (!cancelled) {
           setCustomerInfo(info);
           setOfferings(nextOfferings);
+          if (info) {
+            await processMonthlyProCoinGrant(info);
+          }
         }
 
         unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -117,7 +132,12 @@ export function SubscriptionProvider({ children }) {
 
           try {
             const nextInfo = await syncRevenueCatIdentity(firebaseUser);
-            if (!cancelled) setCustomerInfo(nextInfo);
+            if (!cancelled) {
+              setCustomerInfo(nextInfo);
+              if (nextInfo) {
+                await processMonthlyProCoinGrant(nextInfo);
+              }
+            }
           } catch (error) {
             console.error("RevenueCat auth sync failed:", error);
           }
@@ -139,7 +159,7 @@ export function SubscriptionProvider({ children }) {
       if (removeCustomerInfoListener) removeCustomerInfoListener();
       if (unsubscribeAuth) unsubscribeAuth();
     };
-  }, [syncRevenueCatIdentity]);
+  }, [syncRevenueCatIdentity, handleCustomerInfoUpdate]);
 
   const showPaywallResultMessage = useCallback((result) => {
     const message = describePaywallResult(result);
@@ -214,6 +234,9 @@ export function SubscriptionProvider({ children }) {
     try {
       const info = await restorePurchases();
       setCustomerInfo(info);
+      if (info) {
+        await processMonthlyProCoinGrant(info);
+      }
 
       if (hasProEntitlement(info)) {
         Alert.alert("Restored", `Your ${PRO_ENTITLEMENT_DISPLAY_NAME} access has been restored.`);

@@ -2,12 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Image,
-  Pressable,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
 } from "react-native";
+import HapticPressable from "../HapticPressable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { theme } from "../../theme";
 import { computeTutorialCardLayout } from "../../tutorial/cardLayout";
@@ -250,33 +250,33 @@ function CardBody({
       ) : null}
 
       <View style={tutorialCardStyles.actionsRow}>
-        <Pressable
+        <HapticPressable
           style={tutorialCardStyles.skipLink}
           onPress={onSkip}
           accessibilityRole="button"
           accessibilityLabel="Skip tutorial"
         >
           <Text style={tutorialCardStyles.skipLinkText}>Skip</Text>
-        </Pressable>
+        </HapticPressable>
         <View style={styles.actionsEnd}>
           {showSkipGoalCreation ? (
-            <Pressable
+            <HapticPressable
               style={tutorialCardStyles.primaryBtn}
               onPress={onSkipGoalCreation}
               accessibilityRole="button"
               accessibilityLabel={skipGoalCreationLabel}
             >
               <Text style={tutorialCardStyles.primaryText}>{skipGoalCreationLabel}</Text>
-            </Pressable>
+            </HapticPressable>
           ) : showPrimary ? (
-            <Pressable
+            <HapticPressable
               style={tutorialCardStyles.primaryBtn}
               onPress={onPrimary}
               accessibilityRole="button"
               accessibilityLabel={primaryLabel}
             >
               <Text style={tutorialCardStyles.primaryText}>{primaryLabel}</Text>
-            </Pressable>
+            </HapticPressable>
           ) : (
             <View style={styles.primaryPlaceholder} />
           )}

@@ -1,12 +1,16 @@
 // screens/SettingsScreen.js
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Pressable, TextInput, ScrollView, Alert, ActivityIndicator, Switch, Modal } from "react-native";
+import { View, Text, StyleSheet, TextInput, ScrollView, Alert, ActivityIndicator, Switch, Modal } from "react-native";
+import HapticPressable from "../components/HapticPressable";
+import HapticTouchableOpacity from "../components/HapticTouchableOpacity";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { updateEmail, updatePassword, signOut } from "firebase/auth";
+import { updateEmail, updatePassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import theme, { useTheme } from "../theme";
 import { cpShadow } from "../utils/shadows";
+import { triggerSelectionHaptic } from "../utils/haptics";
+import { onFirestoreListenerError } from "../utils/firestoreListener";
 import {
   sendGoalReminderNotification,
   toggleNotificationsGlobally,
@@ -25,6 +29,9 @@ import {
 import { getDateFormatSync, setDateFormat, FORMATS, getWeekStartSync, setWeekStart, WEEK_START_OPTIONS, getShowLast6DaysSync, setShowLast6Days } from '../utils/dateFormat';
 import { useSubscription } from '../components/SubscriptionProvider';
 import { PRO_ENTITLEMENT_DISPLAY_NAME } from '../constants/revenueCat';
+import { FREE_LIMITS_SUMMARY, PRO_BENEFITS_SUMMARY } from '../constants/subscriptionLimits';
+import { sendVerificationEmail, formatEmailVerificationError } from '../utils/emailVerification';
+import { useSubscriptionLimits } from '../hooks/useSubscriptionLimits';
 
 export default function SettingsScreen({ navigation }) {
   const { theme, setAccent } = useTheme();
@@ -35,6 +42,7 @@ export default function SettingsScreen({ navigation }) {
     openCustomerCenter,
     restorePurchases,
   } = useSubscription();
+  const { usage } = useSubscriptionLimits();
   const [username, setUsername] = useState("");
   const [weekStart, setWeekStartState] = useState(getWeekStartSync());
   const [showLast6Days, setShowLast6DaysState] = useState(getShowLast6DaysSync());
@@ -97,25 +105,34 @@ export default function SettingsScreen({ navigation }) {
     fetchUserData();
 
     // Subscribe to user's goals and keep in state so settings can show per-goal toggles
-    let unsubGoals = null;
-    if (auth.currentUser) {
-      const goalsRef = collection(db, 'users', auth.currentUser.uid, 'goals');
-      unsubGoals = onSnapshot(goalsRef, (snap) => {
-        const arr = [];
-        snap.forEach((doc) => {
-          arr.push({ id: doc.id, ...doc.data() });
-        });
-        setGoals(arr);
-        // If any goals were removed, ensure their notification settings are cleared
-        // Compare existing perGoalNotifications and removed ids in snapshot
-      });
-    }
+    let unsubGoals = () => {};
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      unsubGoals();
+      if (!user) {
+        setGoals([]);
+        return;
+      }
+      const goalsRef = collection(db, 'users', user.uid, 'goals');
+      unsubGoals = onSnapshot(
+        goalsRef,
+        (snap) => {
+          const arr = [];
+          snap.forEach((doc) => {
+            arr.push({ id: doc.id, ...doc.data() });
+          });
+          setGoals(arr);
+        },
+        onFirestoreListenerError('SettingsScreen goals listener')
+      );
+    });
 
     return () => {
-      if (unsubGoals) unsubGoals();
+      unsubGoals();
+      unsubAuth();
     };
   }, []);
   const handlePrivateToggle = (value) => {
+    triggerSelectionHaptic();
     setPrivateAccount(value);
   };
 
@@ -198,6 +215,7 @@ export default function SettingsScreen({ navigation }) {
   };
 
   const handleNotificationsToggle = async (value) => {
+    triggerSelectionHaptic();
     setNotificationsEnabled(value);
     const success = await toggleNotificationsGlobally(value);
     if (!success) {
@@ -207,6 +225,7 @@ export default function SettingsScreen({ navigation }) {
   };
 
   const handleDailyReminderToggle = async (value) => {
+    triggerSelectionHaptic();
     setDailyReminderEnabled(value);
     try {
       const settings = await getNotificationSettings();
@@ -273,22 +292,32 @@ export default function SettingsScreen({ navigation }) {
 
   // Clean up goal settings when a goal is deleted
   useEffect(() => {
-    if (!auth.currentUser) return;
-    const goalsRef = collection(db, 'users', auth.currentUser.uid, 'goals');
-    const unsub = onSnapshot(goalsRef, async (snap) => {
-      const existingIds = new Set();
-      snap.forEach(d => existingIds.add(d.id));
-      // load notification settings and remove any per-goal entries for missing goals
-      const settings = await getNotificationSettings();
-      const per = settings.perGoalNotifications || {};
-      const keys = Object.keys(per);
-      for (const k of keys) {
-        if (!existingIds.has(k)) {
-          await removeGoalNotificationSetting(k);
-        }
-      }
+    let unsubGoals = () => {};
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      unsubGoals();
+      if (!user) return;
+      const goalsRef = collection(db, 'users', user.uid, 'goals');
+      unsubGoals = onSnapshot(
+        goalsRef,
+        async (snap) => {
+          const existingIds = new Set();
+          snap.forEach((d) => existingIds.add(d.id));
+          const settings = await getNotificationSettings();
+          const per = settings.perGoalNotifications || {};
+          const keys = Object.keys(per);
+          for (const k of keys) {
+            if (!existingIds.has(k)) {
+              await removeGoalNotificationSetting(k);
+            }
+          }
+        },
+        onFirestoreListenerError('SettingsScreen goal notification cleanup listener')
+      );
     });
-    return () => unsub();
+    return () => {
+      unsubGoals();
+      unsubAuth();
+    };
   }, []);
 
   const handleDateFormatChange = async (next) => {
@@ -304,6 +333,7 @@ export default function SettingsScreen({ navigation }) {
   };
 
   const handleShowLast6DaysToggle = async (value) => {
+    triggerSelectionHaptic();
     setShowLast6DaysState(value);
     const ok = await setShowLast6Days(value);
     if (!ok) {
@@ -363,8 +393,10 @@ export default function SettingsScreen({ navigation }) {
         changesMade = true;
       }
       // --- 2. Update Email in Firebase Auth ---
+      let emailChanged = false;
       if (email !== auth.currentUser.email) {
         await updateEmail(auth.currentUser, email);
+        emailChanged = true;
         changesMade = true;
       }
       // --- 3. Update Password in Firebase Auth ---
@@ -383,7 +415,21 @@ export default function SettingsScreen({ navigation }) {
         await updateDoc(userRef, { privateAccount });
         changesMade = true;
       }
-      if (changesMade) {
+      if (emailChanged) {
+        try {
+          await sendVerificationEmail(auth.currentUser);
+          Alert.alert(
+            'Email updated',
+            'Verify your new address to keep full access. Check your inbox and spam folder for a verification link.'
+          );
+        } catch (verifyError) {
+          console.error('Send verification email after email change failed:', verifyError);
+          Alert.alert(
+            'Email updated',
+            `Your email was saved, but we could not send a verification email: ${formatEmailVerificationError(verifyError)}`
+          );
+        }
+      } else if (changesMade) {
         Alert.alert("Success!", "Your profile has been updated.");
       } else {
         Alert.alert("No Changes", "Everything is already up to date.");
@@ -427,9 +473,9 @@ export default function SettingsScreen({ navigation }) {
       <View style={styles.headerTopSpacer} />
       <View style={styles.headerWrapper}>
         <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
+          <HapticTouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={26} color={theme.accent} />
-          </TouchableOpacity>
+          </HapticTouchableOpacity>
           <Text style={styles.headerTitle}>Settings</Text>
           <View style={styles.headerBtnPlaceholder} />
         </View>
@@ -502,7 +548,7 @@ export default function SettingsScreen({ navigation }) {
 
                 <View style={{ flexDirection: 'column' }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-                    <Pressable 
+                    <HapticPressable 
                       onPress={() => handleNotificationModeChange("global")}
                       style={[
                         styles.modeButton,
@@ -516,9 +562,9 @@ export default function SettingsScreen({ navigation }) {
                       ]}>
                         All Goals
                       </Text>
-                    </Pressable>
+                    </HapticPressable>
 
-                    <Pressable 
+                    <HapticPressable 
                       onPress={() => handleNotificationModeChange("individual")}
                       style={[
                         styles.modeButton,
@@ -532,11 +578,11 @@ export default function SettingsScreen({ navigation }) {
                       ]}>
                         Individual Goals
                       </Text>
-                    </Pressable>
+                    </HapticPressable>
                   </View>
 
                   <View style={{ marginTop: 8, width: '100%' }}>
-                    <Pressable
+                    <HapticPressable
                       onPress={() => handleNotificationModeChange('both')}
                       style={[
                         styles.modeButton,
@@ -550,7 +596,7 @@ export default function SettingsScreen({ navigation }) {
                       ]}>
                         Both
                       </Text>
-                    </Pressable>
+                    </HapticPressable>
                   </View>
 
                   <Text style={{ marginTop: 8, color: '#6b7280', fontSize: 13 }}>
@@ -568,16 +614,16 @@ export default function SettingsScreen({ navigation }) {
                       placeholder="e.g. Don't forget to work on your goal"
                     />
                     <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                      <Pressable onPress={() => setGlobalCustomPosition('prefix')} style={[{ padding: 8, borderRadius: 8, borderWidth: 1 }, globalCustomPosition === 'prefix' ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: '#e2e8f0' }]}> 
+                      <HapticPressable onPress={() => setGlobalCustomPosition('prefix')} style={[{ padding: 8, borderRadius: 8, borderWidth: 1 }, globalCustomPosition === 'prefix' ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: '#e2e8f0' }]}> 
                         <Text style={{ color: globalCustomPosition === 'prefix' ? '#fff' : theme.text }}>Goal - Custom</Text>
-                      </Pressable>
-                      <Pressable onPress={() => setGlobalCustomPosition('suffix')} style={[{ padding: 8, borderRadius: 8, borderWidth: 1 }, globalCustomPosition === 'suffix' ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: '#e2e8f0' }]}> 
+                      </HapticPressable>
+                      <HapticPressable onPress={() => setGlobalCustomPosition('suffix')} style={[{ padding: 8, borderRadius: 8, borderWidth: 1 }, globalCustomPosition === 'suffix' ? { backgroundColor: theme.accent, borderColor: theme.accent } : { borderColor: '#e2e8f0' }]}> 
                         <Text style={{ color: globalCustomPosition === 'suffix' ? '#fff' : theme.text }}>Custom - Goal</Text>
-                      </Pressable>
+                      </HapticPressable>
                     </View>
 
                     <View style={{ marginTop: 8 }}>
-                      <Pressable onPress={async () => {
+                      <HapticPressable onPress={async () => {
                         const settings = await getNotificationSettings();
                         settings.globalCustomText = globalCustomText;
                         settings.globalCustomPosition = globalCustomPosition;
@@ -585,7 +631,7 @@ export default function SettingsScreen({ navigation }) {
                         Alert.alert('Saved', 'Global notification text updated.');
                       }} style={[styles.actionButtonFace, { backgroundColor: theme.accent, marginTop: 8, borderRadius: 12 }]}>
                         <Text style={{ color: '#fff', fontWeight: '800' }}>Save Global Text</Text>
-                      </Pressable>
+                      </HapticPressable>
                     </View>
                   </View>
 
@@ -624,7 +670,7 @@ export default function SettingsScreen({ navigation }) {
                     </View>
 
                     {dailyReminderEnabled && (notificationMode === "global" || notificationMode === 'both') && (
-                      <Pressable onPress={() => setShowTimeModal(true)} style={styles.timePickerButton}>
+                      <HapticPressable onPress={() => setShowTimeModal(true)} style={styles.timePickerButton}>
                         <Text style={styles.timePickerLabel}>Daily reminder time</Text>
                         <View style={styles.timeDisplay}>
                           <Text style={[styles.timeText, { color: theme.accent }]}> 
@@ -632,7 +678,7 @@ export default function SettingsScreen({ navigation }) {
                           </Text>
                           <Ionicons name="chevron-forward" size={18} color={theme.accent} />
                         </View>
-                      </Pressable>
+                      </HapticPressable>
                     )}
                     
                     {/* Per-goal list for individual or both modes */}
@@ -645,7 +691,7 @@ export default function SettingsScreen({ navigation }) {
                               <Text style={{ color: '#6b7280', fontSize: 12 }}>{g.category || ''}</Text>
                             </View>
                             <View style={{ alignItems: 'flex-end' }}>
-                              <Pressable onPress={async () => {
+                              <HapticPressable onPress={async () => {
                                   try {
                                     const s = await getGoalNotificationSettings(g.id);
                                     setGoalTimeHour(s.time ?? 9);
@@ -660,10 +706,11 @@ export default function SettingsScreen({ navigation }) {
                                 <Text style={{ color: theme.accent }}>
                                   {formatTime12((perGoalSettings?.[g.id]?.time) ?? 9, (perGoalSettings?.[g.id]?.timeMinute) ?? 0)}
                                 </Text>
-                              </Pressable>
+                              </HapticPressable>
                               <Switch
                                 value={!!(perGoalSettings?.[g.id]?.enabled)}
                                 onValueChange={async () => {
+                                  triggerSelectionHaptic();
                                   const s = perGoalSettings?.[g.id] || { enabled: false, time: 9, timeMinute: 0 };
                                   const next = { ...s, enabled: !s.enabled, goalName: g.name };
                                   const ok = await saveGoalNotificationSettings(g.id, next);
@@ -696,13 +743,13 @@ export default function SettingsScreen({ navigation }) {
                 { label: 'Red', value: '#ef4444' },
                 { label: 'Orange', value: '#f97316' },
               ].map((option) => (
-                <Pressable
+                <HapticPressable
                   key={option.value}
                   onPress={() => handleAccentColorSelect(option.value)}
                   style={[styles.colorDot, { backgroundColor: option.value }, accentColor === option.value && styles.colorDotSelected]}
                 >
                   {accentColor === option.value && <Ionicons name="checkmark" size={16} color="#fff" />}
-                </Pressable>
+                </HapticPressable>
               ))}
             </View>
           </View>
@@ -714,7 +761,7 @@ export default function SettingsScreen({ navigation }) {
             <Text style={styles.label}>Date format</Text>
             <View style={styles.optionButtonRow}>
               {FORMATS.map((fmt) => (
-                <Pressable
+                <HapticPressable
                   key={fmt}
                   onPress={() => handleDateFormatChange(fmt)}
                   style={[
@@ -723,14 +770,14 @@ export default function SettingsScreen({ navigation }) {
                   ]}
                 >
                   <Text style={{ color: dateFormat === fmt ? '#fff' : theme.text, fontWeight: '700' }}>{fmt}</Text>
-                </Pressable>
+                </HapticPressable>
               ))}
             </View>
 
             <Text style={[styles.label, { marginTop: 20 }]}>Week starts on</Text>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
               {WEEK_START_OPTIONS.map((option) => (
-                <Pressable
+                <HapticPressable
                   key={option.value}
                   onPress={() => handleWeekStartChange(option.value)}
                   style={[
@@ -739,7 +786,7 @@ export default function SettingsScreen({ navigation }) {
                   ]}
                 >
                   <Text style={{ color: weekStart === option.value ? '#fff' : theme.text, fontWeight: '700' }}>{option.label}</Text>
-                </Pressable>
+                </HapticPressable>
               ))}
             </View>
 
@@ -766,20 +813,47 @@ export default function SettingsScreen({ navigation }) {
             </Text>
             <Text style={styles.switchHint}>
               {isPro
-                ? "Manage billing, change plans, or cancel from Customer Center."
-                : "Unlock premium features with Monthly, Yearly, or lifetime Coins."}
+                ? `${PRO_BENEFITS_SUMMARY} Manage billing from Customer Center.`
+                : `${FREE_LIMITS_SUMMARY} Upgrade to Pro for more.`}
             </Text>
+
+            {isPro ? (
+              <View style={styles.usageCard}>
+                <Text style={styles.usageTitle}>Your Pro usage</Text>
+                <Text style={styles.usageRow}>
+                  Active goals: {usage.activeGoals.current}/{usage.activeGoals.limit}
+                </Text>
+                <Text style={styles.usageRow}>
+                  Shared gardens created: {usage.sharedGardensCreated.current}/{usage.sharedGardensCreated.limit}
+                </Text>
+                <Text style={styles.usageRow}>
+                  Shared gardens joined: {usage.sharedGardensJoined.current}/{usage.sharedGardensJoined.limit}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.usageCard}>
+                <Text style={styles.usageTitle}>Your usage</Text>
+                <Text style={styles.usageRow}>
+                  Active goals: {usage.activeGoals.current}/{usage.activeGoals.limit}
+                </Text>
+                <Text style={styles.usageRow}>
+                  Shared gardens created: {usage.sharedGardensCreated.current}/{usage.sharedGardensCreated.limit}
+                </Text>
+                <Text style={styles.usageRow}>
+                  Shared gardens joined: {usage.sharedGardensJoined.current}/{usage.sharedGardensJoined.limit}
+                </Text>
+              </View>
+            )}
 
             {!isPro && (
               <View style={[styles.actionButtonWrap, { marginTop: 16 }]}>
-                <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary, { backgroundColor: theme.accent }]} />
-                <Pressable
+                <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
+                <HapticPressable
                   onPress={openDefaultPaywall}
                   disabled={subscriptionLoading}
                   style={({ pressed }) => [
                     styles.actionButtonFace,
                     styles.saveButton,
-                    { backgroundColor: theme.accent },
                     pressed && !subscriptionLoading && styles.actionButtonPressed,
                     subscriptionLoading && styles.actionButtonDisabled,
                   ]}
@@ -789,20 +863,19 @@ export default function SettingsScreen({ navigation }) {
                   ) : (
                     <Text style={styles.saveButtonText}>View Plans</Text>
                   )}
-                </Pressable>
+                </HapticPressable>
               </View>
             )}
 
             {isPro && (
               <View style={[styles.actionButtonWrap, { marginTop: 16 }]}>
-                <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary, { backgroundColor: theme.accent }]} />
-                <Pressable
+                <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
+                <HapticPressable
                   onPress={openCustomerCenter}
                   disabled={subscriptionLoading}
                   style={({ pressed }) => [
                     styles.actionButtonFace,
                     styles.saveButton,
-                    { backgroundColor: theme.accent },
                     pressed && !subscriptionLoading && styles.actionButtonPressed,
                     subscriptionLoading && styles.actionButtonDisabled,
                   ]}
@@ -812,25 +885,24 @@ export default function SettingsScreen({ navigation }) {
                   ) : (
                     <Text style={styles.saveButtonText}>Manage Subscription</Text>
                   )}
-                </Pressable>
+                </HapticPressable>
               </View>
             )}
 
             <View style={[styles.actionButtonWrap, { marginTop: 12 }]}>
-              <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary, { backgroundColor: '#64748b' }]} />
-              <Pressable
+              <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowMuted]} />
+              <HapticPressable
                 onPress={restorePurchases}
                 disabled={subscriptionLoading}
                 style={({ pressed }) => [
                   styles.actionButtonFace,
-                  styles.saveButton,
-                  { backgroundColor: '#64748b' },
+                  styles.restoreButton,
                   pressed && !subscriptionLoading && styles.actionButtonPressed,
                   subscriptionLoading && styles.actionButtonDisabled,
                 ]}
               >
                 <Text style={styles.saveButtonText}>Restore Purchases</Text>
-              </Pressable>
+              </HapticPressable>
             </View>
           </View>
         </View>
@@ -838,14 +910,13 @@ export default function SettingsScreen({ navigation }) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Session</Text>
           <View style={styles.actionButtonWrap}>
-            <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary, { backgroundColor: '#28b900' }]} />
-            <Pressable
+            <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
+            <HapticPressable
               onPress={handleSaveChanges}
               disabled={loading}
               style={({ pressed }) => [
                 styles.actionButtonFace,
                 styles.saveButton,
-                { backgroundColor: '#28b900' },
                 pressed && !loading && styles.actionButtonPressed,
                 loading && styles.actionButtonDisabled,
               ]}
@@ -855,21 +926,20 @@ export default function SettingsScreen({ navigation }) {
               ) : (
                 <Text style={styles.saveButtonText}>Save Changes</Text>
               )}
-            </Pressable>
+            </HapticPressable>
           </View>
           <View style={styles.actionButtonWrap}>
-            <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowDanger, { backgroundColor: '#ef4444' }]} />
-            <Pressable
+            <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowDanger]} />
+            <HapticPressable
               onPress={handleLogout}
               style={({ pressed }) => [
                 styles.actionButtonFace,
                 styles.logoutButton,
-                { backgroundColor: '#ef4444' },
                 pressed && styles.actionButtonPressed,
               ]}
             >
               <Text style={styles.logoutButtonText}>Log Out</Text>
-            </Pressable>
+            </HapticPressable>
           </View>
         </View>
       </ScrollView>
@@ -885,9 +955,9 @@ export default function SettingsScreen({ navigation }) {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Set Daily Reminder Time</Text>
-              <Pressable onPress={() => setShowTimeModal(false)}>
+              <HapticPressable onPress={() => setShowTimeModal(false)}>
                 <Ionicons name="close" size={28} color={theme.text} />
-              </Pressable>
+              </HapticPressable>
             </View>
 
             <View style={styles.timePickerContainer}>
@@ -895,7 +965,7 @@ export default function SettingsScreen({ navigation }) {
                 <Text style={styles.timeLabel}>Hour</Text>
                 <ScrollView style={styles.hourScroll} scrollEventThrottle={16}>
                   {Array.from({ length: 24 }, (_, i) => (
-                    <Pressable
+                    <HapticPressable
                       key={i}
                       onPress={() => setNotificationHour(i)}
                       style={[
@@ -911,7 +981,7 @@ export default function SettingsScreen({ navigation }) {
                       >
                         {String(i).padStart(2, '0')}
                       </Text>
-                    </Pressable>
+                    </HapticPressable>
                   ))}
                 </ScrollView>
               </View>
@@ -920,7 +990,7 @@ export default function SettingsScreen({ navigation }) {
                 <Text style={styles.timeLabel}>Minute</Text>
                 <ScrollView style={styles.minuteScroll} scrollEventThrottle={16}>
                   {Array.from({ length: 60 }, (_, i) => (
-                    <Pressable
+                    <HapticPressable
                       key={i}
                       onPress={() => setNotificationMinute(i)}
                       style={[
@@ -936,25 +1006,25 @@ export default function SettingsScreen({ navigation }) {
                       >
                         {String(i).padStart(2, '0')}
                       </Text>
-                    </Pressable>
+                    </HapticPressable>
                   ))}
                 </ScrollView>
               </View>
             </View>
 
             <View style={styles.modalButtons}>
-              <Pressable
+              <HapticPressable
                 onPress={() => setShowTimeModal(false)}
                 style={[styles.modalButton, styles.cancelButton]}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable
+              </HapticPressable>
+              <HapticPressable
                 onPress={() => handleTimeUpdate(notificationHour, notificationMinute)}
                 style={[styles.modalButton, { backgroundColor: theme.accent }]}
               >
                 <Text style={styles.confirmButtonText}>Set Time</Text>
-              </Pressable>
+              </HapticPressable>
             </View>
           </View>
         </View>
@@ -970,9 +1040,9 @@ export default function SettingsScreen({ navigation }) {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{selectedGoalForTime ? `Set time for "${selectedGoalForTime.name}"` : 'Set Goal Time'}</Text>
-              <Pressable onPress={() => { setShowGoalTimeModal(false); setSelectedGoalForTime(null); }}>
+              <HapticPressable onPress={() => { setShowGoalTimeModal(false); setSelectedGoalForTime(null); }}>
                 <Ionicons name="close" size={28} color={theme.text} />
-              </Pressable>
+              </HapticPressable>
             </View>
 
             <View style={styles.timePickerContainer}>
@@ -980,7 +1050,7 @@ export default function SettingsScreen({ navigation }) {
                 <Text style={styles.timeLabel}>Hour</Text>
                 <ScrollView style={styles.hourScroll} scrollEventThrottle={16}>
                   {Array.from({ length: 24 }, (_, i) => (
-                    <Pressable
+                    <HapticPressable
                       key={i}
                       onPress={() => setGoalTimeHour(i)}
                       style={[
@@ -996,7 +1066,7 @@ export default function SettingsScreen({ navigation }) {
                       >
                         {String(i).padStart(2, '0')}
                       </Text>
-                    </Pressable>
+                    </HapticPressable>
                   ))}
                 </ScrollView>
               </View>
@@ -1005,7 +1075,7 @@ export default function SettingsScreen({ navigation }) {
                 <Text style={styles.timeLabel}>Minute</Text>
                 <ScrollView style={styles.minuteScroll} scrollEventThrottle={16}>
                   {Array.from({ length: 60 }, (_, i) => (
-                    <Pressable
+                    <HapticPressable
                       key={i}
                       onPress={() => setGoalTimeMinute(i)}
                       style={[
@@ -1021,25 +1091,25 @@ export default function SettingsScreen({ navigation }) {
                       >
                         {String(i).padStart(2, '0')}
                       </Text>
-                    </Pressable>
+                    </HapticPressable>
                   ))}
                 </ScrollView>
               </View>
             </View>
 
             <View style={styles.modalButtons}>
-              <Pressable
+              <HapticPressable
                 onPress={() => { setShowGoalTimeModal(false); setSelectedGoalForTime(null); }}
                 style={[styles.modalButton, styles.cancelButton]}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable
+              </HapticPressable>
+              <HapticPressable
                 onPress={() => handleGoalTimeUpdate(goalTimeHour, goalTimeMinute)}
                 style={[styles.modalButton, styles.confirmButton]}
               >
                 <Text style={styles.confirmButtonText}>Set Time</Text>
-              </Pressable>
+              </HapticPressable>
             </View>
           </View>
         </View>
@@ -1155,6 +1225,27 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     fontFamily: 'CeraRoundProDEMO-Black',
   },
+  usageCard: {
+    marginTop: 12,
+    backgroundColor: '#f6fafd',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  usageTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: theme.text,
+    marginBottom: 6,
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
+  usageRow: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6b7987',
+    marginBottom: 4,
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
   actionButtonWrap: {
     marginBottom: 12,
     height: 56,
@@ -1169,10 +1260,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   actionButtonShadowPrimary: {
-    backgroundColor: '#28b900',
+    backgroundColor: '#4aa93a',
   },
   actionButtonShadowDanger: {
-    backgroundColor: '#ef4444',
+    backgroundColor: '#c63b3b',
+  },
+  actionButtonShadowMuted: {
+    backgroundColor: '#475569',
   },
   actionButtonFace: {
     height: 52,
@@ -1191,13 +1285,22 @@ const styles = StyleSheet.create({
     height: 52,
     alignItems: "center",
     justifyContent: 'center',
+    backgroundColor: '#59d700',
   },
   saveButtonText: { color: "#fff", fontSize: 16, fontWeight: "800", fontFamily: 'CeraRoundProDEMO-Black' },
+
+  restoreButton: {
+    height: 52,
+    alignItems: "center",
+    justifyContent: 'center',
+    backgroundColor: '#64748b',
+  },
 
   logoutButton: {
     height: 52,
     alignItems: "center",
     justifyContent: 'center',
+    backgroundColor: '#e14f4f',
   },
   logoutButtonText: { color: "#fff", fontSize: 16, fontWeight: "800", fontFamily: 'CeraRoundProDEMO-Black' },
 

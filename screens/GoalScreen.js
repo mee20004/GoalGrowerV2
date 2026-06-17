@@ -5,7 +5,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Pressable,
   ActivityIndicator,
   ScrollView,
   Alert,
@@ -20,8 +19,9 @@ import {
   Easing,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Haptics from "expo-haptics";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import HapticPressable from "../components/HapticPressable";
+import { HapticType, triggerSelectionHaptic } from "../utils/haptics";
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import * as solidIcons from '@fortawesome/free-solid-svg-icons';
 import Page from "../components/Page";
@@ -33,8 +33,9 @@ import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
 import { WALLPAPER_OPTIONS } from "../constants/WallpaperAssets";
 import { useGoals, fromKey, toKey } from "../components/GoalsStore";
+import { useSubscription } from "../components/SubscriptionProvider";
+import { canCreateGoal, showSubscriptionLimitAlert } from "../utils/subscriptionLimits";
 import { subscribePersonalCustomizations, subscribeSharedCustomizations } from "../utils/customizationFirestore";
-import { ACHIEVEMENTS } from "../AchievementsStore";
 import { collection, doc, onSnapshot, deleteDoc, updateDoc, getDoc, getDocs, setDoc, arrayUnion, increment, deleteField, query, where, runTransaction } from "firebase/firestore";
 import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
 import { auth, db } from "../firebaseConfig";
@@ -534,21 +535,21 @@ async function findFirstOpenSharedStorageSlot(gardenId, goalId) {
 
 function Chip({ label, active, onPress }) {
   return (
-    <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
+    <HapticPressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
       <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
-    </Pressable>
+    </HapticPressable>
   );
 }
 
 function Segmented({ left, right, value, onChange }) {
   return (
     <View style={styles.segmentWrap}>
-      <Pressable onPress={() => onChange(left.value)} style={[styles.segment, value === left.value && styles.segmentActive]}>
+      <HapticPressable onPress={() => onChange(left.value)} style={[styles.segment, value === left.value && styles.segmentActive]}>
         <Text style={[styles.segmentText, value === left.value && styles.segmentTextActive]}>{left.label}</Text>
-      </Pressable>
-      <Pressable onPress={() => onChange(right.value)} style={[styles.segment, value === right.value && styles.segmentActive]}>
+      </HapticPressable>
+      <HapticPressable onPress={() => onChange(right.value)} style={[styles.segment, value === right.value && styles.segmentActive]}>
         <Text style={[styles.segmentText, value === right.value && styles.segmentTextActive]}>{right.label}</Text>
-      </Pressable>
+      </HapticPressable>
     </View>
   );
 }
@@ -563,11 +564,8 @@ function DetailRow({ label, value }) {
 }
 
 const IconItem = memo(({ iconName, isActive, onSelect }) => (
-  <Pressable
-    onPress={() => {
-      Haptics.selectionAsync?.().catch(() => {});
-      onSelect(iconName);
-    }}
+  <HapticPressable
+    onPress={() => onSelect(iconName)}
     style={[styles.iconBox, isActive && styles.iconBoxActive]}
   >
     {isActive && (
@@ -576,7 +574,7 @@ const IconItem = memo(({ iconName, isActive, onSelect }) => (
       </View>
     )}
     <GoalIcon name={iconName} size={45} color={isActive ? "#FFFFFF" : "#111111"} />
-  </Pressable>
+  </HapticPressable>
 ));
 
 export default function GoalScreen({ route, navigation, tutorialLocked = false, onTutorialGoalCompleted }) {
@@ -600,7 +598,8 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const MODAL_SWAP_DELAY = 180;
   const { goalId, source, sharedGardenId: routeSharedGardenId, ownerId: paramOwnerId, sourceGoalId: paramSourceGoalId } = route.params || {};
   const isSharedGoalView = Boolean(routeSharedGardenId);
-  const { selectedDateKey } = useGoals();
+  const { selectedDateKey, goals } = useGoals();
+  const { isPro, openDefaultPaywall } = useSubscription();
   const { theme } = useTheme();
 
   const [goal, setGoal] = useState(null);
@@ -1304,28 +1303,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     return 0;
   };
 
-  const checkAchievements = async (currentAppStreak) => {
-    if (!auth.currentUser) return;
-    try {
-      const userRef = doc(db, "users", auth.currentUser.uid);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) return;
-      const userData = userSnap.data();
-      const unlockedIds = userData.unlockedAchievements || [];
-      const currentStats = { appStreak: currentAppStreak, overallScore: userData.overallScore || 0 };
-      const newlyUnlocked = ACHIEVEMENTS.filter((ach) => !unlockedIds.includes(ach.id) && ach.check(currentStats));
-
-      if (newlyUnlocked.length > 0) {
-        const newIds = newlyUnlocked.map((ach) => ach.id);
-        const newTitles = newlyUnlocked.map((ach) => `${ach.icon} ${ach.title}`);
-        await updateDoc(userRef, { unlockedAchievements: arrayUnion(...newIds) });
-        Alert.alert("🏆 Achievement Unlocked!", `Great job! You just earned:\n\n${newTitles.join("\n")}`);
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
   const performToggleComplete = async ({ archiveToStorage = false } = {}) => {
     if (!auth.currentUser || !goal || shelfPosition?.pageId === STORAGE_PAGE_ID) return;
     // Block completion if selected date is not a scheduled day
@@ -1502,6 +1479,12 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const returnGoalFromTrophy = async (nextCompletionCondition) => {
     if (!auth.currentUser || !goal || isCompletingToTrophy) return;
 
+    const goalLimit = canCreateGoal({ isPro, goals });
+    if (!goalLimit.allowed) {
+      showSubscriptionLimitAlert(goalLimit, openDefaultPaywall);
+      return;
+    }
+
     setIsCompletingToTrophy(true);
     try {
       const layoutRef = isSharedGoalView
@@ -1654,7 +1637,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   };
 
   if (loading) return <Page><View style={styles.centerWrap}><ActivityIndicator size="large" color={theme.accent} /></View></Page>;
-  if (!goal) return <Page><View style={styles.centerWrap}><Text style={styles.empty}>Goal not found</Text><Pressable onPress={handleBack}><Text style={styles.backLink}>Go Back</Text></Pressable></View></Page>;
+  if (!goal) return <Page><View style={styles.centerWrap}><Text style={styles.empty}>Goal not found</Text><HapticPressable onPress={handleBack}><Text style={styles.backLink}>Go Back</Text></HapticPressable></View></Page>;
 
   // --- Robust shared multi-user quantity goal logic ---
   const isCompletion = goal.type === "completion";
@@ -2003,10 +1986,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
 
   const previewBackdropColor = getGoalPreviewBackdropColor(goal);
 
-  const triggerDetailHaptic = (style = Haptics.ImpactFeedbackStyle.Medium) => {
-    Haptics.impactAsync(style).catch(() => {});
-  };
-
   const accentShadowColor = getDarkerAccentColor(theme.accent);
   const uncheckedButtonShadowColor = "#cdcdcd";
   let statusButtonBgColor = "#f1f1f1";
@@ -2052,14 +2031,14 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     <Page>
       <View style={styles.headerWrapper}>
         <View style={styles.headerRow}>
-          <Pressable
+          <HapticPressable
             onPress={handleBack}
-            onPressIn={() => triggerDetailHaptic(Haptics.ImpactFeedbackStyle.Light)}
+            haptic={HapticType.LIGHT}
             hitSlop={20}
             style={styles.headerBtn}
           >
             <Ionicons name="chevron-back" size={26} color={theme.accent} />
-          </Pressable>
+          </HapticPressable>
           <Text style={styles.headerTitle}>Goal Details</Text>
           <View style={styles.headerActions}>
             <View style={styles.headerBtn}>
@@ -2069,14 +2048,14 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                 openEditModal={openEditModal}
               />
             </View>
-            <Pressable
+            <HapticPressable
               onPress={confirmDelete}
-              onPressIn={() => triggerDetailHaptic(Haptics.ImpactFeedbackStyle.Light)}
+              haptic={HapticType.LIGHT}
               hitSlop={20}
               style={[styles.headerBtn, styles.headerBtnDanger]}
             >
               <Ionicons name="trash-outline" size={20} color={theme.dangerText || "#ff4444"} />
-            </Pressable>
+            </HapticPressable>
           </View>
         </View>
       </View>
@@ -2118,12 +2097,10 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                   },
                 ]}
               />
-              <Pressable
+              <HapticPressable
                 hitSlop={8}
                 disabled={isTrophy || isTapCoolingDown}
-                onPressIn={() => {
-                  if (!isTrophy) triggerDetailHaptic();
-                }}
+                haptic={HapticType.MEDIUM}
                 onPress={handleToggleComplete}
                 style={({ pressed }) => [
                   styles.goalStatusButtonFace,
@@ -2195,7 +2172,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                 ) : (
                   <Ionicons name={isDone ? "close" : "checkmark"} size={30} color={statusButtonIconColor} />
                 )}
-              </Pressable>
+              </HapticPressable>
             </View>
           </View>
           {/* Contributors for today (usernames) - now below check off section */}
@@ -2374,9 +2351,9 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
               { backgroundColor: primaryActionShadowColor },
             ]}
           />
-          <Pressable
+          <HapticPressable
             onPress={isTrophy ? confirmReturnFromTrophy : confirmCompleteToTrophy}
-            onPressIn={() => triggerDetailHaptic()}
+            haptic={HapticType.MEDIUM}
             disabled={isCompletingToTrophy}
             style={({ pressed }) => [
               styles.completeGoalButton,
@@ -2388,7 +2365,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
             <Text style={styles.completeGoalButtonText}>
               {isCompletingToTrophy ? (isTrophy ? "Returning..." : "Completing...") : (isTrophy ? "Return To Goal" : "Complete Goal")}
             </Text>
-          </Pressable>
+          </HapticPressable>
         </View>
       </ScrollView>
 
@@ -2399,9 +2376,9 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
             <View style={styles.modalSheet}>
               <View style={styles.modalHeader}>
                 <View style={styles.modalHeaderSide}>
-                  <Pressable
+                  <HapticPressable
                     onPress={handleCancelEdit}
-                    onPressIn={() => triggerDetailHaptic(Haptics.ImpactFeedbackStyle.Light)}
+                    haptic={HapticType.LIGHT}
                     style={({ pressed }) => [
                       styles.modalHeaderButton,
                       styles.modalHeaderButtonSecondary,
@@ -2409,15 +2386,13 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                     ]}
                   >
                     <Text style={[styles.modalHeaderButtonText, styles.modalHeaderButtonTextSecondary]}>Cancel</Text>
-                  </Pressable>
+                  </HapticPressable>
                 </View>
                 <Text style={styles.modalTitle}>Edit Goal</Text>
                 <View style={[styles.modalHeaderSide, styles.modalHeaderSideRight]}>
-                  <Pressable
+                  <HapticPressable
                     onPress={saveEdits}
-                    onPressIn={() => {
-                      if (!formError && !isSaving) triggerDetailHaptic(Haptics.ImpactFeedbackStyle.Light);
-                    }}
+                    haptic={HapticType.LIGHT}
                     disabled={!!formError || isSaving}
                     style={({ pressed }) => [
                       styles.modalHeaderButton,
@@ -2427,7 +2402,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                     ]}
                   >
                     <Text style={[styles.modalHeaderButtonText, styles.modalHeaderButtonTextPrimary]}>{isSaving ? "Saving" : "Save"}</Text>
-                  </Pressable>
+                  </HapticPressable>
                 </View>
               </View>
 
@@ -2449,7 +2424,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                   </View>
                   <View style={styles.switchRow}>
                     <Text style={styles.switchLabel}>Private goal</Text>
-                    <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ false: theme.outline, true: theme.accent }} />
+                    <Switch value={isPrivate} onValueChange={(value) => { triggerSelectionHaptic(); setIsPrivate(value); }} trackColor={{ false: theme.outline, true: theme.accent }} />
                   </View>
 
                   <Text style={[styles.editLabel, styles.topGap]}>Garden</Text>
@@ -2474,7 +2449,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                       <Text style={styles.switchLabel}>Multi-user watering</Text>
                       <Switch
                         value={multiUserWateringEnabled}
-                        onValueChange={setMultiUserWateringEnabled}
+                        onValueChange={(value) => { triggerSelectionHaptic(); setMultiUserWateringEnabled(value); }}
                         trackColor={{ false: theme.outline, true: theme.accent }}
                       />
                     </View>
@@ -2497,7 +2472,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
 
                 <View style={styles.editCard}>
                   <Text style={styles.editLabel}>Icon</Text>
-                  <Pressable style={styles.iconPickerButton} onPress={openIconModal}>
+                  <HapticPressable style={styles.iconPickerButton} onPress={openIconModal}>
                     <View style={styles.iconPickerButtonLeft}>
                       <View style={styles.iconPickerPreview}>
                         <GoalIcon name={selectedIcon} size={24} color={theme.accent} />
@@ -2508,7 +2483,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                       </View>
                     </View>
                     <Ionicons name="chevron-forward" size={18} color={theme.muted} />
-                  </Pressable>
+                  </HapticPressable>
                 </View>
 
                 <View style={styles.editCard}>
@@ -2583,6 +2558,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                     <Switch
                       value={goalNotificationEnabled}
                       onValueChange={(value) => {
+                        triggerSelectionHaptic();
                         setGoalNotificationEnabled(value);
                         if (value) {
                           setHasUnsavedNotificationChanges(true);
@@ -2595,7 +2571,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
 
                   {goalNotificationEnabled && notificationsEnabled && (
                     <>
-                      <Pressable 
+                      <HapticPressable 
                         onPress={() => setShowGoalTimeModal(true)} 
                         style={styles.goalTimePickerButton}
                       >
@@ -2606,7 +2582,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                           </Text>
                           <Ionicons name="chevron-forward" size={16} color={theme.accent} />
                         </View>
-                      </Pressable>
+                      </HapticPressable>
 
                       {hasUnsavedNotificationChanges && (
                         <View style={styles.unsavedIndicator}>
@@ -2634,16 +2610,16 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
       >
         <View style={styles.iconModalScreen}>
           <View style={styles.iconModalHeader}>
-            <Pressable onPress={closeIconModal} style={styles.iconModalHeaderBtn}>
+            <HapticPressable onPress={closeIconModal} style={styles.iconModalHeaderBtn}>
               <Ionicons name="arrow-back" size={22} color={theme.text} />
-            </Pressable>
+            </HapticPressable>
             <View style={styles.iconModalHeaderCenter}>
               <Text style={styles.iconModalTitle}>Choose an icon</Text>
               <Text style={styles.iconModalCount}>{filteredIcons.length} icons</Text>
             </View>
-            <Pressable onPress={closeIconModal} style={styles.iconModalDoneBtn}>
+            <HapticPressable onPress={closeIconModal} style={styles.iconModalDoneBtn}>
               <Text style={styles.iconModalDoneText}>Done</Text>
-            </Pressable>
+            </HapticPressable>
           </View>
           <View style={styles.iconModalSearchWrap}>
             <View style={styles.iconModalSearchBar}>
@@ -2657,9 +2633,9 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                 autoCapitalize="none"
               />
               {!!iconSearch && (
-                <Pressable onPress={() => setIconSearch("")} hitSlop={8}>
+                <HapticPressable onPress={() => setIconSearch("")} hitSlop={8}>
                   <Ionicons name="close-circle" size={18} color={theme.muted} />
-                </Pressable>
+                </HapticPressable>
               )}
             </View>
             <View style={styles.iconSelectedRow}>
@@ -2691,15 +2667,12 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
               <Text style={styles.iconLoadHint}>Showing popular icons first for faster loading.</Text>
             )}
             {hasMoreIcons && (
-              <Pressable
+              <HapticPressable
                 style={styles.loadMoreIconsBtn}
-                onPress={() => {
-                  Haptics.selectionAsync?.().catch(() => {});
-                  setVisibleIconCount((prev) => prev + 120);
-                }}
+                onPress={() => setVisibleIconCount((prev) => prev + 120)}
               >
                 <Text style={styles.loadMoreIconsText}>Show more icons</Text>
-              </Pressable>
+              </HapticPressable>
             )}
           </ScrollView>
         </View>
@@ -2717,12 +2690,12 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
               onSelectDate={setReturnEndDateInput}
             />
             <View style={styles.returnDateActions}>
-              <Pressable onPress={() => setShowReturnDateModal(false)} style={styles.returnDateBtnSecondary}>
+              <HapticPressable onPress={() => setShowReturnDateModal(false)} style={styles.returnDateBtnSecondary}>
                 <Text style={styles.returnDateBtnSecondaryText}>Cancel</Text>
-              </Pressable>
-              <Pressable onPress={submitReturnWithEndDate} style={styles.returnDateBtnPrimary}>
+              </HapticPressable>
+              <HapticPressable onPress={submitReturnWithEndDate} style={styles.returnDateBtnPrimary}>
                 <Text style={styles.returnDateBtnPrimaryText}>{isCompletingToTrophy ? "Returning..." : "Return"}</Text>
-              </Pressable>
+              </HapticPressable>
             </View>
           </View>
         </View>
@@ -2740,12 +2713,12 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
               onSelectDate={setPostponeEndDateInput}
             />
             <View style={styles.returnDateActions}>
-              <Pressable onPress={() => setShowPostponeDateModal(false)} style={styles.returnDateBtnSecondary}>
+              <HapticPressable onPress={() => setShowPostponeDateModal(false)} style={styles.returnDateBtnSecondary}>
                 <Text style={styles.returnDateBtnSecondaryText}>Cancel</Text>
-              </Pressable>
-              <Pressable onPress={submitPostponedEndDate} style={styles.returnDateBtnPrimary}>
+              </HapticPressable>
+              <HapticPressable onPress={submitPostponedEndDate} style={styles.returnDateBtnPrimary}>
                 <Text style={styles.returnDateBtnPrimaryText}>Save & Check Off</Text>
-              </Pressable>
+              </HapticPressable>
             </View>
           </View>
         </View>
@@ -2761,9 +2734,9 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
           <View style={styles.goalTimeModalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Set Goal Reminder Time</Text>
-              <Pressable onPress={() => setShowGoalTimeModal(false)}>
+              <HapticPressable onPress={() => setShowGoalTimeModal(false)}>
                 <Ionicons name="close" size={28} color={theme.text} />
-              </Pressable>
+              </HapticPressable>
             </View>
 
             <View style={styles.timePickerContainer}>
@@ -2771,7 +2744,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                 <Text style={styles.timeLabel}>Hour</Text>
                 <ScrollView style={styles.hourScroll} scrollEventThrottle={16}>
                   {Array.from({ length: 24 }, (_, i) => (
-                    <Pressable
+                    <HapticPressable
                       key={i}
                       onPress={() => {
                         setGoalNotificationTime(i);
@@ -2790,7 +2763,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                       >
                         {String(i).padStart(2, '0')}
                       </Text>
-                    </Pressable>
+                    </HapticPressable>
                   ))}
                 </ScrollView>
               </View>
@@ -2799,7 +2772,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                 <Text style={styles.timeLabel}>Minute</Text>
                 <ScrollView style={styles.minuteScroll} scrollEventThrottle={16}>
                   {Array.from({ length: 60 }, (_, i) => (
-                    <Pressable
+                    <HapticPressable
                       key={i}
                       onPress={() => {
                         setGoalNotificationTimeMinute(i);
@@ -2818,25 +2791,25 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                       >
                         {String(i).padStart(2, '0')}
                       </Text>
-                    </Pressable>
+                    </HapticPressable>
                   ))}
                 </ScrollView>
               </View>
             </View>
 
             <View style={styles.modalButtons}>
-              <Pressable
+              <HapticPressable
                 onPress={() => setShowGoalTimeModal(false)}
                 style={[styles.modalButton, styles.cancelButton]}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable
+              </HapticPressable>
+              <HapticPressable
                 onPress={() => setShowGoalTimeModal(false)}
                 style={[styles.modalButton, styles.confirmButton]}
               >
                 <Text style={styles.confirmButtonText}>Done</Text>
-              </Pressable>
+              </HapticPressable>
             </View>
           </View>
         </View>

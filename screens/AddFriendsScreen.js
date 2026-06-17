@@ -1,6 +1,7 @@
 // AddFriendsScreen.js
 import React, { useState, useEffect } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, FlatList, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, StyleSheet, Alert, FlatList, ActivityIndicator } from "react-native";
+import HapticTouchableOpacity from "../components/HapticTouchableOpacity";
 import { collection, query, where, getDocs, doc, writeBatch, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { theme } from "../theme";
@@ -89,18 +90,18 @@ export default function AddFriendsScreen({ navigation }) {
         <Ionicons name="person" size={20} color={theme.muted} />
       </View>
       <Text style={styles.nameText}>{item.username}</Text>
-      <TouchableOpacity style={styles.followButton} onPress={() => handleFollow(item)}>
+      <HapticTouchableOpacity style={styles.followButton} onPress={() => handleFollow(item)}>
         <Text style={styles.followButtonText}>Follow</Text>
-      </TouchableOpacity>
+      </HapticTouchableOpacity>
     </View>
   );
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <HapticTouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={28} color={theme.text} />
-        </TouchableOpacity>
+        </HapticTouchableOpacity>
         <Text style={styles.headerTitle}>Find People</Text>
         <View style={{ width: 28 }} /> 
       </View>
@@ -114,9 +115,9 @@ export default function AddFriendsScreen({ navigation }) {
           autoCapitalize="none"
           onSubmitEditing={handleSearch}
         />
-        <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
+        <HapticTouchableOpacity style={styles.searchButton} onPress={handleSearch}>
           <Ionicons name="search" size={20} color="#fff" />
-        </TouchableOpacity>
+        </HapticTouchableOpacity>
       </View>
 
       {loading ? (

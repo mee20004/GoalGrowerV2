@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { View, Text, StyleSheet, Pressable, Dimensions } from "react-native";
+import { View, Text, StyleSheet, Dimensions } from "react-native";
+import HapticPressable from "../components/HapticPressable";
 import Page from "../components/Page";
 import { theme } from "../theme";
 import { getWeekdayLabelsSync, getWeekStartSync } from '../utils/dateFormat';
@@ -158,7 +159,7 @@ export default function CalendarScreen() {
         {["today","week","month"].map(m => {
           const active = mode === m;
           return (
-            <Pressable
+            <HapticPressable
               key={m}
               onPress={() => setMode(m)}
               style={[styles.segmentBtn, active && styles.segmentActive]}
@@ -166,7 +167,7 @@ export default function CalendarScreen() {
               <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
                 {m.charAt(0).toUpperCase() + m.slice(1)}
               </Text>
-            </Pressable>
+            </HapticPressable>
           );
         })}
       </View>
@@ -176,7 +177,7 @@ export default function CalendarScreen() {
 
         {/* HEADER */}
         <View style={styles.monthRow}>
-         <Pressable
+         <HapticPressable
             onPress={() => {
               if (mode === "today") changeDay(-1);
               else if (mode === "week") changeWeek(-1);
@@ -184,7 +185,7 @@ export default function CalendarScreen() {
           }}
           >
             <Text style={styles.arrow}>‹</Text>
-          </Pressable>
+          </HapticPressable>
 
           <Text style={styles.month}>
             {mode === "today"
@@ -198,7 +199,7 @@ export default function CalendarScreen() {
               : monthLabel}
           </Text>
 
-          <Pressable
+          <HapticPressable
             onPress={() => {
               if (mode === "today") changeDay(1);
               else if (mode === "week") changeWeek(1);
@@ -206,7 +207,7 @@ export default function CalendarScreen() {
           }}
           >
             <Text style={styles.arrow}>›</Text>
-          </Pressable>
+          </HapticPressable>
         </View>
 
         {/* WEEK DAYS */}
@@ -240,7 +241,7 @@ export default function CalendarScreen() {
                   const dayGoalsCount = goals.filter((g) => isWithinActiveRange(g, dayDate) && isScheduledOn(g, dayDate)).length;
 
                   return (
-                    <Pressable
+                    <HapticPressable
                       key={`${rowIndex}-${i}`}
                       onPress={() => setSelectedDateKey(toKey(dayDate))}
                       style={[
@@ -262,7 +263,7 @@ export default function CalendarScreen() {
                       {dayGoalsCount > 0 && (
                         <View style={[styles.dot, isSelected ? styles.dotSelected : styles.dotDefault]} />
                       )}
-                    </Pressable>
+                    </HapticPressable>
                   );
                 })}
               </View>

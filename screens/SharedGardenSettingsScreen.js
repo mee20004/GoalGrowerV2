@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Switch, Pressable } from "react-native";
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, Switch } from "react-native";
+import HapticTouchableOpacity from "../components/HapticTouchableOpacity";
+import HapticPressable from "../components/HapticPressable";
 import * as Haptics from "expo-haptics";
 // Haptic feedback for switch toggles (copied from AddGoalScreen)
 const triggerSelectionHaptic = () => {
@@ -143,9 +145,9 @@ export default function SharedGardenSettingsScreen({ navigation, route }) {
       <View style={styles.headerTopSpacer} />
       <View style={styles.headerWrapper}>
         <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
+          <HapticTouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={26} color={theme.accent} />
-          </TouchableOpacity>
+          </HapticTouchableOpacity>
           <Text style={styles.headerTitle}>Shared Settings</Text>
           <View style={styles.headerBtnPlaceholder} />
         </View>
@@ -204,10 +206,10 @@ export default function SharedGardenSettingsScreen({ navigation, route }) {
               <View key={item.id} style={styles.memberRow}>
                 <Text style={styles.memberName}>{item.username || item.email || item.id}</Text>
                 {item.id !== auth.currentUser.uid && (
-                  <TouchableOpacity style={styles.removeBtn} onPress={() => handleRemove(item.id)} disabled={removingId === item.id}>
+                  <HapticTouchableOpacity style={styles.removeBtn} onPress={() => handleRemove(item.id)} disabled={removingId === item.id}>
                     <Ionicons name="remove-circle" size={26} color={theme.dangerText || '#CF3636'} />
                     <Text style={styles.removeBtnText}>Remove</Text>
-                  </TouchableOpacity>
+                  </HapticTouchableOpacity>
                 )}
               </View>
             ))
@@ -222,7 +224,7 @@ export default function SharedGardenSettingsScreen({ navigation, route }) {
           followingUsers.filter(u => !members.some(m => m.id === u.id)).map(item => (
             <View key={item.id} style={styles.memberRow}>
               <Text style={styles.memberName}>{item.username || item.email || item.id}</Text>
-              <TouchableOpacity
+              <HapticTouchableOpacity
                 style={[styles.inviteBtn, (!canAddPeople ? styles.inviteBtnDisabled : null)]}
                 onPress={() => handleInvite(item)}
                 disabled={inviting || !canAddPeople}
@@ -232,7 +234,7 @@ export default function SharedGardenSettingsScreen({ navigation, route }) {
                   size={22}
                   color={canAddPeople ? '#fff' : theme.muted2}
                 />
-              </TouchableOpacity>
+              </HapticTouchableOpacity>
             </View>
           ))
         )}
@@ -240,7 +242,7 @@ export default function SharedGardenSettingsScreen({ navigation, route }) {
       {/* Leave/Delete Garden Button */}
       <View style={[styles.actionButtonWrap, { marginTop: 8 }]}> 
         <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowDanger]} />
-        <Pressable
+        <HapticPressable
           onPress={async () => {
             if (isOwner) {
               Alert.alert(
@@ -286,7 +288,7 @@ export default function SharedGardenSettingsScreen({ navigation, route }) {
           ]}
         >
           <Text style={styles.logoutButtonText}>{isOwner ? 'Delete Garden' : 'Leave Garden'}</Text>
-        </Pressable>
+        </HapticPressable>
       </View>
       {/* Bottom Spacer for extra margin */}
       <View style={{ height: 48 }} />

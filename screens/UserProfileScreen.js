@@ -1,15 +1,17 @@
 // screens/UserProfileScreen.js
 import React, { useState, useCallback } from "react";
 import { Dimensions } from "react-native";
-import { View, Text, ScrollView, TouchableOpacity, Pressable, StyleSheet, ActivityIndicator, Alert } from "react-native";
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Alert, Image } from "react-native";
+import HapticTouchableOpacity from "../components/HapticTouchableOpacity";
+import HapticPressable from "../components/HapticPressable";
 import { useFocusEffect } from "@react-navigation/native";
 import { doc, getDoc, collection, getDocs, setDoc, deleteDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import theme, { useTheme } from "../theme";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
-// IMPORT YOUR ACHIEVEMENTS STORE
-import { ACHIEVEMENTS } from "../AchievementsStore";
+const GARDEN_TAB_ICON = require("../assets/Icons/Taskbar/GardenIcon.png");
+const JOURNEY_TAB_ICON = require("../assets/Icons/Taskbar/Journey.png");
 
 export default function UserProfileScreen({ route, navigation }) {
   const { theme } = useTheme();
@@ -114,9 +116,6 @@ export default function UserProfileScreen({ route, navigation }) {
     );
   }
 
-  const unlockedIds = profileData?.unlockedAchievements || [];
-  const unlockedAchievements = ACHIEVEMENTS.filter(ach => unlockedIds.includes(ach.id));
-
   const screenHeight = Dimensions.get('window').height;
   return (
     <View style={styles.screenWrap}>
@@ -128,9 +127,9 @@ export default function UserProfileScreen({ route, navigation }) {
         <View style={styles.headerTopSpacer} />
         <View style={styles.headerWrapper}>
           <View style={styles.headerRow}>
-            <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
+            <HapticTouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
               <Ionicons name="chevron-back" size={26} color={theme.accent} />
-            </TouchableOpacity>
+            </HapticTouchableOpacity>
             <Text style={styles.headerTitle}>Profile</Text>
             <View style={styles.headerBtnPlaceholder} />
           </View>
@@ -156,14 +155,19 @@ export default function UserProfileScreen({ route, navigation }) {
             {currentUserId !== userId && (
               <>
                 <View style={styles.actionButtonWrapWide}>
-                  <View pointerEvents="none" style={[styles.actionButtonShadow, isFollowing ? styles.actionButtonShadowDanger : styles.actionButtonShadowPrimary, !isFollowing && { backgroundColor: theme.accent }]} />
-                  <Pressable
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.actionButtonShadow,
+                      isFollowing ? styles.actionButtonShadowDanger : styles.actionButtonShadowPrimary,
+                    ]}
+                  />
+                  <HapticPressable
                     onPress={toggleFollow}
                     disabled={followLoading}
                     style={({ pressed }) => [
                       styles.actionButtonFace,
                       isFollowing ? styles.followingButton : styles.followButton,
-                      !isFollowing && { backgroundColor: theme.accent },
                       pressed && !followLoading && styles.actionButtonPressed,
                     ]}
                   >
@@ -174,12 +178,12 @@ export default function UserProfileScreen({ route, navigation }) {
                         {isFollowing ? "Unfollow" : "Follow"}
                       </Text>
                     )}
-                  </Pressable>
+                  </HapticPressable>
                 </View>
 
                 <View style={styles.actionButtonWrapWide}>
                   <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowGarden]} />
-                  <Pressable
+                  <HapticPressable
                     onPress={() => navigation.navigate("UserGarden", {
                       userId,
                       readOnly: true,
@@ -191,9 +195,31 @@ export default function UserProfileScreen({ route, navigation }) {
                       pressed && styles.actionButtonPressed,
                     ]}
                   >
-                    <Ionicons name="flower-outline" size={18} color="#ffffff" />
-                    <Text style={styles.viewGardenButtonText}>View Garden</Text>
-                  </Pressable>
+                    <View style={styles.viewActionIconWrap}>
+                      <Image source={GARDEN_TAB_ICON} style={styles.viewActionIcon} resizeMode="contain" />
+                    </View>
+                    <Text style={styles.viewActionButtonText}>View Garden</Text>
+                  </HapticPressable>
+                </View>
+
+                <View style={styles.actionButtonWrapWide}>
+                  <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowJourney]} />
+                  <HapticPressable
+                    onPress={() => navigation.navigate("UserJourney", {
+                      userId,
+                      username: profileData?.username || "User",
+                    })}
+                    style={({ pressed }) => [
+                      styles.actionButtonFace,
+                      styles.viewJourneyButton,
+                      pressed && styles.actionButtonPressed,
+                    ]}
+                  >
+                    <View style={styles.viewActionIconWrap}>
+                      <Image source={JOURNEY_TAB_ICON} style={styles.viewActionIcon} resizeMode="contain" />
+                    </View>
+                    <Text style={styles.viewActionButtonText}>View Journey</Text>
+                  </HapticPressable>
                 </View>
               </>
             )}
@@ -212,30 +238,6 @@ export default function UserProfileScreen({ route, navigation }) {
               <Text style={styles.infoValue}>{profileData?.streakCount || 0} Days</Text>
             </View>
           </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Achievements</Text>
-          {unlockedAchievements.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>This user hasn't unlocked any achievements yet.</Text>
-            </View>
-          ) : (
-            <View style={styles.achievementsList}>
-              {unlockedAchievements.map((ach, index) => (
-                <View key={index} style={styles.achievementCard}>
-                  <View style={styles.iconWrap}>
-                    <Ionicons name={ach.icon} size={32} color="#FF9600" />
-                  </View>
-                  <View style={styles.achTextWrap}>
-                    <Text style={styles.achievementTitle}>{ach.title}</Text>
-                    <Text style={styles.achievementDesc}>{ach.desc}</Text>
-                    <Text style={styles.completedText}>COMPLETED</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
         </View>
       </ScrollView>
     </View>
@@ -330,6 +332,7 @@ const styles = StyleSheet.create({
   actionButtonShadowPrimary: { backgroundColor: '#4aa93a' },
   actionButtonShadowDanger: { backgroundColor: '#c63b3b' },
   actionButtonShadowGarden: { backgroundColor: '#3b7b46' },
+  actionButtonShadowJourney: { backgroundColor: '#2a7bc4' },
   actionButtonFace: {
     height: 52,
     borderRadius: 20,
@@ -347,7 +350,26 @@ const styles = StyleSheet.create({
   followingButton: { backgroundColor: '#e14f4f' },
   followingButtonText: { color: '#fff' },
   viewGardenButton: { backgroundColor: '#54b766' },
-  viewGardenButtonText: { color: "#ffffff", fontWeight: "800", fontSize: 15 },
+  viewJourneyButton: { backgroundColor: '#3497e6' },
+  viewActionButtonText: {
+    color: "#ffffff",
+    fontWeight: "800",
+    fontSize: 15,
+    fontFamily: "CeraRoundProDEMO-Black",
+    letterSpacing: 0.1,
+  },
+  viewActionIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  viewActionIcon: {
+    width: 20,
+    height: 20,
+  },
   section: { marginBottom: 18 },
   sectionLabel: { fontSize: 12, fontWeight: "900", color: '#000000', marginBottom: 8, textTransform: "uppercase", letterSpacing: 1, fontFamily: 'CeraRoundProDEMO-Black' },
   infoCard: {
@@ -371,22 +393,4 @@ const styles = StyleSheet.create({
   infoLabel: { fontSize: 14, fontWeight: "800", color: theme.text, fontFamily: 'CeraRoundProDEMO-Black' },
   infoValue: { fontSize: 14, fontWeight: "900", color: theme.text2, fontFamily: 'CeraRoundProDEMO-Black' },
   scoreValue: { color: '#2D5A27' },
-  achievementsList: { flexDirection: "column" },
-  achievementCard: { flexDirection: "row", alignItems: "center", backgroundColor: "#ffffff", borderRadius: 24, padding: 14, marginBottom: 10, shadowColor: '#cdcdcd', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 1, shadowRadius: 0, elevation: 2 },
-  iconWrap: { width: 62, height: 62, borderRadius: 31, justifyContent: "center", alignItems: "center", marginRight: 14, backgroundColor: "#ffe8a3" },
-  achTextWrap: { flex: 1 },
-  achievementTitle: { fontSize: 17, fontWeight: "900", color: theme.text, marginBottom: 3, fontFamily: 'CeraRoundProDEMO-Black' },
-  achievementDesc: { fontSize: 13, color: "#677786", fontWeight: "700", lineHeight: 18, fontFamily: 'CeraRoundProDEMO-Black' },
-  completedText: { marginTop: 8, fontSize: 12, fontWeight: "900", color: "#FF9600", letterSpacing: 1, fontFamily: 'CeraRoundProDEMO-Black' },
-  emptyCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 16,
-    shadowColor: '#cdcdcd',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
-  },
-  emptyText: { color: theme.muted, fontStyle: 'italic', textAlign: "center" }
 });

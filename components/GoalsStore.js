@@ -1,5 +1,7 @@
 import { auth, db } from '../firebaseConfig';
+import { onAuthStateChanged } from 'firebase/auth';
 import { collection, onSnapshot } from 'firebase/firestore';
+import { onFirestoreListenerError } from '../utils/firestoreListener';
 // components/GoalsStore.js
 import React, { createContext, useContext, useMemo, useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -157,17 +159,28 @@ function normalizeDraftForGoal(goalDraft) {
 export function GoalsProvider({ children }) {
   // Subscribe to Firestore goals for the current user
   useEffect(() => {
-      if (!auth.currentUser) {
+    let unsubGoals = () => {};
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      unsubGoals();
+      if (!user) {
         setGoals([]);
         return;
       }
-      const goalsRef = collection(db, 'users', auth.currentUser.uid, 'goals');
-      const unsub = onSnapshot(goalsRef, (snapshot) => {
-        const goalsData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        setGoals(goalsData);
-      });
-      return () => unsub();
-    }, [auth.currentUser]);
+      const goalsRef = collection(db, 'users', user.uid, 'goals');
+      unsubGoals = onSnapshot(
+        goalsRef,
+        (snapshot) => {
+          const goalsData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+          setGoals(goalsData);
+        },
+        onFirestoreListenerError('GoalsStore goals listener')
+      );
+    });
+    return () => {
+      unsubGoals();
+      unsubAuth();
+    };
+  }, []);
 
   const todayKey = useMemo(() => toKey(new Date()), []);
   const [selectedDateKey, setSelectedDateKey] = useState(todayKey);

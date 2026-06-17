@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
+import HapticPressable from "../components/HapticPressable";
 import { Ionicons } from "@expo/vector-icons";
 import { theme } from "../theme";
 
@@ -47,10 +48,10 @@ export default function WelcomeScreen({ navigation, onContinue, onLogin }) {
   if (page === 0) {
     return (
       <View style={[styles.full, styles.gradWrap]}>
-        <Pressable style={styles.fullCenter} onPress={() => setPage(1)}>
+        <HapticPressable style={styles.fullCenter} onPress={() => setPage(1)}>
           <PlantMark big />
           <Text style={styles.brandOverline}>GOAL GROWER</Text>
-        </Pressable>
+        </HapticPressable>
       </View>
     );
   }
@@ -72,7 +73,7 @@ export default function WelcomeScreen({ navigation, onContinue, onLogin }) {
         <Text style={styles.ctaPrompt}>Already have an account?</Text>
         <View style={styles.actionButtonWrap}>
           <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowSecondary]} />
-          <Pressable
+          <HapticPressable
             style={({ pressed }) => [
               styles.actionButtonFace,
               styles.secondaryBtn,
@@ -81,7 +82,7 @@ export default function WelcomeScreen({ navigation, onContinue, onLogin }) {
             onPress={handleLogin}
           >
             <Text style={styles.secondaryBtnText}>Log in</Text>
-          </Pressable>
+          </HapticPressable>
         </View>
       </View>
 
@@ -91,7 +92,7 @@ export default function WelcomeScreen({ navigation, onContinue, onLogin }) {
         <Text style={styles.ctaPrompt}>New to Goal Grower?</Text>
         <View style={styles.actionButtonWrap}>
           <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
-          <Pressable
+          <HapticPressable
             style={({ pressed }) => [
               styles.actionButtonFace,
               styles.primaryBtn,
@@ -100,7 +101,7 @@ export default function WelcomeScreen({ navigation, onContinue, onLogin }) {
             onPress={handleContinue}
           >
             <Text style={styles.primaryBtnText}>Get Started</Text>
-          </Pressable>
+          </HapticPressable>
         </View>
       </View>
     </View>

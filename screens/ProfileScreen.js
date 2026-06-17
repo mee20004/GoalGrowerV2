@@ -1,6 +1,7 @@
 // ProfileScreen.js
 import React, { useState, useCallback } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput, Alert } from "react-native";
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TextInput, Alert } from "react-native";
+import HapticTouchableOpacity from "../components/HapticTouchableOpacity";
 import { useFocusEffect } from "@react-navigation/native";
 import { doc, getDoc, collection, getDocs, updateDoc, query, where, writeBatch, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
@@ -8,9 +9,6 @@ import theme, { useTheme } from "../theme";
 import { cpShadow } from "../utils/shadows";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { updateOverallScoreForUser } from "../utils/scoreUtils";
-
-// IMPORT YOUR ACHIEVEMENTS STORE
-import { ACHIEVEMENTS } from "../AchievementsStore";
 
 export default function ProfileScreen({ navigation }) {
   const { theme } = useTheme();
@@ -131,18 +129,15 @@ export default function ProfileScreen({ navigation }) {
     );
   }
 
-  const unlockedIds = profileData?.unlockedAchievements || [];
-  const unlockedAchievements = ACHIEVEMENTS.filter(ach => unlockedIds.includes(ach.id));
-
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 64 }}>
       <View style={styles.headerTopSpacer} />
       <View style={styles.headerWrapper}>
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>Profile</Text>
-          <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.navigate("Settings")}> 
+          <HapticTouchableOpacity style={styles.headerBtn} onPress={() => navigation.navigate("Settings")}> 
             <Ionicons name="settings-outline" size={22} color={theme.text2} />
-          </TouchableOpacity>
+          </HapticTouchableOpacity>
         </View>
       </View>
 
@@ -152,17 +147,17 @@ export default function ProfileScreen({ navigation }) {
           <Text style={styles.userName}>{profileData?.username || "User"}</Text>
 
           <View style={styles.statsCard}>
-            <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate("FollowersListScreen")}> 
+            <HapticTouchableOpacity style={styles.statItem} onPress={() => navigation.navigate("FollowersListScreen")}> 
               <Text style={styles.statNumber}>{followers.length}</Text>
               <Text style={styles.statLabel}>FOLLOWERS</Text>
-            </TouchableOpacity>
+            </HapticTouchableOpacity>
 
             <View style={styles.statDivider} />
 
-            <TouchableOpacity style={styles.statItem} onPress={() => navigation.navigate("FollowingListScreen")}> 
+            <HapticTouchableOpacity style={styles.statItem} onPress={() => navigation.navigate("FollowingListScreen")}> 
               <Text style={styles.statNumber}>{following.length}</Text>
               <Text style={styles.statLabel}>FOLLOWING</Text>
-            </TouchableOpacity>
+            </HapticTouchableOpacity>
           </View>
         </View>
       </View>
@@ -180,13 +175,13 @@ export default function ProfileScreen({ navigation }) {
               onSubmitEditing={handleAddFriendByUsername}
               editable={!addingFriend}
             />
-            <TouchableOpacity
+            <HapticTouchableOpacity
               style={[styles.addFriendBtn, { backgroundColor: theme.accent }, addingFriend && styles.addFriendBtnDisabled]}
               onPress={handleAddFriendByUsername}
               disabled={addingFriend}
             >
               <Text style={styles.addFriendBtnText}>{addingFriend ? "Adding..." : "Add"}</Text>
-            </TouchableOpacity>
+            </HapticTouchableOpacity>
           </View>
         </View>
       </View>
@@ -203,30 +198,6 @@ export default function ProfileScreen({ navigation }) {
             <Text style={styles.infoValue}>{profileData?.streakCount || 0} Days</Text>
           </View>
         </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Achievements</Text>
-        {unlockedAchievements.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>Complete goals to start earning achievements!</Text>
-          </View>
-        ) : (
-          <View style={styles.achievementsList}>
-            {unlockedAchievements.map((ach, index) => (
-              <View key={index} style={styles.achievementCard}>
-                <View style={styles.iconWrap}>
-                  <Ionicons name={ach.icon} size={32} color="#FF9600" />
-                </View>
-                <View style={styles.achTextWrap}>
-                  <Text style={styles.achievementTitle}>{ach.title}</Text>
-                  <Text style={styles.achievementDesc}>{ach.desc}</Text>
-                  <Text style={styles.completedText}>COMPLETED</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
       </View>
     </ScrollView>
   );
@@ -420,63 +391,5 @@ const styles = StyleSheet.create({
   },
   scoreValue: {
     color: "#000000",
-  },
-  achievementsList: {
-    flexDirection: "column",
-  },
-  achievementCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderRadius: 24,
-    padding: 14,
-    marginBottom: 10,
-    ...cpShadow({ color: '#cdcdcd', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
-  },
-  iconWrap: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 14,
-    backgroundColor: "#ffe8a3",
-  },
-  achTextWrap: {
-    flex: 1,
-  },
-  achievementTitle: {
-    fontSize: 17,
-    fontWeight: "900",
-    color: theme.text,
-    marginBottom: 3,
-    fontFamily: 'CeraRoundProDEMO-Black',
-  },
-  achievementDesc: {
-    fontSize: 13,
-    color: "#677786",
-    fontWeight: "700",
-    lineHeight: 18,
-    fontFamily: 'CeraRoundProDEMO-Black',
-  },
-  completedText: {
-    marginTop: 6,
-    fontSize: 11,
-    fontWeight: "900",
-    color: "#FF9600",
-    letterSpacing: 1,
-    fontFamily: 'CeraRoundProDEMO-Black',
-  },
-  emptyCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 16,
-    ...cpShadow({ color: '#cdcdcd', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
-  },
-  emptyText: {
-    color: theme.muted,
-    fontStyle: 'italic',
-    textAlign: "center",
-    fontFamily: 'CeraRoundProDEMO-Black',
   },
 });

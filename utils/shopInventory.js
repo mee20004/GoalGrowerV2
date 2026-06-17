@@ -7,6 +7,7 @@ import {
   setDoc,
 } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
+import { onFirestoreListenerError } from "./firestoreListener";
 import {
   COIN_REWARDS,
   DECOR_TYPES,
@@ -100,7 +101,7 @@ export function subscribeShopInventory(uid, onChange, onError) {
       }
       onChange(buildInventoryState(snap.data()));
     },
-    onError
+    onError || onFirestoreListenerError('Shop inventory listener')
   );
 }
 
@@ -235,4 +236,38 @@ export async function creditCoins(amount, source = "manual") {
 
 export async function awardGoalCompletionCoins() {
   return creditCoins(COIN_REWARDS.GOAL_COMPLETION, "goal_completion");
+}
+
+export async function claimJourneyReward(claimKey, amount, source = "journey") {
+  const uid = auth.currentUser?.uid;
+  if (!uid || amount <= 0) return { claimed: false, reason: "invalid" };
+
+  const userRef = getUserShopRef(uid);
+  let alreadyClaimed = false;
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(userRef);
+    const data = snap.exists() ? snap.data() : {};
+    const claims = data.journeyRewardClaims || {};
+    if (claims[claimKey]) {
+      alreadyClaimed = true;
+      return;
+    }
+
+    const balance = typeof data.coinBalance === "number" ? data.coinBalance : COIN_REWARDS.STARTING_BALANCE;
+    tx.set(
+      userRef,
+      {
+        coinBalance: balance + amount,
+        journeyRewardClaims: { ...claims, [claimKey]: true },
+        shopInitialized: true,
+        lastCoinCreditAt: serverTimestamp(),
+        lastCoinCreditSource: source,
+      },
+      { merge: true }
+    );
+  });
+
+  if (alreadyClaimed) return { claimed: false, reason: "already_claimed" };
+  return { claimed: true, amount };
 }

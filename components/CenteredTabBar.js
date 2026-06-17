@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
-import { View, TouchableOpacity, StyleSheet, Platform, Image, Animated } from 'react-native';
+import { View, StyleSheet, Platform, Image, Animated } from 'react-native';
+import HapticTouchableOpacity from './HapticTouchableOpacity';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 const TASKBAR_ICON_MAP = {
@@ -121,7 +122,7 @@ export default function CenteredTabBar({ state, descriptors, navigation, disable
           );
 
           return (
-            <TouchableOpacity
+            <HapticTouchableOpacity
               key={route.key}
               accessibilityRole="button"
               accessibilityState={isFocused ? { selected: true } : {}}
@@ -131,9 +132,10 @@ export default function CenteredTabBar({ state, descriptors, navigation, disable
               onLongPress={onLongPress}
               style={styles.tab}
               activeOpacity={0.8}
+              disabled={disabled}
             >
               {iconContent}
-            </TouchableOpacity>
+            </HapticTouchableOpacity>
           );
         })}
       </View>

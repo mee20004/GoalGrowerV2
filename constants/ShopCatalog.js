@@ -25,6 +25,15 @@ export const DECOR_TYPES = {
 export const COIN_REWARDS = {
   STARTING_BALANCE: 100,
   GOAL_COMPLETION: 5,
+  JOURNEY_GROWTH_GOAL: 25,
+};
+
+export const JOURNEY_ACHIEVEMENT_COINS = {
+  create_1: 50,
+  create_5: 100,
+  complete_10: 75,
+  streak_7: 80,
+  score_250: 150,
 };
 
 /** Coins granted after a successful RevenueCat coin-pack purchase (by store product id). */

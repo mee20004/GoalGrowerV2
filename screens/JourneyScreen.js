@@ -1,63 +1,34 @@
-import React, { useCallback, useMemo, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Image, useWindowDimensions, Pressable, Alert } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, Image, Alert, Animated, Easing } from "react-native";
 import GoalActionButton from "../components/GoalActionButton";
+import HapticTouchableOpacity from "../components/HapticTouchableOpacity";
+import { GROWTH_BLUE, GROWTH_BLUE_SHADOW } from "../constants/GrowthTheme";
+import { HapticType, triggerLightHaptic } from "../utils/haptics";
+import CoinBadge from "../components/CoinBadge";
+import CoinFlyReward, {
+  CLAIM_HAPTIC_START_MS,
+  COIN_COUNT_UP_DURATION_MS,
+  getCoinFlyCount,
+} from "../components/CoinFlyReward";
+import Page from "../components/Page";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { collection, doc, getDoc, getDocs } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
-import { theme } from "../theme";
+import theme from "../theme";
+import { cpShadow } from "../utils/shadows";
 import FireStreakIcon from "../assets/Icons/FireStreakIcon";
 import { getGoalTrophyRating, updateOverallScoreForUser } from "../utils/scoreUtils";
 import { getScoredGoalsForUser } from "../utils/scoreUtils";
 import { countCompletedDates } from "../utils/goalState";
-
-const ACHIEVEMENT_TRACKS = [
-  {
-    id: "create_1",
-    title: "Seed Sower",
-    description: "Create your first goal.",
-    metric: "createdGoals",
-    target: 1,
-    icon: "leaf-outline",
-    reward: "Cosmetic: Sprout Badge",
-  },
-  {
-    id: "create_5",
-    title: "Goal Architect",
-    description: "Create 5 goals.",
-    metric: "createdGoals",
-    target: 5,
-    icon: "layers-outline",
-    reward: "Cosmetic: Builder Pot",
-  },
-  {
-    id: "complete_10",
-    title: "Momentum",
-    description: "Log 10 completed goal-days.",
-    metric: "completionDays",
-    target: 10,
-    icon: "checkmark-done-outline",
-    reward: "Cosmetic: Lime Spark Trail",
-  },
-  {
-    id: "streak_7",
-    title: "Week Warrior",
-    description: "Reach a 7-day app streak.",
-    metric: "appStreak",
-    target: 7,
-    icon: "flame-outline",
-    reward: "Cosmetic: Ember Nameplate",
-  },
-  {
-    id: "score_250",
-    title: "Rising Legend",
-    description: "Reach an overall score of 250.",
-    metric: "overallScore",
-    target: 250,
-    icon: "trophy-outline",
-    reward: "Cosmetic: Aurora Frame",
-  },
-];
+import { useShopInventory } from "../components/ShopInventoryProvider";
+import { claimJourneyReward } from "../utils/shopInventory";
+import { useGoals } from "../components/GoalsStore";
+import DailyQuestCard from "../components/DailyQuestCard";
+import QuestLogSection from "../components/QuestLogSection";
+import { claimQuestReward, claimQuestTotalMilestone, getQuestViewForUserData, recordQuestActivity, syncQuestState } from "../utils/questEngine";
+import { COIN_REWARDS } from "../constants/ShopCatalog";
 
 const COSMETIC_TRACKS = [
   { id: "cosm_pot_moss", name: "Moss Pot", metric: "createdGoals", target: 3, icon: "flower-outline" },
@@ -147,18 +118,32 @@ function ProgressBar({ value, target }) {
   );
 }
 
-export default function JourneyScreen() {
-  // Track which growth goals have been completed in this session
-  const [completedGrowthGoals, setCompletedGrowthGoals] = useState([]);
-  // Handler for completing a growth goal (stub)
-  const handleCompleteGrowthGoal = (item) => {
-    setCompletedGrowthGoals((prev) => [...prev, item.key]);
-    // TODO: Implement actual completion logic for growth goals
-    // For now, just show an alert
-    Alert.alert('Complete Goal', `Marked "${item.label}" as complete!`);
-  };
-  const { height: screenHeight } = useWindowDimensions();
+export default function JourneyScreen({ route, navigation }) {
+  const viewUserId = route?.params?.userId;
+  const viewUsername = route?.params?.username || "User";
+  const isReadOnly = Boolean(viewUserId);
+  const targetUid = viewUserId || auth.currentUser?.uid;
+  const insets = useSafeAreaInsets();
+  const { coinBalance } = useShopInventory();
+  const { goals } = useGoals();
+  const [claimingRewardKey, setClaimingRewardKey] = useState(null);
+  const [claimedRewards, setClaimedRewards] = useState({});
+  const [flyReward, setFlyReward] = useState(null);
+  const [questView, setQuestView] = useState({
+    daily: [],
+    weekly: [],
+    milestones: [],
+    questMilestones: [],
+    questHistory: [],
+  });
+  const balanceAnchorRef = useRef(null);
+  const containerRef = useRef(null);
+  const claimOriginRefs = useRef({});
+  const balancePulse = useRef(new Animated.Value(1)).current;
+  const countUpAnim = useRef(new Animated.Value(0)).current;
+  const [displayCoinBalance, setDisplayCoinBalance] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [questStats, setQuestStats] = useState({ totalCompleted: 0 });
   const [metrics, setMetrics] = useState({
     createdGoals: 0,
     completedGoals: 0,
@@ -172,17 +157,24 @@ export default function JourneyScreen() {
   });
 
   const loadJourney = useCallback(async () => {
-    if (!auth.currentUser?.uid) {
+    if (!targetUid) {
       setLoading(false);
       return;
     }
 
     setLoading(true);
     try {
-      const uid = auth.currentUser.uid;
+      const uid = targetUid;
       const userRef = doc(db, "users", uid);
       const userSnap = await getDoc(userRef);
       const userData = userSnap.exists() ? userSnap.data() : {};
+      setClaimedRewards(userData?.journeyRewardClaims || {});
+
+      if (isReadOnly) {
+        const viewedBalance = typeof userData.coinBalance === "number" ? userData.coinBalance : 0;
+        setDisplayCoinBalance(viewedBalance);
+        countUpAnim.setValue(viewedBalance);
+      }
 
       // Fetch all goals (personal + shared)
       const allGoals = await getScoredGoalsForUser(uid);
@@ -213,7 +205,7 @@ export default function JourneyScreen() {
 
       const bestGoalStreak = allGoals.reduce((max, goal) => Math.max(max, safeNumber(goal?.longestStreak)), 0);
 
-      setMetrics({
+      const nextMetrics = {
         createdGoals: allGoals.length,
         completedGoals,
         completionDays,
@@ -224,23 +216,319 @@ export default function JourneyScreen() {
         goldGoals: trophyCounts.goldGoals,
         platinumGoals: trophyCounts.platinumGoals,
         hasSilverGoal,
-      });
+      };
+
+      setMetrics(nextMetrics);
+      setQuestStats(userData?.questStats || { totalCompleted: 0 });
+
+      let questState = null;
+      if (isReadOnly) {
+        questState = getQuestViewForUserData({
+          metrics: nextMetrics,
+          goals: allGoals,
+          userData,
+        });
+      } else {
+        await recordQuestActivity("journey");
+        const refreshedSnap = await getDoc(userRef);
+        const refreshedData = refreshedSnap.exists() ? refreshedSnap.data() : userData;
+        questState = await syncQuestState({
+          metrics: nextMetrics,
+          goals: allGoals.length ? allGoals : goals,
+          userData: refreshedData,
+        });
+        if (questState) {
+          setClaimedRewards(refreshedData?.journeyRewardClaims || {});
+          setQuestStats(refreshedData?.questStats || { totalCompleted: 0 });
+        }
+      }
+
+      if (questState) {
+        setQuestView(questState);
+      }
     } catch (error) {
       console.error("Failed to load journey stats", error);
     } finally {
       setLoading(false);
     }
+  }, [goals, isReadOnly, targetUid]);
+
+  useEffect(() => {
+    if (isReadOnly || flyReward) return;
+    setDisplayCoinBalance(coinBalance);
+    countUpAnim.setValue(coinBalance);
+  }, [coinBalance, flyReward, countUpAnim, isReadOnly]);
+
+  useEffect(() => {
+    if (!flyReward || flyReward.fromBalance == null || flyReward.toBalance == null) {
+      return undefined;
+    }
+
+    const { fromBalance, toBalance } = flyReward;
+    countUpAnim.setValue(fromBalance);
+    setDisplayCoinBalance(fromBalance);
+
+    const listener = countUpAnim.addListener(({ value }) => {
+      setDisplayCoinBalance(Math.round(value));
+    });
+
+    const animation = Animated.timing(countUpAnim, {
+      toValue: toBalance,
+      duration: COIN_COUNT_UP_DURATION_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    });
+
+    animation.start(({ finished }) => {
+      if (finished) {
+        setDisplayCoinBalance(toBalance);
+      }
+    });
+
+    return () => {
+      countUpAnim.removeListener(listener);
+      animation.stop();
+    };
+  }, [flyReward, countUpAnim]);
+
+  const isRewardClaimed = useCallback(
+    (claimKey) => !!claimedRewards[claimKey],
+    [claimedRewards]
+  );
+
+  const measureBalanceTarget = useCallback(() => new Promise((resolve) => {
+    balanceAnchorRef.current?.measureInWindow((x, y, w, h) => {
+      resolve({ x: x + w / 2, y: y + h / 2 });
+    });
+  }), []);
+
+  const playBalancePulse = useCallback(() => {
+    balancePulse.setValue(1);
+    Animated.sequence([
+      Animated.timing(balancePulse, {
+        toValue: 1.14,
+        duration: 140,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.spring(balancePulse, {
+        toValue: 1,
+        friction: 5,
+        tension: 180,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [balancePulse]);
+
+  const toContainerCoords = useCallback((point) => new Promise((resolve) => {
+    if (!point) {
+      resolve(null);
+      return;
+    }
+    containerRef.current?.measureInWindow((containerX, containerY) => {
+      resolve({
+        x: point.x - containerX,
+        y: point.y - containerY,
+      });
+    });
+  }), []);
+
+  const claimHapticTimersRef = useRef([]);
+
+  const clearClaimHaptics = useCallback(() => {
+    claimHapticTimersRef.current.forEach(clearTimeout);
+    claimHapticTimersRef.current = [];
   }, []);
+
+  const playClaimHaptics = useCallback((amount) => {
+    clearClaimHaptics();
+    const count = getCoinFlyCount(amount);
+    const interval = Math.max(
+      40,
+      Math.floor((COIN_COUNT_UP_DURATION_MS - CLAIM_HAPTIC_START_MS) / Math.max(count - 1, 1))
+    );
+    for (let i = 0; i < count; i += 1) {
+      const timer = setTimeout(() => triggerLightHaptic(), CLAIM_HAPTIC_START_MS + i * interval);
+      claimHapticTimersRef.current.push(timer);
+    }
+  }, [clearClaimHaptics]);
+
+  const cancelFlyReward = useCallback((balanceBefore) => {
+    clearClaimHaptics();
+    setFlyReward(null);
+    setDisplayCoinBalance(balanceBefore);
+    countUpAnim.setValue(balanceBefore);
+  }, [clearClaimHaptics, countUpAnim]);
+
+  const triggerFlyReward = useCallback(async (amount, origin, balanceBefore) => {
+    const endWindow = await measureBalanceTarget();
+    const startBalance = typeof balanceBefore === "number" ? balanceBefore : coinBalance;
+
+    if (!origin || !endWindow) {
+      setDisplayCoinBalance(startBalance + amount);
+      playBalancePulse();
+      return;
+    }
+
+    const [start, end] = await Promise.all([
+      toContainerCoords(origin),
+      toContainerCoords(endWindow),
+    ]);
+
+    if (start && end) {
+      setFlyReward({
+        amount,
+        start,
+        end,
+        fromBalance: startBalance,
+        toBalance: startBalance + amount,
+      });
+    } else {
+      setDisplayCoinBalance(startBalance + amount);
+      playBalancePulse();
+    }
+  }, [coinBalance, measureBalanceTarget, playBalancePulse, toContainerCoords]);
+
+  const finishFlyReward = useCallback(() => {
+    setFlyReward(null);
+    playBalancePulse();
+  }, [playBalancePulse]);
+
+  const startClaimFromOrigin = useCallback((claimKey, runner) => {
+    const node = claimOriginRefs.current[claimKey];
+    if (!node) {
+      runner(null);
+      return;
+    }
+    node.measureInWindow((x, y, w, h) => {
+      runner({ x: x + w / 2, y: y + h / 2 });
+    });
+  }, []);
+
+  const handleClaimReward = useCallback(async (claimKey, amount, source, label, origin) => {
+    if (!auth.currentUser?.uid || claimingRewardKey || isRewardClaimed(claimKey)) return;
+
+    setClaimingRewardKey(claimKey);
+    const balanceBefore = coinBalance;
+    playClaimHaptics(amount);
+    const flyPromise = triggerFlyReward(amount, origin, balanceBefore);
+    try {
+      const result = await claimJourneyReward(claimKey, amount, source);
+      if (result.claimed) {
+        setClaimedRewards((prev) => ({ ...prev, [claimKey]: true }));
+        await flyPromise;
+      } else if (result.reason === "already_claimed") {
+        setClaimedRewards((prev) => ({ ...prev, [claimKey]: true }));
+        cancelFlyReward(balanceBefore);
+      } else {
+        cancelFlyReward(balanceBefore);
+      }
+    } catch (error) {
+      cancelFlyReward(balanceBefore);
+      console.error(`Failed to claim ${label} reward`, error);
+      Alert.alert("Error", "Could not claim your coin reward. Try again.");
+    } finally {
+      setClaimingRewardKey(null);
+    }
+  }, [claimingRewardKey, cancelFlyReward, coinBalance, isRewardClaimed, playClaimHaptics, triggerFlyReward]);
+
+  const handleCompleteGrowthGoal = useCallback((item, origin) => {
+    const claimKey = `growth:${item.key}`;
+    handleClaimReward(
+      claimKey,
+      COIN_REWARDS.JOURNEY_GROWTH_GOAL,
+      "journey_growth",
+      item.label,
+      origin
+    );
+  }, [handleClaimReward]);
+
+  const handleClaimQuest = useCallback((quest, origin) => {
+    if (!quest?.canClaim) return;
+    setClaimingRewardKey(quest.claimKey);
+    const balanceBefore = coinBalance;
+    playClaimHaptics(quest.coinReward);
+    const flyPromise = triggerFlyReward(quest.coinReward, origin, balanceBefore);
+    claimQuestReward({
+      questId: quest.id,
+      periodKey: quest.periodKey,
+      amount: quest.coinReward,
+      title: quest.title,
+      cadence: quest.cadence,
+    })
+      .then(async (result) => {
+        if (result.claimed || result.reason === "already_claimed") {
+          setClaimedRewards((prev) => ({ ...prev, [quest.claimKey]: true }));
+          if (result.claimed) {
+            await flyPromise;
+          } else {
+            cancelFlyReward(balanceBefore);
+          }
+          await loadJourney();
+        } else {
+          cancelFlyReward(balanceBefore);
+        }
+      })
+      .catch((error) => {
+        cancelFlyReward(balanceBefore);
+        console.error("Failed to claim quest reward", error);
+        Alert.alert("Error", "Could not claim your quest reward. Try again.");
+      })
+      .finally(() => {
+        setClaimingRewardKey(null);
+      });
+  }, [cancelFlyReward, coinBalance, loadJourney, playClaimHaptics, triggerFlyReward]);
+
+  const handleClaimQuestMilestone = useCallback((milestone, origin) => {
+    if (!milestone?.canClaim) return;
+    setClaimingRewardKey(milestone.claimKey);
+    const balanceBefore = coinBalance;
+    playClaimHaptics(milestone.coinReward);
+    const flyPromise = triggerFlyReward(milestone.coinReward, origin, balanceBefore);
+    claimQuestTotalMilestone({
+      milestone,
+      title: `Complete ${milestone.target} quests`,
+    })
+      .then(async (result) => {
+        if (result.claimed || result.reason === "already_claimed") {
+          setClaimedRewards((prev) => ({ ...prev, [milestone.claimKey]: true }));
+          if (result.claimed) {
+            await flyPromise;
+          } else {
+            cancelFlyReward(balanceBefore);
+          }
+          await loadJourney();
+        } else {
+          cancelFlyReward(balanceBefore);
+        }
+      })
+      .catch((error) => {
+        cancelFlyReward(balanceBefore);
+        console.error("Failed to claim quest milestone", error);
+        Alert.alert("Error", "Could not claim your milestone reward. Try again.");
+      })
+      .finally(() => {
+        setClaimingRewardKey(null);
+      });
+  }, [cancelFlyReward, coinBalance, loadJourney, playClaimHaptics, triggerFlyReward]);
+
+  const onQuestClaimPress = useCallback((quest) => {
+    startClaimFromOrigin(quest.claimKey, (origin) => {
+      handleClaimQuest(quest, origin);
+    });
+  }, [handleClaimQuest, startClaimFromOrigin]);
+
+  const onQuestMilestoneClaimPress = useCallback((milestone) => {
+    startClaimFromOrigin(milestone.claimKey, (origin) => {
+      handleClaimQuestMilestone(milestone, origin);
+    });
+  }, [handleClaimQuestMilestone, startClaimFromOrigin]);
 
   useFocusEffect(
     useCallback(() => {
       loadJourney();
     }, [loadJourney])
   );
-
-  const unlockedAchievements = useMemo(() => {
-    return ACHIEVEMENT_TRACKS.filter((item) => safeNumber(metrics[item.metric]) >= item.target);
-  }, [metrics]);
 
   const unlockedCosmetics = useMemo(() => {
     return COSMETIC_TRACKS.filter((item) => safeNumber(metrics[item.metric]) >= item.target);
@@ -285,33 +573,63 @@ export default function JourneyScreen() {
     return ratioSum / nextStageChecklist.length;
   }, [nextStageChecklist]);
 
-  const heroHeight = Math.max(340, Math.round(screenHeight * 0.62));
-
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <View style={{ margin: 18 }}>
-        <View style={[styles.headerCard, { backgroundColor: 'rgba(255,255,255,0.96)', marginBottom: 18 }]}> 
-          <Text style={styles.headerTitle}>Journey</Text>
-        </View>
-      </View>
-
-        <View>
-          <View style={{ marginHorizontal: 18 }}>
-            <View style={styles.heroContainer}>
-              <View style={styles.treeShowcaseOuter}>
-                <View style={styles.treeShowcaseAbsolute}>
-                  <View style={styles.treeGlow} />
-                  <Image source={TREE_STAGES[treeStageIndex]} style={styles.treeImage} />
-                </View>
-              </View>
-              <Image
-                source={require("../assets/Tree/Tree_BG.png")}
-                style={styles.heroBgImageRounded}
-                resizeMode="cover"
-              />
-              <View style={styles.headerSpacer} />
+    <Page>
+      <View ref={containerRef} collapsable={false} style={styles.container}>
+        <View style={styles.headerWrapper}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerRow}>
+              {isReadOnly ? (
+                <>
+                  <HapticTouchableOpacity
+                    style={styles.readOnlyBackBtn}
+                    onPress={() => navigation.goBack()}
+                  >
+                    <Ionicons name="chevron-back" size={24} color={theme.text} />
+                  </HapticTouchableOpacity>
+                  <Text style={[styles.headerTitle, styles.readOnlyHeaderTitle]} numberOfLines={1}>
+                    {viewUsername}'s Journey
+                  </Text>
+                  <View style={styles.headerBalancePill}>
+                    <CoinBadge amount={displayCoinBalance} size="md" />
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.headerTitle}>Journey</Text>
+                  <Animated.View
+                    ref={balanceAnchorRef}
+                    collapsable={false}
+                    style={[styles.headerBalancePill, { transform: [{ scale: balancePulse }] }]}
+                  >
+                    <CoinBadge amount={displayCoinBalance} size="md" />
+                  </Animated.View>
+                </>
+              )}
             </View>
           </View>
+        </View>
+
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: 120 + insets.bottom },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+        <View style={styles.heroContainer}>
+          <View style={styles.treeShowcaseOuter}>
+            <View style={styles.treeShowcaseAbsolute}>
+              <Image source={TREE_STAGES[treeStageIndex]} style={styles.treeImage} />
+            </View>
+          </View>
+          <Image
+            source={require("../assets/Tree/Tree_BG.png")}
+            style={styles.heroBgImageRounded}
+            resizeMode="cover"
+          />
+        </View>
 
           <View style={[styles.section, styles.insetX]}>
             <Text style={styles.sectionTitle}>Garden Growth</Text>
@@ -322,7 +640,7 @@ export default function JourneyScreen() {
               <Text style={styles.progressFootMeta}>{TREE_STAGE_REQUIREMENTS[treeStageIndex].name}</Text>
             </View>
             <View style={styles.stageChip}>
-              <Ionicons name="leaf" size={13} color="#3d6f46" />
+              <Ionicons name="leaf" size={13} color="#7d8a97" />
               <Text style={styles.stageChipText}>Tree {treeStageIndex + 1}/4</Text>
             </View>
           </View>
@@ -338,20 +656,20 @@ export default function JourneyScreen() {
             <View style={styles.nextGoalsWrap}>
               <Text style={styles.nextGoalsTitle}>Next Growth Goals</Text>
               {nextStageChecklist.map((item) => {
-                const isCompleted = item.done || completedGrowthGoals.includes(item.key);
+                const claimKey = `growth:${item.key}`;
+                const isClaimed = isRewardClaimed(claimKey);
+                const canClaim = item.done && !isClaimed;
+                const isClaiming = claimingRewardKey === claimKey;
                 return (
                   <View
                     key={item.key}
                     style={[
                       styles.nextGoalCardWrap,
-                      completedGrowthGoals.includes(item.key) && { opacity: 0.4 },
+                      isClaimed && { opacity: 0.55 },
                     ]}
                   >
                     <View
-                      style={[
-                        styles.nextGoalRow,
-                        (item.done || completedGrowthGoals.includes(item.key)) && styles.nextGoalRowDone,
-                      ]}
+                      style={styles.nextGoalRow}
                     >
                       <View style={{ flex: 1, flexDirection: 'column', justifyContent: 'center' }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
@@ -376,18 +694,40 @@ export default function JourneyScreen() {
                           </View>
                         </View>
                       </View>
-                      <GoalActionButton
-                        onPress={() => handleCompleteGrowthGoal(item)}
-                        disabled={!item.done || completedGrowthGoals.includes(item.key)}
-                        backgroundColor={item.done && !completedGrowthGoals.includes(item.key) ? '#59d700' : '#b7c0c9'}
-                        shadowColor={item.done && !completedGrowthGoals.includes(item.key) ? '#4aa93a' : '#b7c0c9'}
-                        borderRadius={14}
-                        size={40}
-                        style={styles.completeGoalButtonWrap}
-                        faceStyle={styles.completeGoalButton}
-                      >
-                        <Text style={styles.completeGoalButtonText}>Complete</Text>
-                      </GoalActionButton>
+                      {isReadOnly ? (
+                        isClaimed ? (
+                          <Ionicons name="checkmark-circle" size={22} color="#7d8a97" />
+                        ) : item.done ? (
+                          <Text style={styles.readOnlyGrowthStatus}>Complete</Text>
+                        ) : null
+                      ) : (
+                        <View
+                          collapsable={false}
+                          ref={(node) => {
+                            claimOriginRefs.current[claimKey] = node;
+                          }}
+                        >
+                          <GoalActionButton
+                            onPress={() => {
+                              startClaimFromOrigin(claimKey, (origin) => {
+                                handleCompleteGrowthGoal(item, origin);
+                              });
+                            }}
+                            disabled={!canClaim || isClaiming}
+                            haptic={canClaim ? HapticType.MEDIUM : false}
+                            backgroundColor={canClaim ? GROWTH_BLUE : '#b7c0c9'}
+                            shadowColor={canClaim ? GROWTH_BLUE_SHADOW : '#9aa3ad'}
+                            borderRadius={14}
+                            size={40}
+                            style={styles.completeGoalButtonWrap}
+                            faceStyle={styles.completeGoalButton}
+                          >
+                            <Text style={styles.completeGoalButtonText}>
+                              {isClaimed ? "Claimed" : isClaiming ? "..." : "Claim"}
+                            </Text>
+                          </GoalActionButton>
+                        </View>
+                      )}
                     </View>
                   </View>
                 );
@@ -396,40 +736,32 @@ export default function JourneyScreen() {
           ) : null}
             </View>
           </View>
-        </View>
 
       <View style={[styles.section, styles.insetX]}>
-        <Text style={styles.sectionTitle}>Achievements</Text>
-        <View style={styles.sectionCard}>
-          {loading ? <Text style={styles.helper}>Loading progress...</Text> : null}
-          {ACHIEVEMENT_TRACKS.map((item) => {
-            const value = safeNumber(metrics[item.metric]);
-            const unlocked = value >= item.target;
-            return (
-              <View key={item.id} style={[styles.trackRow, unlocked && styles.trackRowUnlocked]}>
-                <View style={[styles.trackIconWrap, unlocked && styles.trackIconWrapUnlocked]}>
-                  <Ionicons name={item.icon} size={20} color={unlocked ? "#1f7a1f" : "#6f8294"} />
-                </View>
-                <View style={styles.trackBody}>
-                  <View style={styles.trackTopRow}>
-                    <Text style={styles.trackTitle}>{item.title}</Text>
-                    <View style={[styles.trackStatusPill, unlocked && styles.trackStatusPillUnlocked]}>
-                      <Text style={[styles.trackStatusText, unlocked && styles.trackStatusTextUnlocked]}>
-                        {unlocked ? "Unlocked" : "In progress"}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.trackDesc}>{item.description}</Text>
-                  <ProgressBar value={value} target={item.target} />
-                  <View style={styles.trackMetaRow}>
-                    <Text style={styles.trackMeta}>{value}/{item.target}</Text>
-                    <Text style={styles.trackReward}>{item.reward}</Text>
-                  </View>
-                </View>
-              </View>
-            );
-          })}
-        </View>
+        <Text style={styles.sectionTitle}>Today's Quests</Text>
+        <DailyQuestCard
+          dailyQuests={questView.daily}
+          weeklyQuests={questView.weekly}
+          loading={loading}
+          claimingKey={claimingRewardKey}
+          claimOriginRefs={claimOriginRefs}
+          onClaim={onQuestClaimPress}
+          readOnly={isReadOnly}
+        />
+      </View>
+
+      <View style={[styles.section, styles.insetX]}>
+        <QuestLogSection
+          questHistory={questView.questHistory}
+          milestones={questView.milestones}
+          questMilestones={questView.questMilestones}
+          totalCompleted={safeNumber(questStats.totalCompleted)}
+          claimingKey={claimingRewardKey}
+          claimOriginRefs={claimOriginRefs}
+          onClaimQuest={onQuestClaimPress}
+          onClaimMilestone={onQuestMilestoneClaimPress}
+          readOnly={isReadOnly}
+        />
       </View>
 
       <View style={[styles.section, styles.insetX]}>
@@ -449,8 +781,8 @@ export default function JourneyScreen() {
 
           <View style={styles.summaryGrid}>
             <View style={styles.summaryTile}>
-              <Text style={styles.summaryValue}>{unlockedAchievements.length}/{ACHIEVEMENT_TRACKS.length}</Text>
-              <Text style={styles.summaryLabel}>Achievements</Text>
+              <Text style={styles.summaryValue}>{safeNumber(questStats.totalCompleted)}</Text>
+              <Text style={styles.summaryLabel}>Quests Done</Text>
             </View>
             <View style={styles.summaryTile}>
               <Text style={styles.summaryValue}>{unlockedCosmetics.length}/{COSMETIC_TRACKS.length}</Text>
@@ -472,7 +804,10 @@ export default function JourneyScreen() {
           </View>
         </View>
       </View>
-    </ScrollView>
+        </ScrollView>
+        {!isReadOnly ? <CoinFlyReward reward={flyReward} onComplete={finishFlyReward} /> : null}
+      </View>
+    </Page>
   );
 }
 
@@ -492,10 +827,10 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     borderRadius: 14,
-    backgroundColor: '#4aa93a',
+    backgroundColor: GROWTH_BLUE_SHADOW,
     opacity: 0.32,
     zIndex: 0,
-    shadowColor: '#2e5d1a',
+    shadowColor: GROWTH_BLUE_SHADOW,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.18,
     shadowRadius: 8,
@@ -517,7 +852,67 @@ const styles = StyleSheet.create({
   completeGoalButtonText: { color: "#FFF", fontSize: 15, fontWeight: "900", fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1 },
   container: {
     flex: 1,
-    backgroundColor: theme.bg,
+  },
+  scroll: {
+    flex: 1,
+  },
+  headerWrapper: {
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderRadius: 24,
+    borderWidth: 0,
+    borderColor: "#d9e6f4",
+    ...cpShadow({ color: "#000000", offset: { width: 0, height: 6 }, opacity: 0.16, radius: 0, elevation: 3 }),
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  headerContent: {
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    paddingLeft: 16,
+    paddingRight: 12,
+    alignItems: "stretch",
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    minHeight: 44,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: theme.text,
+    fontFamily: "CeraRoundProDEMO-Black",
+  },
+  readOnlyBackBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f0f4f8",
+    flexShrink: 0,
+  },
+  readOnlyHeaderTitle: {
+    flex: 1,
+    fontSize: 18,
+    marginHorizontal: 8,
+  },
+  readOnlyGrowthStatus: {
+    alignSelf: "center",
+    marginLeft: 8,
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#7d8a97",
+    fontFamily: "CeraRoundProDEMO-Black",
+    flexShrink: 0,
+  },
+  headerBalancePill: {
+    backgroundColor: "#fff",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
   },
   heroContainer: {
     borderRadius: 32,
@@ -527,7 +922,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 12,
     elevation: 4,
-    top: 50,
+    marginBottom: 12,
   },
   heroBgImageRounded: {
     width: '100%',
@@ -542,33 +937,10 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   content: {
-    paddingBottom: 112,
+    paddingBottom: 120,
   },
   insetX: {
-    marginHorizontal: 16,
-  },
-  headerSpacer: {
-    height: 65,
-  },
-  headerCard: {
-    backgroundColor: "rgba(255,255,255,0.96)",
-    borderRadius: 24,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    shadowColor: "#4c6782",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 3,
-    marginBottom: 12,
-    top: 50,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: theme.text,
-    fontFamily: 'CeraRoundProDEMO-Black',
-    letterSpacing: 0.1,
+    marginHorizontal: 0,
   },
   nextGoalCardWrap: {
     backgroundColor: "#f5f5f5",
@@ -602,14 +974,6 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   treeShowcase: {},
-  treeGlow: {
-    position: "absolute",
-    width: 230,
-    height: 230,
-    borderRadius: 999,
-    backgroundColor: "rgba(182, 252, 201, 0)",
-    top: 34,
-  },
   treeImage: {
     width: 340,
     height: 340,
@@ -645,13 +1009,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     marginBottom: 2,
     fontFamily: 'CeraRoundProDEMO-Black',
-  },
-  stageChipText: {
-    fontSize: 13,
-    fontWeight: "900",
-    color: '#3d6f46',
-    fontFamily: 'CeraRoundProDEMO-Black',
-    letterSpacing: 0.1,
   },
   nextGoalsTitle: {
     fontSize: 13,
@@ -718,7 +1075,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    backgroundColor: "#eaf7e9",
+    backgroundColor: "#f5f5f5",
     borderRadius: 999,
     paddingHorizontal: 9,
     paddingVertical: 5,
@@ -726,7 +1083,7 @@ const styles = StyleSheet.create({
   stageChipText: {
     fontSize: 10,
     fontWeight: "900",
-    color: "#3d6f46",
+    color: "#7d8a97",
     fontFamily: 'CeraRoundProDEMO-Black',
     letterSpacing: 0.1,
   },
@@ -741,7 +1098,7 @@ const styles = StyleSheet.create({
   nextGoalsWrap: {
     marginTop: 10,
     borderTopWidth: 1,
-    borderTopColor: "#e6edf3",
+    borderTopColor: "#e8e8e8",
     paddingTop: 8,
     gap: 0,
   },
@@ -757,7 +1114,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#f5f8fb",
+    backgroundColor: "transparent",
     borderRadius: 12,
     paddingHorizontal: 0,
     paddingLeft: 8,
@@ -768,9 +1125,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 0,
     marginRight: 10,
-  },
-  nextGoalRowDone: {
-    backgroundColor: "#eff9ed",
   },
   nextGoalLabel: {
     flex: 1,
@@ -795,13 +1149,13 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 6,
     borderRadius: 999,
-    backgroundColor: "#dde7f1",
+    backgroundColor: "#e0e0e0",
     overflow: "hidden",
   },
   nextGoalMiniFill: {
     height: "100%",
     borderRadius: 999,
-    backgroundColor: "#59d700",
+    backgroundColor: GROWTH_BLUE,
   },
   sectionCard: {
     backgroundColor: "#ffffff",
@@ -893,13 +1247,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
     height: 10,
     borderRadius: 999,
-    backgroundColor: "#e5edf5",
+    backgroundColor: "#e0e0e0",
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
     borderRadius: 999,
-    backgroundColor: "#59d700",
+    backgroundColor: GROWTH_BLUE,
   },
   trackMeta: {
     marginTop: 6,
@@ -923,6 +1277,23 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "right",
     fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
+  },
+  achievementClaimButtonWrap: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    minWidth: 132,
+  },
+  achievementClaimButton: {
+    height: 34,
+    minWidth: 132,
+    paddingHorizontal: 12,
+  },
+  achievementClaimButtonText: {
+    color: "#1f2937",
+    fontSize: 13,
+    fontWeight: "900",
+    fontFamily: "CeraRoundProDEMO-Black",
     letterSpacing: 0.1,
   },
   summaryGrid: {
@@ -973,7 +1344,7 @@ const styles = StyleSheet.create({
   },
   summaryTile: {
     width: "48%",
-    backgroundColor: "#f5f8fb",
+    backgroundColor: "#f5f5f5",
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 10,
@@ -996,7 +1367,7 @@ const styles = StyleSheet.create({
   },
   summaryScoreRow: {
     marginTop: 10,
-    backgroundColor: "#edf3fa",
+    backgroundColor: "#f5f5f5",
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -1007,7 +1378,7 @@ const styles = StyleSheet.create({
   summaryScoreLabel: {
     fontSize: 12,
     fontWeight: "900",
-    color: "#56708a",
+    color: "#7d8a97",
     textTransform: "uppercase",
     letterSpacing: 0.6,
     fontFamily: 'CeraRoundProDEMO-Black',

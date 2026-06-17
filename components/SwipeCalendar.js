@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, Platform, Modal } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Platform, Modal } from 'react-native';
+import HapticPressable from './HapticPressable';
 import { theme } from '../theme';
 import { getWeekdayLabelsSync, getWeekStartSync } from '../utils/dateFormat';
 
@@ -88,9 +89,9 @@ export default function SwipeCalendar({ month, setMonth, selectedDate, onSelectD
     <View style={styles.calendarCard}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={styles.helperText}>Swipe the calendar left/right to move by month.</Text>
-        <Pressable onPress={openPicker} style={{ padding: 6 }}>
+        <HapticPressable onPress={openPicker} style={{ padding: 6 }}>
           <Text style={[styles.helperText, { fontWeight: '700' }]}>{monthName(month)} {"\u2022"} {month.getFullYear()}</Text>
-        </Pressable>
+        </HapticPressable>
       </View>
       <ScrollView
         ref={calendarPagerRef}
@@ -126,7 +127,7 @@ export default function SwipeCalendar({ month, setMonth, selectedDate, onSelectD
                 const isSelected = !!day && selectedDate === iso;
 
                 return (
-                  <Pressable
+                  <HapticPressable
                     key={`${pageIdx}-${idx}-${day || 'blank'}`}
                     onPress={() => day && !isPast && onSelectDate(iso)}
                     disabled={!day || isPast}
@@ -141,7 +142,7 @@ export default function SwipeCalendar({ month, setMonth, selectedDate, onSelectD
                     <Text style={[styles.calendarCellText, isPast && styles.calendarCellTextPast, isSelected && styles.calendarCellTextSelected]}>
                       {day || ''}
                     </Text>
-                  </Pressable>
+                  </HapticPressable>
                 );
               })}
             </View>
@@ -163,7 +164,7 @@ export default function SwipeCalendar({ month, setMonth, selectedDate, onSelectD
                   decelerationRate="fast"
                 >
                   {Array.from({ length: 12 }, (_, i) => (
-                    <Pressable
+                    <HapticPressable
                       key={`m-${i}`}
                       onPress={() => onPickYearMonth(month.getFullYear(), i)}
                       style={[styles.pickerItem, i === month.getMonth() && styles.pickerItemActive]}
@@ -171,7 +172,7 @@ export default function SwipeCalendar({ month, setMonth, selectedDate, onSelectD
                       <Text style={[styles.pickerItemText, i === month.getMonth() && styles.pickerItemTextActive]}>
                         {new Date(0, i).toLocaleString(undefined, { month: 'short' })}
                       </Text>
-                    </Pressable>
+                    </HapticPressable>
                   ))}
                 </ScrollView>
               </View>
@@ -185,21 +186,21 @@ export default function SwipeCalendar({ month, setMonth, selectedDate, onSelectD
                   decelerationRate="fast"
                 >
                   {pickerYearRange.map((y) => (
-                    <Pressable
+                    <HapticPressable
                       key={`y-${y}`}
                       onPress={() => onPickYearMonth(y, month.getMonth())}
                       style={[styles.pickerItem, y === month.getFullYear() && styles.pickerItemActive]}
                     >
                       <Text style={[styles.pickerItemText, y === month.getFullYear() && styles.pickerItemTextActive]}>{String(y)}</Text>
-                    </Pressable>
+                    </HapticPressable>
                   ))}
                 </ScrollView>
               </View>
 
               <View style={styles.pickerActions}>
-                <Pressable onPress={closePicker} style={styles.pickerCancel}>
+                <HapticPressable onPress={closePicker} style={styles.pickerCancel}>
                   <Text style={styles.pickerCancelText}>Cancel</Text>
-                </Pressable>
+                </HapticPressable>
               </View>
             </View>
           </View>

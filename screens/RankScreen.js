@@ -1,8 +1,8 @@
 // screens/RankScreen.js
 import React, { useState, useCallback } from "react";
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Image } from "react-native";
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, Image } from "react-native";
+import HapticTouchableOpacity from "../components/HapticTouchableOpacity";
 import { useFonts } from 'expo-font';
-import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "@react-navigation/native";
 import { collection, query, orderBy, limit, getDocs, doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
@@ -129,10 +129,6 @@ export default function RankScreen({ navigation }) {
         ? "No followers to rank yet."
         : "No following users to rank yet.";
 
-  const triggerFilterHaptic = () => {
-    Haptics.selectionAsync().catch(() => {});
-  };
-
   const renderRankIcon = (rank) => {
     if (rank === 1) return <Text style={styles.medal}>🥇</Text>;
     if (rank === 2) return <Text style={styles.medal}>🥈</Text>;
@@ -144,7 +140,7 @@ export default function RankScreen({ navigation }) {
     const isCurrentUser = item.id === auth.currentUser?.uid;
 
     return (
-      <TouchableOpacity
+      <HapticTouchableOpacity
         style={[styles.userCard, isCurrentUser && styles.currentUserCard]}
         onPress={() => {
           if (isCurrentUser) {
@@ -176,7 +172,7 @@ export default function RankScreen({ navigation }) {
           <Text style={[styles.scoreNumber, { color: theme.accent }]}>{item.overallScore || 0}</Text>
           <Text style={styles.scoreLabel}>pts</Text>
         </View>
-      </TouchableOpacity>
+      </HapticTouchableOpacity>
     );
   };
 
@@ -191,17 +187,14 @@ export default function RankScreen({ navigation }) {
                 {FILTERS.map((filter) => {
                   const isActive = activeFilter === filter.key;
                   return (
-                    <TouchableOpacity
+                    <HapticTouchableOpacity
                       key={filter.key}
                       style={[styles.filterChip, isActive && { backgroundColor: theme.accent, borderColor: theme.accent }]}
-                      onPress={() => {
-                        triggerFilterHaptic();
-                        setActiveFilter(filter.key);
-                      }}
+                      onPress={() => setActiveFilter(filter.key)}
                       activeOpacity={0.8}
                     >
                       <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>{filter.label}</Text>
-                    </TouchableOpacity>
+                    </HapticTouchableOpacity>
                   );
                 })}
               </View>

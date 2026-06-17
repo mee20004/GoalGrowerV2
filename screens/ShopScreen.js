@@ -4,17 +4,19 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Pressable,
   ActivityIndicator,
   Alert,
   ImageBackground,
   useWindowDimensions,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import HapticPressable from "../components/HapticPressable";
 import { LinearGradient } from "expo-linear-gradient";
 import { PAYWALL_RESULT } from "react-native-purchases-ui";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useTheme, getDarkerAccentColor } from "../theme";
+import Page from "../components/Page";
+import theme, { useTheme, getDarkerAccentColor } from "../theme";
+import { cpShadow } from "../utils/shadows";
 import { useSubscription } from "../components/SubscriptionProvider";
 import { useShopInventory } from "../components/ShopInventoryProvider";
 import CoinBadge from "../components/CoinBadge";
@@ -26,6 +28,7 @@ import {
   IAP_COIN_GRANTS,
   getShopItemsByCategory,
 } from "../constants/ShopCatalog";
+import { PRO_BENEFITS_SUMMARY } from "../constants/subscriptionLimits";
 import { creditCoins } from "../utils/shopInventory";
 
 function shadowStyle({
@@ -86,7 +89,7 @@ export default function ShopScreen() {
     unavailableReason,
   } = useSubscription();
 
-  const cardWidth = (width - 48 - 14) / 2;
+  const cardWidth = (width - theme.pad * 2 - 14) / 2;
   const catalogItems = useMemo(() => getShopItemsByCategory(activeTab), [activeTab]);
 
   const handleBuy = useCallback(
@@ -145,74 +148,80 @@ export default function ShopScreen() {
   }, [isPro, openCustomerCenter, openDefaultPaywall]);
 
   return (
-    <View style={[styles.screen, { backgroundColor: theme.bg }]}>
-      <View
-        pointerEvents="box-none"
-        style={[styles.stickyCoinWrap, { top: insets.top + 16 }]}
-      >
-        <View
-          style={[
-            styles.balancePill,
-            shadowStyle({ color: "#cdcdcd", offset: { width: 0, height: 3 }, opacity: 1, radius: 0, elevation: 4 }),
-          ]}
-        >
-          <CoinBadge amount={coinBalance} size="md" />
-        </View>
-      </View>
-
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: insets.top + 24, paddingBottom: 120 + insets.bottom },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.title}>Shop</Text>
-
-      {/* Pro banner */}
-      <Pressable onPress={handleProBanner} disabled={subscriptionLoading}>
-        <ImageBackground
-          source={BANNER_IMAGE}
-          style={[styles.banner, shadowStyle({ color: "#94a3b8", offset: { width: 0, height: 6 }, opacity: 0.35, radius: 12, elevation: 4 })]}
-          imageStyle={styles.bannerImage}
-          resizeMode="cover"
-        >
-          <LinearGradient
-            colors={["rgba(15, 23, 42, 0.4)", "rgba(15, 23, 42, 0.2)", "rgba(15, 23, 42, 0.05)"]}
-            locations={[0, 0.55, 1]}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={styles.bannerScrim}
-          >
-            <View style={styles.bannerTextWrap}>
-              <View style={styles.bannerBadge}>
-                <Ionicons name="star" size={12} color={theme.accent} />
-                <Text style={[styles.bannerBadgeText, { color: theme.accent }]}>
-                  {isPro ? "PRO MEMBER" : "GOAL GROWER PRO"}
-                </Text>
-              </View>
-              <Text style={styles.bannerTitle}>
-                {isPro ? "Thanks for going Pro!" : "Grow Your Garden"}
-              </Text>
-              <Text style={styles.bannerBody}>
-                {isPro
-                  ? "Manage your subscription anytime."
-                  : "Premium plants, pots & perks to grow faster."}
-              </Text>
-              <View style={styles.bannerCta}>
-                <Text style={[styles.bannerCtaText, { color: theme.accent }]}>
-                  {isPro ? "Manage plan" : "See Pro plans"}
-                </Text>
-                <Ionicons name="arrow-forward" size={15} color={theme.accent} />
+    <Page>
+      <View style={styles.container}>
+        <View style={styles.headerWrapper}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerRow}>
+              <Text style={styles.headerTitle}>Shop</Text>
+              <View style={styles.headerBalancePill}>
+                <CoinBadge amount={coinBalance} size="md" />
               </View>
             </View>
-          </LinearGradient>
-        </ImageBackground>
-      </Pressable>
+          </View>
+        </View>
+
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: 120 + insets.bottom },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+      {/* Pro banner */}
+      <View style={styles.bannerWrap}>
+        <View pointerEvents="none" style={styles.bannerShadow} />
+        <HapticPressable
+          onPress={handleProBanner}
+          disabled={subscriptionLoading}
+          style={({ pressed }) => [
+            styles.bannerFace,
+            pressed && !subscriptionLoading && styles.bannerPressed,
+          ]}
+        >
+          <ImageBackground
+            source={BANNER_IMAGE}
+            style={styles.banner}
+            imageStyle={styles.bannerImage}
+            resizeMode="cover"
+          >
+            <LinearGradient
+              colors={["rgba(15, 23, 42, 0.4)", "rgba(15, 23, 42, 0.2)", "rgba(15, 23, 42, 0.05)"]}
+              locations={[0, 0.55, 1]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={styles.bannerScrim}
+            >
+              <View style={styles.bannerTextWrap}>
+                <View style={styles.bannerBadge}>
+                  <Ionicons name="star" size={12} color={theme.accent} />
+                  <Text style={[styles.bannerBadgeText, { color: theme.accent }]}>
+                    {isPro ? "PRO MEMBER" : "GOAL GROWER PRO"}
+                  </Text>
+                </View>
+                <Text style={styles.bannerTitle}>
+                  {isPro ? "Thanks for going Pro!" : "Grow Your Garden"}
+                </Text>
+                <Text style={styles.bannerBody}>
+                  {isPro
+                    ? PRO_BENEFITS_SUMMARY
+                    : `Upgrade to unlock more. Pro includes: ${PRO_BENEFITS_SUMMARY}`}
+                </Text>
+                <View style={styles.bannerCta}>
+                  <Text style={[styles.bannerCtaText, { color: theme.accent }]}>
+                    {isPro ? "Manage plan" : "See Pro plans"}
+                  </Text>
+                  <Ionicons name="arrow-forward" size={15} color={theme.accent} />
+                </View>
+              </View>
+            </LinearGradient>
+          </ImageBackground>
+        </HapticPressable>
+      </View>
 
       {/* Buy coins button */}
-      <Pressable
+      <HapticPressable
         onPress={handleGetCoins}
         disabled={subscriptionLoading}
         style={({ pressed }) => [
@@ -233,7 +242,7 @@ export default function ShopScreen() {
             <Ionicons name="add-circle" size={22} color="#fff" />
           </>
         )}
-      </Pressable>
+      </HapticPressable>
 
       {!isUISupported && unavailableReason ? (
         <View style={styles.noteCard}>
@@ -255,7 +264,7 @@ export default function ShopScreen() {
           {CATALOG_TABS.map((tab) => {
             const active = activeTab === tab.key;
             return (
-              <Pressable
+              <HapticPressable
                 key={tab.key}
                 onPress={() => setActiveTab(tab.key)}
                 style={[
@@ -276,7 +285,7 @@ export default function ShopScreen() {
                 <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
                   {tab.label}
                 </Text>
-              </Pressable>
+              </HapticPressable>
             );
           })}
         </ScrollView>
@@ -301,50 +310,88 @@ export default function ShopScreen() {
         </View>
       )}
       </ScrollView>
-    </View>
+      </View>
+    </Page>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
-  stickyCoinWrap: {
-    position: "absolute",
-    right: 24,
-    zIndex: 10,
-  },
   container: {
     flex: 1,
   },
-  content: {
-    paddingHorizontal: 24,
-    paddingBottom: 120,
+  headerWrapper: {
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderRadius: 24,
+    borderWidth: 0,
+    borderColor: "#d9e6f4",
+    ...cpShadow({ color: "#000000", offset: { width: 0, height: 6 }, opacity: 0.16, radius: 0, elevation: 3 }),
+    marginTop: 8,
+    marginBottom: 12,
   },
-  title: {
-    fontSize: 32,
+  headerContent: {
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    paddingLeft: 16,
+    paddingRight: 12,
+    alignItems: "stretch",
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    minHeight: 44,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: theme.text,
     fontFamily: "CeraRoundProDEMO-Black",
-    color: "#0f172a",
-    marginBottom: 18,
-    paddingRight: 120,
   },
-  balancePill: {
+  headerBalancePill: {
     backgroundColor: "#fff",
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  scroll: {
+    flex: 1,
+  },
+  content: {
+    paddingBottom: 120,
+  },
+  bannerWrap: {
+    position: "relative",
+    marginBottom: 14,
+    paddingBottom: 5,
+  },
+  bannerShadow: {
+    position: "absolute",
+    top: 5,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 24,
+    backgroundColor: "rgb(180, 201, 218)",
+  },
+  bannerFace: {
+    borderRadius: 24,
+    overflow: "hidden",
+  },
+  bannerPressed: {
+    transform: [{ translateY: 2 }],
   },
   banner: {
     borderRadius: 24,
     overflow: "hidden",
-    marginBottom: 14,
     minHeight: 168,
   },
   bannerImage: {
+    top: 0,
     borderRadius: 24,
-    height: 300,
-    width: 500,
-    left: -40,
+    height: 400,
+    width: 550,
+    left: -45,
   },
   bannerScrim: {
     flex: 1,

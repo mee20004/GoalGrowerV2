@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from "react-native";
+import HapticTouchableOpacity from "../components/HapticTouchableOpacity";
 import { useFocusEffect } from "@react-navigation/native";
 import { collection, getDocs, doc, getDoc, deleteDoc } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
@@ -62,9 +63,9 @@ export default function FollowingListScreen({ route, navigation }) {
       <View style={styles.headerTopSpacer} />
       <View style={styles.headerWrapper}>
         <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
+          <HapticTouchableOpacity style={styles.headerBtn} onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={26} color={theme.accent} />
-          </TouchableOpacity>
+          </HapticTouchableOpacity>
           <Text style={styles.headerTitle}>Following</Text>
           <View style={styles.headerBtnPlaceholder} />
         </View>
@@ -84,20 +85,20 @@ export default function FollowingListScreen({ route, navigation }) {
                   <Text style={styles.username}>{user.username || user.id}</Text>
                 </View>
                 <View style={styles.buttonGroup}>
-                  <TouchableOpacity
+                  <HapticTouchableOpacity
                     style={styles.viewButton}
                     onPress={() => navigation.navigate("UserProfile", { userId: user.id || user.uid })}
                   >
                     <Text style={styles.viewButtonText}>View Profile</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  </HapticTouchableOpacity>
+                  <HapticTouchableOpacity
                     onPress={() => handleUnfollow(user.id)}
                     disabled={actionLoading[user.id]}
                     style={[styles.actionButton, styles.unfollowButton, actionLoading[user.id] && styles.disabledButton]}
                     accessibilityLabel="Unfollow"
                   >
                     <Text style={styles.actionButtonText}>Unfollow</Text>
-                  </TouchableOpacity>
+                  </HapticTouchableOpacity>
                 </View>
               </View>
             </View>

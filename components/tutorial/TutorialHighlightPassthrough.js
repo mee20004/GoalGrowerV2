@@ -1,5 +1,6 @@
 import React from "react";
-import { Pressable, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
+import HapticPressable from "../HapticPressable";
 import { isValidRect } from "../../tutorial/layout";
 
 export default function TutorialHighlightPassthrough({ rect, enabled = false, onPress }) {
@@ -8,7 +9,7 @@ export default function TutorialHighlightPassthrough({ rect, enabled = false, on
   }
 
   return (
-    <Pressable
+    <HapticPressable
       style={[
         styles.hitArea,
         {

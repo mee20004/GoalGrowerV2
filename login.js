@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigation } from '@react-navigation/native';
-import { View, Text, TextInput, Pressable, StyleSheet, Alert, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Alert, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import HapticPressable from './components/HapticPressable';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { auth, db } from './firebaseConfig';
 import { theme } from './theme';
@@ -126,9 +127,9 @@ export default function Login() {
     return (
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.backButtonWrap}>
-          <Pressable onPress={handleBackPress} style={styles.backButton}>
+          <HapticPressable onPress={handleBackPress} style={styles.backButton}>
             <Ionicons name="chevron-back" size={26} color={theme.accent} />
-          </Pressable>
+          </HapticPressable>
         </View>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.inner}>
@@ -160,12 +161,12 @@ export default function Login() {
             </View>
             <View style={[styles.actionButtonWrap, { marginTop: 22 }]}>
               <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
-              <Pressable
+              <HapticPressable
                 style={({ pressed }) => [styles.actionButtonFace, styles.actionButtonPrimary, pressed && styles.actionButtonPressed]}
                 onPress={handleLogin}
               >
                 <Text style={styles.actionButtonTextPrimary}>Log In</Text>
-              </Pressable>
+              </HapticPressable>
             </View>
           </View>
         </ScrollView>
@@ -177,9 +178,9 @@ export default function Login() {
     return (
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.backButtonWrap}>
-          <Pressable onPress={handleBackPress} style={styles.backButton}>
+          <HapticPressable onPress={handleBackPress} style={styles.backButton}>
             <Ionicons name="chevron-back" size={26} color={theme.accent} />
-          </Pressable>
+          </HapticPressable>
         </View>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.inner}>
@@ -199,21 +200,21 @@ export default function Login() {
             </View>
             <View style={[styles.actionButtonWrap, { marginTop: 22 }]}>
               <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowPrimary]} />
-              <Pressable
+              <HapticPressable
                 style={({ pressed }) => [styles.actionButtonFace, styles.actionButtonPrimary, pressed && styles.actionButtonPressed]}
                 onPress={handleSaveUsername}
               >
                 <Text style={styles.actionButtonTextPrimary}>Finish Setup</Text>
-              </Pressable>
+              </HapticPressable>
             </View>
             <View style={[styles.actionButtonWrap, { marginTop: 12 }]}>
               <View pointerEvents="none" style={[styles.actionButtonShadow, styles.actionButtonShadowSecondary]} />
-              <Pressable
+              <HapticPressable
                 style={({ pressed }) => [styles.actionButtonFace, styles.actionButtonSecondary, pressed && styles.actionButtonPressed]}
                 onPress={() => signOut(auth)}
               >
                 <Text style={styles.actionButtonTextSecondary}>Logout</Text>
-              </Pressable>
+              </HapticPressable>
             </View>
           </View>
         </ScrollView>
@@ -228,17 +229,17 @@ export default function Login() {
         <Text style={styles.subtitle}>{guest ? "You are using Guest Mode. Your data is stored locally." : "Your profile is all set up."}</Text>
         {guest ? (
           <>
-            <Pressable style={styles.button} onPress={() => navigation.replace('Tabs', { guest: true })}>
+            <HapticPressable style={styles.button} onPress={() => navigation.replace('Tabs', { guest: true })}>
               <Text style={styles.buttonText}>Continue to App</Text>
-            </Pressable>
-            <Pressable style={[styles.button, styles.buttonSecondary]} onPress={() => setGuest(false)}>
+            </HapticPressable>
+            <HapticPressable style={[styles.button, styles.buttonSecondary]} onPress={() => setGuest(false)}>
               <Text style={[styles.buttonText, styles.buttonTextSecondary]}>Go Back</Text>
-            </Pressable>
+            </HapticPressable>
           </>
         ) : (
-          <Pressable style={[styles.button, styles.buttonDanger]} onPress={() => signOut(auth)}>
+          <HapticPressable style={[styles.button, styles.buttonDanger]} onPress={() => signOut(auth)}>
             <Text style={[styles.buttonText, styles.buttonTextDanger]}>Logout</Text>
-          </Pressable>
+          </HapticPressable>
         )}
       </View>
     );
@@ -257,7 +258,9 @@ export default function Login() {
   return (
     <View style={styles.container}>
       <Text>Something went wrong. View State: {view}</Text>
-      <Button title="Reset" onPress={() => signOut(auth)} />
+      <HapticPressable style={styles.button} onPress={() => signOut(auth)}>
+        <Text style={styles.buttonText}>Reset</Text>
+      </HapticPressable>
     </View>
   );
 }

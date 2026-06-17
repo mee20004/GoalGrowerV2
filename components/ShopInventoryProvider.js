@@ -60,6 +60,7 @@ export function ShopInventoryProvider({ children }) {
         if (!cancelled) setInventory(nextInventory);
       },
       (error) => {
+        if (error?.code === "permission-denied" && !auth.currentUser) return;
         console.error("Shop inventory listener failed:", error);
       }
     );

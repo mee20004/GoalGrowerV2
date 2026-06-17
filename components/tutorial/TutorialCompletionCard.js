@@ -2,11 +2,11 @@ import React, { useEffect, useRef } from "react";
 import {
   Animated,
   Image,
-  Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import HapticPressable from "../HapticPressable";
 import { theme } from "../../theme";
 import { tutorialCardStyles, tutorialShadows } from "./tutorialStyles";
 
@@ -105,14 +105,14 @@ export default function TutorialCompletionCard({
           </View>
         ) : null}
 
-        <Pressable
+        <HapticPressable
           style={[tutorialCardStyles.primaryBtn, styles.endBtn]}
           onPress={onEndTutorial}
           accessibilityRole="button"
           accessibilityLabel={primaryLabel}
         >
           <Text style={tutorialCardStyles.primaryText}>{primaryLabel}</Text>
-        </Pressable>
+        </HapticPressable>
       </Animated.View>
     </View>
   );

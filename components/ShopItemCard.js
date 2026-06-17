@@ -3,10 +3,11 @@ import {
   View,
   Text,
   StyleSheet,
-  Pressable,
   ActivityIndicator,
   Image,
 } from "react-native";
+import HapticPressable from "./HapticPressable";
+import { HapticType } from "../utils/haptics";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import TutorialPlantInPot from "./tutorial/TutorialPlantInPot";
 import CoinIcon from "./CoinIcon";
@@ -85,8 +86,9 @@ function ShopItemCard({ item, owned, canAfford, loading, accent, onPress }) {
         {item.description}
       </Text>
 
-      <Pressable
+      <HapticPressable
         disabled={disabled}
+        haptic={disabled ? false : HapticType.LIGHT}
         onPress={onPress}
         style={({ pressed }) => [
           styles.button,
@@ -104,7 +106,7 @@ function ShopItemCard({ item, owned, canAfford, loading, accent, onPress }) {
             <Text style={[styles.buttonText, { color: buttonTextColor }]}>{item.price}</Text>
           </View>
         )}
-      </Pressable>
+      </HapticPressable>
     </View>
   );
 }

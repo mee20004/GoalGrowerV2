@@ -1,11 +1,11 @@
 import React, { useEffect, useRef } from "react";
 import {
   Animated,
-  Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import HapticPressable from "../HapticPressable";
 import { LinearGradient } from "expo-linear-gradient";
 import { theme } from "../../theme";
 import TutorialPlantInPot from "./TutorialPlantInPot";
@@ -100,14 +100,14 @@ export default function TutorialWelcomeCard({
 
         <Text style={styles.description}>{description}</Text>
 
-        <Pressable
+        <HapticPressable
           style={[tutorialCardStyles.primaryBtn, styles.getStartedBtn]}
           onPress={onGetStarted}
           accessibilityRole="button"
           accessibilityLabel="Get Started"
         >
           <Text style={tutorialCardStyles.primaryText}>Get Started</Text>
-        </Pressable>
+        </HapticPressable>
       </Animated.View>
     </View>
   );
