@@ -35,7 +35,10 @@
         {
           "action": "VIEW",
           "autoVerify": true,
-          "category": ["BROWSABLE", "DEFAULT"],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
           "data": [
             {
               "scheme": "https",
@@ -47,7 +50,10 @@
         {
           "action": "VIEW",
           "autoVerify": true,
-          "category": ["BROWSABLE", "DEFAULT"],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
           "data": [
             {
               "scheme": "https",
@@ -58,7 +64,10 @@
         },
         {
           "action": "VIEW",
-          "category": ["BROWSABLE", "DEFAULT"],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
           "data": [
             {
               "scheme": "goalgrower"
@@ -82,9 +91,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "16ddaa2a-f90c-4a59-9342-874b03e16819"
+        "projectId": "b5e66151-79f6-4112-9a7d-45cb91f57a91"
       }
     },
-    "owner": "devaaj"
+    "owner": "skipper1969"
   }
 }
