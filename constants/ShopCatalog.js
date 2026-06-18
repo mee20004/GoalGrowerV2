@@ -309,6 +309,36 @@ export const SHOP_ITEMS = [
     description: "Gentle green waves with leafy accents.",
     price: 180,
   },
+  {
+    id: "wall_4",
+    category: SHOP_CATEGORIES.WALLS,
+    type: DECOR_TYPES.WALL,
+    assetIndex: 4,
+    assetKey: "4",
+    name: "Coral Sunset",
+    description: "Warm peach and coral rolling waves.",
+    price: 200,
+  },
+  {
+    id: "wall_5",
+    category: SHOP_CATEGORIES.WALLS,
+    type: DECOR_TYPES.WALL,
+    assetIndex: 5,
+    assetKey: "5",
+    name: "Sage Lines",
+    description: "Soft green scalloped pattern.",
+    price: 220,
+  },
+  {
+    id: "wall_6",
+    category: SHOP_CATEGORIES.WALLS,
+    type: DECOR_TYPES.WALL,
+    assetIndex: 6,
+    assetKey: "6",
+    name: "Ocean Waves",
+    description: "Layered blue waves for a calm room.",
+    price: 240,
+  },
   ...buildShelfShopItems(),
 ];
 
@@ -343,12 +373,9 @@ export const DEFAULT_OWNED_WINDOW_FRAMES = {
   3: false,
 };
 
-export const DEFAULT_OWNED_WALL_BG = {
-  0: true,
-  1: false,
-  2: false,
-  3: false,
-};
+export const DEFAULT_OWNED_WALL_BG = Object.fromEntries(
+  WALLPAPER_ASSETS.map((_, index) => [String(index), index === 0])
+);
 
 export const DEFAULT_OWNED_SHELF_COLORS = Object.fromEntries(
   SHELF_COLOR_SCHEMES.map((_, index) => [String(index), index === 0])

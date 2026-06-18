@@ -1,4 +1,4 @@
-package com.anonymous.gardenyourgoals
+package com.goalgrower.app
 
 import android.os.Build
 import android.os.Bundle

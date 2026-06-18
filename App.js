@@ -31,6 +31,13 @@ import { cardShadow, subtleBorderShadow, cpShadow } from "./utils/shadows";
 import { FRAME_ASSETS } from "./constants/FrameAssets";
 import { WALLPAPER_ASSETS } from "./constants/WallpaperAssets";
 import { initializeNotifications } from "./utils/notifications";
+import {
+  getActiveRouteName,
+  initializeAnalytics,
+  logAnalyticsEvent,
+  logScreenView,
+  setAnalyticsUserId,
+} from "./utils/analytics";
 
 // Screens
 import GoalsScreen from "./screens/GoalsScreen";
@@ -902,6 +909,15 @@ export default function App() {
   const unsubFirestoreRef = useRef(null);
   const appStateListenerRef = useRef(null);
   const navigationRef = useNavigationContainerRef();
+  const routeNameRef = useRef(null);
+
+  const trackNavigationState = useCallback(() => {
+    const currentRouteName = getActiveRouteName(navigationRef);
+    if (currentRouteName && routeNameRef.current !== currentRouteName) {
+      routeNameRef.current = currentRouteName;
+      logScreenView(currentRouteName);
+    }
+  }, [navigationRef]);
 
   const getOnboardingKey = (uid) => `onboardingStep_${uid}`;
   const getOnboardingGoalKey = (uid) => `onboardingGoalId_${uid}`;
@@ -946,6 +962,8 @@ export default function App() {
     if (nextStep !== ONBOARDING_STEP.GARDEN_TUTORIAL) {
       setOnboardingActions(ONBOARDING_ACTION_DEFAULTS);
     }
+
+    logAnalyticsEvent("onboarding_step", { step: nextStep });
   }, [onboardingStep]);
 
   const onboardingTransitionOptions = {
@@ -975,6 +993,10 @@ export default function App() {
   };
 
   useEffect(() => {
+    void initializeAnalytics();
+  }, []);
+
+  useEffect(() => {
     let unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (unsubFirestoreRef.current) {
         unsubFirestoreRef.current();
@@ -985,6 +1007,8 @@ export default function App() {
       userRef.current = firebaseUser;
 
       if (firebaseUser) {
+        setAnalyticsUserId(firebaseUser.uid);
+
         if (firebaseUser.isAnonymous) {
           setHasUsername(true);
           loadOnboardingStep(firebaseUser.uid);
@@ -1024,6 +1048,8 @@ export default function App() {
           }
         );
       } else {
+        setAnalyticsUserId(null);
+
         void (async () => {
           const pendingRelogin = await getOnboardingRelogin();
           if (pendingRelogin) {
@@ -1153,7 +1179,11 @@ export default function App() {
           <ShopInventoryProvider>
           <GoalsProvider>
             <ThemeProvider accentColor={accentColor}>
-            <NavigationContainer>
+            <NavigationContainer
+              ref={navigationRef}
+              onReady={trackNavigationState}
+              onStateChange={trackNavigationState}
+            >
               <StatusBar style="dark" />
               <RootStack.Navigator screenOptions={{ headerShown: false }}>
                 {user && hasUsername ? (

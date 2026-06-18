@@ -20,6 +20,7 @@ import {
   getOwnedDecorField,
   getShopItemById,
 } from "../constants/ShopCatalog";
+import { logAnalyticsEvent } from "./analytics";
 
 function getUserShopRef(uid) {
   return doc(db, "users", uid);
@@ -205,6 +206,12 @@ export async function purchaseShopItem(itemId) {
       { merge: true }
     );
   });
+
+  logAnalyticsEvent("shop_purchase", {
+    item_id: item.id,
+    item_type: item.type,
+    price: item.price,
+  });
 }
 
 export async function creditCoins(amount, source = "manual") {
@@ -229,6 +236,8 @@ export async function creditCoins(amount, source = "manual") {
       { merge: true }
     );
   });
+
+  logAnalyticsEvent("coin_credit", { amount, source });
 
   const nextSnap = await getDoc(userRef);
   return nextSnap.exists() ? buildInventoryState(nextSnap.data()) : null;

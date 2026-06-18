@@ -4,6 +4,7 @@ import { getPlantHealthState, calculateGoalStreak, isGoalDoneForDate } from "../
 import { fromKey } from "../components/GoalsStore";
 import { updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
 import { awardGoalCompletionCoins } from "../utils/shopInventory";
+import { logAnalyticsEvent } from "./analytics";
 import { auth, db } from "../firebaseConfig";
 
 // STORAGE_PAGE_ID must match all screens
@@ -421,6 +422,8 @@ export async function toggleGoalTransaction({
     if (clearLocalOptimisticProgress) clearLocalOptimisticProgress();
 
     if (shouldAwardCompletion && !isSharedGoalView) {
+      logAnalyticsEvent("goal_completed", { goal_id: goal.id });
+
       try {
         await awardGoalCompletionCoins();
       } catch (coinError) {

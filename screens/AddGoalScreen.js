@@ -59,6 +59,7 @@ import { formatISOToDisplay, parseDisplayToISO, getDateFormatSync, formatPartial
 // FIREBASE IMPORTS
 import { collection, addDoc, serverTimestamp, onSnapshot, query, where, doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
+import { logAnalyticsEvent } from "../utils/analytics";
 
 // --- 1. FONT AWESOME ICONS ---
 // Dynamically get all free solid icons
@@ -1690,6 +1691,11 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
           { merge: true }
         );
       }
+
+      logAnalyticsEvent("goal_created", {
+        plant_type: selectedPlantSpecies,
+        goal_type: type,
+      });
 
       if (typeof onGoalSaved === "function") {
         onGoalSaved(docRef.id);

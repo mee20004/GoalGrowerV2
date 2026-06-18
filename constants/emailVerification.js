@@ -1,5 +1,5 @@
-export const IOS_BUNDLE_ID = "com.ziyu.goalgrower";
-export const ANDROID_PACKAGE_NAME = "com.ziyu.goalgrower";
+export const IOS_BUNDLE_ID = "com.goalgrower.app";
+export const ANDROID_PACKAGE_NAME = "com.goalgrower.app";
 
 export const FIREBASE_AUTH_DOMAIN = "goalgrower-2a859.firebaseapp.com";
 
