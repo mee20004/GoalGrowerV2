@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useUsernames } from '../hooks/useUsernames';
 
 import { auth } from '../firebaseConfig';
+import { hardDropShadow, cpShadow } from '../utils/shadows';
 
 export function ContributorsTodaySection({ contributorIds }) {
   const navigation = useNavigation();
@@ -51,11 +52,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    shadowColor: '#cdcdcd',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...hardDropShadow,
   },
   contributorsGrid: {
     flexDirection: 'row',
@@ -74,14 +71,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
     marginBottom: 6,
     marginRight: 6,
     backgroundColor: '#98bfeb',
-    shadowColor: '#607c9b',
+    ...cpShadow({ color: '#607c9b', offset: { width: 0, height: 4 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   contributorBadgeText: {
     fontSize: 13,
@@ -92,7 +85,7 @@ const styles = StyleSheet.create({
   },
   youBadge: {
     backgroundColor: '#8dd479',
-    shadowColor: '#6c9d71',
+    ...cpShadow({ color: '#6c9d71', offset: { width: 0, height: 4 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   youBadgeText: {
     color: '#fff',

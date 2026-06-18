@@ -1,35 +1,28 @@
 import { StyleSheet } from "react-native";
 import { theme } from "../../theme";
+import {
+  softCardShadow,
+  accentButtonShadow,
+  cpShadow,
+} from "../../utils/shadows";
 
 export const tutorialShadows = StyleSheet.create({
-  card: {
-    shadowColor: "#000",
-    shadowOpacity: 0.14,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 9,
-  },
-  button: {
-    shadowColor: "#2d6b1f",
-    shadowOpacity: 0.28,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  gradientBox: {
-    shadowColor: "#7ab8c8",
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+  card: softCardShadow,
+  button: accentButtonShadow,
+  gradientBox: cpShadow({
+    color: "#7ab8c8",
+    offset: { width: 0, height: 4 },
+    opacity: 0.22,
+    radius: 10,
     elevation: 5,
-  },
-  comparisonCard: {
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
+  }),
+  comparisonCard: cpShadow({
+    color: "#000",
+    offset: { width: 0, height: 3 },
+    opacity: 0.1,
+    radius: 8,
     elevation: 4,
-  },
+  }),
 });
 
 export const tutorialCardStyles = StyleSheet.create({
@@ -78,13 +71,11 @@ export const tutorialCardStyles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 22,
     alignItems: "center",
-    justifyContent: "center",
-    minHeight: 44,
     ...tutorialShadows.button,
   },
-  primaryText: {
+  primaryBtnText: {
     color: "#fff",
-    fontWeight: "800",
     fontSize: 15,
+    fontWeight: "800",
   },
 });

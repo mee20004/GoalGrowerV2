@@ -8,6 +8,7 @@ const triggerSelectionHaptic = () => {
   Haptics.selectionAsync().catch(() => {});
 };
 import { theme } from "../theme";
+import { cardShadow, subtleBorderShadow, hardDropShadow, cpShadow } from "../utils/shadows";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { db, auth } from "../firebaseConfig";
 import { collection, doc, getDoc, getDocs, updateDoc, arrayRemove, arrayUnion, onSnapshot, query, where, setDoc } from "firebase/firestore";
@@ -306,11 +307,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: "#fff",
     padding: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.12,
-    shadowRadius: 2,
-    elevation: 2,
+    ...cpShadow({ color: "#000", offset: { width: 0, height: 1 }, opacity: 0.12, radius: 2, elevation: 2 }),
   },
   switch: {
     transform: [{ scaleX: 1.25 }, { scaleY: 1.25 }],
@@ -325,11 +322,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 0,
     borderColor: '#d9e6f4',
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 3,
+    ...cardShadow,
     marginTop: 8,
     marginBottom: 12,
   },
@@ -348,11 +341,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: '#e7edf5',
-    shadowColor: '#c3cfdb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 1,
+    ...subtleBorderShadow,
   },
   headerBtnPlaceholder: {
     width: 42,
@@ -370,11 +359,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#cdcdcd',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...hardDropShadow,
   },
   sectionTitle: { fontSize: 12, fontWeight: '900', color: '#000000', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1, fontFamily: 'CeraRoundProDEMO-Black' },
   memberRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderColor: theme.outline },

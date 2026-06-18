@@ -16,7 +16,7 @@ import { PAYWALL_RESULT } from "react-native-purchases-ui";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Page from "../components/Page";
 import theme, { useTheme, getDarkerAccentColor } from "../theme";
-import { cpShadow } from "../utils/shadows";
+import { cpShadow, hardDropShadowSm } from "../utils/shadows";
 import { useSubscription } from "../components/SubscriptionProvider";
 import { useShopInventory } from "../components/ShopInventoryProvider";
 import CoinBadge from "../components/CoinBadge";
@@ -30,22 +30,6 @@ import {
 } from "../constants/ShopCatalog";
 import { PRO_BENEFITS_SUMMARY } from "../constants/subscriptionLimits";
 import { creditCoins } from "../utils/shopInventory";
-
-function shadowStyle({
-  color = "#000",
-  offset = { width: 0, height: 2 },
-  opacity = 0.2,
-  radius = 4,
-  elevation = 3,
-} = {}) {
-  return {
-    shadowColor: color,
-    shadowOffset: offset,
-    shadowOpacity: opacity,
-    shadowRadius: radius,
-    elevation,
-  };
-}
 
 const BANNER_IMAGE = require("../assets/FarBG/beach_b.png");
 
@@ -226,7 +210,7 @@ export default function ShopScreen() {
         disabled={subscriptionLoading}
         style={({ pressed }) => [
           styles.coinsButton,
-          shadowStyle({ color: "#e0a92e", offset: { width: 0, height: 5 }, opacity: 1, radius: 0, elevation: 3 }),
+          cpShadow({ color: "#e0a92e", offset: { width: 0, height: 5 }, opacity: 1, radius: 0, elevation: 3 }),
           pressed && !subscriptionLoading && styles.coinsButtonPressed,
           subscriptionLoading && styles.disabled,
         ]}
@@ -258,7 +242,7 @@ export default function ShopScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={[
             styles.segmentTrack,
-            shadowStyle({ color: "#cbd5e1", offset: { width: 0, height: 3 }, opacity: 0.5, radius: 6, elevation: 2 }),
+            cpShadow({ color: "#cbd5e1", offset: { width: 0, height: 3 }, opacity: 0.5, radius: 6, elevation: 2 }),
           ]}
         >
           {CATALOG_TABS.map((tab) => {
@@ -273,7 +257,7 @@ export default function ShopScreen() {
                   active && [
                     styles.segmentChipActive,
                     { backgroundColor: theme.accent },
-                    shadowStyle({ color: getDarkerAccentColor(theme.accent, 0.65), offset: { width: 0, height: 0 }, opacity: 0.45, radius: 0, elevation: 3 }),
+                    cpShadow({ color: getDarkerAccentColor(theme.accent, 0.65), offset: { width: 0, height: 0 }, opacity: 0.45, radius: 0, elevation: 3 }),
                   ],
                 ]}
               >
@@ -446,11 +430,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 9,
-    shadowColor: "#cdcdcd",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...hardDropShadowSm,
   },
   bannerCtaText: {
     fontSize: 14,

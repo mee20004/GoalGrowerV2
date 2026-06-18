@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import HapticPressable from "./HapticPressable";
 import { useTheme, getDarkerAccentColor, getLighterAccentColor } from "../theme";
+import { cpShadow } from "../utils/shadows";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SHELF_COLOR_SCHEMES } from "../constants/ShelfColors";
 import { FAR_BG_ASSETS } from "../constants/FarBGAssets";
@@ -409,11 +410,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 0,
     zIndex: 40,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.14,
-    shadowRadius: 12,
-    elevation: 16,
+    ...cpShadow({ color: "#000", offset: { width: 0, height: -6 }, opacity: 0.14, radius: 12, elevation: 16 }),
   },
   sheetHandle: {
     alignSelf: "center",
@@ -442,11 +439,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   tabChipActive: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
+    ...cpShadow({ color: "#000", offset: { width: 0, height: 2 }, opacity: 0.08, radius: 3, elevation: 2 }),
   },
   tabChipText: {
     fontSize: 11,

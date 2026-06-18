@@ -26,6 +26,7 @@ import {
   getOnboardingRelogin,
   tryOnboardingRelogin,
 } from "./utils/onboardingRelogin";
+import { cardShadow, subtleBorderShadow, cpShadow } from "./utils/shadows";
 
 import { FRAME_ASSETS } from "./constants/FrameAssets";
 import { WALLPAPER_ASSETS } from "./constants/WallpaperAssets";
@@ -764,11 +765,7 @@ const accountStyles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 20,
     padding: 16,
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    ...cpShadow({ color: '#4c6782', offset: { width: 0, height: 4 }, opacity: 0.08, radius: 8, elevation: 3 }),
   },
   inputLabel: {
     fontSize: 12,
@@ -844,11 +841,7 @@ function CreateGoalIntroScreen({ onNext, onBack }) {
             alignItems: 'center',
             justifyContent: 'center',
             backgroundColor: '#ffffff',
-            shadowColor: '#c3cfdb',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 1,
-            shadowRadius: 0,
-            elevation: 1,
+            ...subtleBorderShadow,
           }}
         >
           <Ionicons name="chevron-back" size={26} color={theme.accent} />

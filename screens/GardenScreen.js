@@ -47,6 +47,7 @@ import {
   updateOverallScoreForUser,
   updateOverallScoresForSharedGardenMembers,
 } from "../utils/scoreUtils";
+import { cardShadow, cpShadow, hardDropShadowSm } from "../utils/shadows";
 
 import theme, { useTheme } from "../theme";
 
@@ -4323,11 +4324,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     maxWidth: 240,
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 4,
+    ...cardShadow,
     marginBottom: 0,
     marginRight: 45,
   },
@@ -4401,11 +4398,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.22)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 3,
-    elevation: 4,
+    ...cpShadow({ color: '#000000', offset: { width: 0, height: 2 }, opacity: 0.18, radius: 3, elevation: 4 }),
   },
   tutorialHotspotDot: {
     width: 10,
@@ -4580,10 +4573,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     zIndex: 30, 
     elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    ...cpShadow({ color: '#000', offset: { width: 0, height: 4 }, opacity: 0.3, radius: 6, elevation: 6 }),
   },
   addPageSideFab: {
     position: 'absolute',
@@ -4598,10 +4588,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 30,
     elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    ...cpShadow({ color: '#000', offset: { width: 0, height: 4 }, opacity: 0.3, radius: 6, elevation: 6 }),
   },
   sharedGardensFab: {
     position: 'absolute',
@@ -4615,10 +4602,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 30,
     elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    ...cpShadow({ color: '#000', offset: { width: 0, height: 4 }, opacity: 0.3, radius: 6, elevation: 6 }),
   },
   gardenSwitcherShell: {
     position: 'absolute',
@@ -4817,10 +4801,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     zIndex: 30, 
     elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    ...cpShadow({ color: '#000', offset: { width: 0, height: 4 }, opacity: 0.3, radius: 6, elevation: 6 }),
   },
   removePageFab: {
     position: 'absolute',
@@ -4834,10 +4815,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 30,
     elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    ...cpShadow({ color: '#000', offset: { width: 0, height: 4 }, opacity: 0.3, radius: 6, elevation: 6 }),
   },
   sharedModalBackdrop: {
     flex: 1,
@@ -4927,11 +4905,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 20,
     padding: 22,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 10,
+    ...cpShadow({ color: '#000', offset: { width: 0, height: 12 }, opacity: 0.12, radius: 16, elevation: 10 }),
   },
   createGardenModalTitle: {
     fontSize: 18,
@@ -5144,11 +5118,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 60,
     borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width:10, height: 8 },
-    shadowOpacity: 0.20,
-    shadowRadius: 0,
-    elevation: 8,
+    ...cpShadow({ color: '#000', offset: { width: 10, height: 8 }, opacity: 0.20, radius: 0, elevation: 8 }),
   },
   shelfLedge: {
     position: 'absolute',
@@ -5543,17 +5513,11 @@ const styles = StyleSheet.create({
     elevation: 12000,
   },
   waterDropHandleWater: {
-    shadowColor: '#1467bb',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
+    ...cpShadow({ color: '#1467bb', offset: { width: 0, height: 5 }, opacity: 1, radius: 0, elevation: 4 }),
   },
   waterDropHandleAddGoal: {
     backgroundColor: 'rgb(82, 153, 61)',
-    shadowColor: '#2c6e28',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
+    ...cpShadow({ color: '#2c6e28', offset: { width: 0, height: 5 }, opacity: 1, radius: 0, elevation: 4 }),
   },
 
   // The container stays fullscreen

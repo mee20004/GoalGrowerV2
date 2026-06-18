@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { View, StyleSheet, Platform, Image, Animated } from 'react-native';
 import HapticTouchableOpacity from './HapticTouchableOpacity';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { hardDropShadowSm } from '../utils/shadows';
 const TASKBAR_ICON_MAP = {
   Rank: require('../assets/Icons/Taskbar/TrophyIcon.png'),
   Goals: require('../assets/Icons/Taskbar/CheckIcon.png'),
@@ -148,27 +148,22 @@ const styles = StyleSheet.create({
     position: 'absolute',
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#fff', // You can use your theme here
-    elevation: 10,
-    shadowColor: '#d4d4d4',
-    shadowOffset: { width: 0, height: 5 },
+    backgroundColor: '#fff',
     borderWidth: 0,
     borderColor: '#d4d4d4',
-    shadowOpacity: 1,
-    shadowRadius: 0,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 8,
-    ...Platform.select({
-      android: { overflow: 'hidden' },
-    }),
+    ...hardDropShadowSm,
   },
   inner: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     width: '100%',
+    borderRadius: 32,
+    overflow: 'hidden',
   },
   tab: {
     alignItems: 'center',

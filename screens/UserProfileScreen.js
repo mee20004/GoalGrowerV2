@@ -8,6 +8,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { doc, getDoc, collection, getDocs, setDoc, deleteDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import theme, { useTheme } from "../theme";
+import { cardShadow, subtleBorderShadow, hardDropShadow } from "../utils/shadows";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 const GARDEN_TAB_ICON = require("../assets/Icons/Taskbar/GardenIcon.png");
@@ -253,11 +254,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 0,
     borderColor: '#d9e6f4',
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 3,
+    ...cardShadow,
     marginTop: 8,
     marginBottom: 12,
   },
@@ -276,11 +273,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: '#e7edf5',
-    shadowColor: '#c3cfdb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 1,
+    ...subtleBorderShadow,
   },
   headerBtnPlaceholder: { width: 42, height: 42 },
   headerTitle: { fontSize: 22, fontWeight: "900", color: theme.text, flexShrink: 1, fontFamily: 'CeraRoundProDEMO-Black' },
@@ -291,11 +284,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 18,
     paddingBottom: 16,
-    shadowColor: '#cdcdcd',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...hardDropShadow,
     alignItems: "center",
   },
   // avatar removed
@@ -376,11 +365,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderRadius: 24,
     paddingHorizontal: 14,
-    shadowColor: '#cdcdcd',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...hardDropShadow,
   },
   infoRow: {
     flexDirection: "row",

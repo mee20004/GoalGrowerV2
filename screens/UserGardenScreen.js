@@ -32,6 +32,7 @@ import { SHELF_COLOR_SCHEMES } from "../constants/ShelfColors";
 import { FAR_BG_ASSETS } from "../constants/FarBGAssets";
 import { WALLPAPER_ASSETS } from "../constants/WallpaperAssets";
 import { FRAME_ASSETS } from "../constants/FrameAssets";
+import { cpShadow } from "../utils/shadows";
 
 // fallback for old code
 const FAR_BG = require("../assets/far_background.png");
@@ -1168,11 +1169,7 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 60,
     borderRadius: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 10, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 0,
-    elevation: 8,
+    ...cpShadow({ color: "#000", offset: { width: 10, height: 8 }, opacity: 0.2, radius: 0, elevation: 8 }),
   },
   shelfLedge: { position: "absolute", bottom: 0, left: 0, width: "100%", height: 60, backgroundColor: "#FA6424", borderRadius: 16, overflow: "hidden" },
   shelfHighlightLeft: { position: "absolute", top: 12, left: "8%", width: "46%", height: 14, borderRadius: 12, backgroundColor: "#FF9F45", opacity: 0.95 },
@@ -1242,11 +1239,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     zIndex: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 4,
+    ...cpShadow({ color: "#000", offset: { width: 0, height: 2 }, opacity: 0.2, radius: 3, elevation: 4 }),
   },
   potLabel: { position: "absolute", bottom: 30, minWidth: 24, minHeight: 24, justifyContent: "center", alignItems: "center", zIndex: 4 },
   trophyTierBadge: {

@@ -45,6 +45,7 @@ import HapticPressable from "../components/HapticPressable";
 import { HapticType, triggerHaptic } from "../utils/haptics";
 import Page from "../components/Page";
 import theme, { getDarkerAccentColor, useTheme } from "../theme";
+import { cardShadow, hardDropShadow, panelShadow, cpShadow } from "../utils/shadows";
 import { useGoals, fromKey } from "../components/GoalsStore";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
@@ -1866,11 +1867,7 @@ const styles = StyleSheet.create({
   headerWrapper: {
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderRadius: 24,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 3,
+    ...panelShadow,
     marginTop: 8,
     marginBottom: 12,
   },
@@ -1908,11 +1905,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: "#e3edf7",
-    shadowColor: "#cdcdcd",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...hardDropShadow,
   },
   card: {
     backgroundColor: "#ffffff",
@@ -1921,11 +1914,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: "#dbe8f6",
-    shadowColor: "#c9d9ea",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...cpShadow({ color: "#c9d9ea", offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   nameSectionCard: {
     paddingVertical: 8,
@@ -2026,11 +2015,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 10,
     paddingBottom: 12,
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.14,
-    shadowRadius: 0,
-    elevation: 2,
+    ...cpShadow({ color: '#4c6782', offset: { width: 0, height: 6 }, opacity: 0.14, radius: 0, elevation: 2 }),
   },
   nameHeaderEyebrow: {
     fontSize: 11,
@@ -2058,11 +2043,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderWidth: 1,
     borderColor: "#dbe8f6",
-    shadowColor: "#cdcdcd",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...hardDropShadow,
   },
   calendarHeader: {
     alignItems: "center",
@@ -2229,11 +2210,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingTop: 10,
     paddingHorizontal: 6,
-    shadowColor: '#d9e3ee',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 1,
+    ...cpShadow({ color: '#d9e3ee', offset: { width: 0, height: 4 }, opacity: 1, radius: 0, elevation: 1 }),
   },
   iconBoxActive: { backgroundColor: '#111111', borderColor: '#111111', elevation: 4 },
   iconSelectedBadge: {
@@ -2716,7 +2693,7 @@ const styles = StyleSheet.create({
   errorInline: { marginTop: 10, backgroundColor: theme.dangerBg, borderRadius: theme.radius, padding: 12 },
   errorInlineText: { color: theme.dangerText, fontSize: 12, fontWeight: "700", fontFamily: 'CeraRoundProDEMO-Black' },
   coachOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "center", alignItems: "center", padding: 20 },
-  coachBox: { width: "100%", maxWidth: 400, backgroundColor: theme.surface, borderRadius: theme.radius, padding: 18, ...require('../utils/shadows').cpShadow({ color: '#000', offset: { width: 0, height: 3 }, opacity: 0.2, radius: 6, elevation: 6 }) },
+  coachBox: { width: "100%", maxWidth: 400, backgroundColor: theme.surface, borderRadius: theme.radius, padding: 18, ...cpShadow({ color: '#000', offset: { width: 0, height: 3 }, opacity: 0.2, radius: 6, elevation: 6 }) },
   coachTitle: { fontSize: 16, fontWeight: "800", marginBottom: 8, color: theme.text },
   coachBody: { fontSize: 13, color: theme.text, marginBottom: 14 },
   coachCloseBtn: { marginTop: 4, alignSelf: "flex-end", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, backgroundColor: theme.accent },

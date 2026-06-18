@@ -5,6 +5,7 @@ import HapticPressable from './components/HapticPressable';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { auth, db } from './firebaseConfig';
 import { theme } from './theme';
+import { cardShadow, subtleBorderShadow, cpShadow } from './utils/shadows';
 import { onAuthStateChanged, signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 
@@ -281,11 +282,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#ffffff',
-    shadowColor: '#c3cfdb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 4,
+    ...subtleBorderShadow,
   },
   scrollContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 16, paddingBottom: 40 },
   inner: { width: '100%', maxWidth: 420, alignSelf: 'center' },
@@ -320,11 +317,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 20,
     padding: 16,
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    ...cpShadow({ color: '#4c6782', offset: { width: 0, height: 4 }, opacity: 0.08, radius: 8, elevation: 3 }),
   },
   inputLabel: {
     fontSize: 12,

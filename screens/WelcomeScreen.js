@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from "react-native";
 import HapticPressable from "../components/HapticPressable";
 import { Ionicons } from "@expo/vector-icons";
 import { theme } from "../theme";
+import { cardShadow, subtleBorderShadow, cpShadow } from "../utils/shadows";
 
 const BG1_TOP = "#E8E0D0";
 const BG1_MID = "#D4CDB8";
@@ -115,11 +116,7 @@ const styles = StyleSheet.create({
   headerWrapper: {
     backgroundColor: "rgba(255,255,255,0.96)",
     borderRadius: 24,
-    shadowColor: "#4c6782",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 3,
+    ...cardShadow,
     marginTop: 8,
     marginBottom: 12,
   },
@@ -152,9 +149,8 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 24,
     padding: 16,
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    backgroundColor: "#ffffff",
+    ...cardShadow,
     alignItems: "center",
   },
   heroIconWrap: {
@@ -172,7 +168,11 @@ const styles = StyleSheet.create({
     backgroundColor: BG1_TOP,
   },
   fullCenter: { flex: 1, alignItems: "center", justifyContent: "center", gap: 18, paddingHorizontal: 24 },
-  plantCircle: { alignItems: "center", justifyContent: "center", shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 10 }, elevation: 8 },
+  plantCircle: {
+    alignItems: "center",
+    justifyContent: "center",
+    ...cpShadow({ color: "#000", offset: { width: 0, height: 10 }, opacity: 0.12, radius: 14, elevation: 8 }),
+  },
   soil: { backgroundColor: SOIL, borderBottomLeftRadius: 999, borderBottomRightRadius: 999, marginTop: -6 },
   brandOverline: { fontSize: 12, fontWeight: "800", color: ACCENT, letterSpacing: 2, textTransform: "uppercase" },
 

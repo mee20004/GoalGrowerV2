@@ -4,7 +4,8 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import GoalActionButton from "./GoalActionButton";
 import { HapticType } from "../utils/haptics";
 import { QUEST_ORANGE, QUEST_ORANGE_SHADOW } from "../constants/QuestTheme";
-import theme from "../theme";
+import { theme } from "../theme";
+import { hardDropShadow } from "../utils/shadows";
 
 export default function QuestRow({
   quest,
@@ -90,11 +91,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    shadowColor: "#cdcdcd",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...hardDropShadow,
   },
   cardWrapDone: {
     opacity: 0.55,

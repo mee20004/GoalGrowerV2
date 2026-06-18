@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import QuestRow from "./QuestRow";
 import theme from "../theme";
+import { hardDropShadow } from "../utils/shadows";
 
 export default function DailyQuestCard({
   dailyQuests = [],
@@ -69,11 +70,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     paddingHorizontal: 14,
     paddingVertical: 14,
-    shadowColor: "#cdcdcd",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...hardDropShadow,
   },
   subtitle: {
     fontSize: 11,

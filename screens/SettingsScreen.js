@@ -1621,9 +1621,6 @@ const styles = StyleSheet.create({
   colorDotSelected: {
     borderWidth: 2,
     borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
+    ...cpShadow({ color: '#000', offset: { width: 0, height: 2 }, opacity: 0.08, radius: 6, elevation: 2 }),
   },
 });

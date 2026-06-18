@@ -13,7 +13,7 @@ import HapticPressable from "../components/HapticPressable";
 import Page from "../components/Page";
 import { HapticType } from "../utils/haptics";
 import theme, { getDarkerAccentColor, getLighterAccentColor, useTheme } from "../theme";
-import { cpShadow } from "../utils/shadows";
+import { cpShadow, panelShadow, hardDropShadow, cardShadow } from "../utils/shadows";
 import { PLANT_ASSETS } from "../constants/PlantAssets";
 import { POT_ASSETS } from "../constants/PotAssets";
 import { WALLPAPER_OPTIONS } from "../constants/WallpaperAssets";
@@ -1142,10 +1142,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0)',
     elevation: 12000,
-    shadowColor: '#2c6e28',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
+    ...cpShadow({ color: '#2c6e28', offset: { width: 0, height: 5 }, opacity: 1, radius: 0, elevation: 12 }),
   },
   fabPressable: {
     width: '100%',

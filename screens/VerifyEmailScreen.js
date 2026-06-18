@@ -15,7 +15,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import HapticPressable from "../components/HapticPressable";
 import { auth, db } from "../firebaseConfig";
 import { doc, getDoc } from "firebase/firestore";
-import theme from "../theme";
+import { theme } from "../theme";
+import { cardShadow } from "../utils/shadows";
 import { RESEND_COOLDOWN_SECONDS, RATE_LIMIT_COOLDOWN_SECONDS } from "../constants/emailVerification";
 import {
   maskEmail,
@@ -335,11 +336,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 16,
-    shadowColor: "#4c6782",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    ...cardShadow,
   },
   title: {
     fontSize: 32,

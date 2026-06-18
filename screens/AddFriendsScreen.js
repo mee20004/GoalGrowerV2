@@ -5,6 +5,7 @@ import HapticTouchableOpacity from "../components/HapticTouchableOpacity";
 import { collection, query, where, getDocs, doc, writeBatch, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { theme } from "../theme";
+import { cardShadow } from "../utils/shadows";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 export default function AddFriendsScreen({ navigation }) {
@@ -145,11 +146,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderRadius: 24,
-    shadowColor: '#4c6782',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 0,
-    elevation: 3,
+    ...cardShadow,
     marginTop: 8,
     marginBottom: 12,
     paddingLeft: 16,

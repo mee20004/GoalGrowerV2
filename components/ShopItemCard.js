@@ -12,7 +12,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import TutorialPlantInPot from "./tutorial/TutorialPlantInPot";
 import CoinIcon from "./CoinIcon";
 import { getDecorPreview, getPlantPreview, DECOR_TYPES } from "../constants/ShopCatalog";
-import { cpShadow } from "../utils/shadows";
+import { hardDropShadowSm } from "../utils/shadows";
 import { getDarkerAccentColor } from "../theme";
 
 function getDecorImageProps(type) {
@@ -44,7 +44,7 @@ function ShopItemCard({ item, owned, canAfford, loading, accent, onPress }) {
     <View
       style={[
         styles.card,
-        cpShadow({ color: "#cdcdcd", offset: { width: 0, height: 5 }, opacity: 1, radius: 0, elevation: 2 }),
+        hardDropShadowSm,
       ]}
     >
       <View style={styles.previewWrap}>

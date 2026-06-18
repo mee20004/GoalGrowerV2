@@ -17,7 +17,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import theme from "../theme";
-import { cpShadow } from "../utils/shadows";
+import { cpShadow, hardDropShadow, panelShadow } from "../utils/shadows";
 import FireStreakIcon from "../assets/Icons/FireStreakIcon";
 import { getGoalTrophyRating, updateOverallScoreForUser } from "../utils/scoreUtils";
 import { getScoredGoalsForUser } from "../utils/scoreUtils";
@@ -832,11 +832,13 @@ const styles = StyleSheet.create({
     backgroundColor: GROWTH_BLUE_SHADOW,
     opacity: 0.32,
     zIndex: 0,
-    shadowColor: GROWTH_BLUE_SHADOW,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    elevation: 4,
+    ...cpShadow({
+      color: GROWTH_BLUE_SHADOW,
+      offset: { width: 0, height: 6 },
+      opacity: 0.18,
+      radius: 8,
+      elevation: 4,
+    }),
   },
   
   completeGoalButton: {
@@ -919,11 +921,13 @@ const styles = StyleSheet.create({
   heroContainer: {
     borderRadius: 32,
     overflow: 'hidden',
-    shadowColor: '#cdcdcd',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    elevation: 4,
+    ...cpShadow({
+      color: '#cdcdcd',
+      offset: { width: 0, height: 6 },
+      opacity: 0.18,
+      radius: 12,
+      elevation: 4,
+    }),
     marginBottom: 12,
   },
   heroBgImageRounded: {
@@ -950,11 +954,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    shadowColor: '#cdcdcd',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...hardDropShadow,
   },
   heroScene: {
     position: "relative",
@@ -1044,11 +1044,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     paddingHorizontal: 14,
     paddingVertical: 14,
-    shadowColor: "#cdcdcd",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...cpShadow({ color: "#cdcdcd", offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   progressFootMeta: {
     marginTop: 1,
@@ -1163,11 +1159,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderRadius: 24,
     padding: 14,
-    shadowColor: "#cdcdcd",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 2,
+    ...cpShadow({ color: "#cdcdcd", offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   helper: {
     fontSize: 12,
