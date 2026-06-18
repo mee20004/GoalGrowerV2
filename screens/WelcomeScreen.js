@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from "react-native";
 import HapticPressable from "../components/HapticPressable";
 import { Ionicons } from "@expo/vector-icons";
 import { theme } from "../theme";
-import { cardShadow, subtleBorderShadow, cpShadow } from "../utils/shadows";
+import { cardShadow, cpShadow } from "../utils/shadows";
 
 const BG1_TOP = "#E8E0D0";
 const BG1_MID = "#D4CDB8";
@@ -147,10 +147,7 @@ const styles = StyleSheet.create({
     fontFamily: "CeraRoundProDEMO-Black",
   },
   card: {
-    borderRadius: 24,
     padding: 16,
-    backgroundColor: "#ffffff",
-    ...cardShadow,
     alignItems: "center",
   },
   heroIconWrap: {
