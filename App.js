@@ -15,9 +15,17 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import CenteredTabBar from './components/CenteredTabBar';
 
 // Firebase
-import { onAuthStateChanged, signInAnonymously, EmailAuthProvider, linkWithCredential, signOut } from "firebase/auth";
-import { doc, onSnapshot, collection, query, where, getDocs, setDoc, serverTimestamp } from "firebase/firestore";
+import { onAuthStateChanged, signInAnonymously, EmailAuthProvider, linkWithCredential, signOut, updatePassword, reauthenticateWithCredential } from "firebase/auth";
+import { doc, onSnapshot, collection, query, where, getDocs, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "./firebaseConfig";
+import { abandonUnverifiedSignup } from "./utils/abandonUnverifiedSignup";
+import { changeUserEmail, formatEmailChangeError } from "./utils/accountEmail";
+import {
+  saveOnboardingRelogin,
+  clearOnboardingRelogin,
+  getOnboardingRelogin,
+  tryOnboardingRelogin,
+} from "./utils/onboardingRelogin";
 
 import { FRAME_ASSETS } from "./constants/FrameAssets";
 import { WALLPAPER_ASSETS } from "./constants/WallpaperAssets";
@@ -41,7 +49,7 @@ import JourneyScreen from './screens/JourneyScreen';
 import ShopScreen from './screens/ShopScreen';
 import WelcomeScreen from './screens/WelcomeScreen';
 import VerifyEmailScreen from './screens/VerifyEmailScreen';
-import { needsEmailVerification } from './utils/emailVerification';
+import { needsEmailVerification, sendVerificationEmail } from './utils/emailVerification';
 
 const TASKBAR_ICON_MAP = {
   Rank: require("./assets/Icons/Taskbar/TrophyIcon.png"),
@@ -439,8 +447,53 @@ function AccountPromptScreen({ onDone, onLoginInstead }) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
 
   const isAnonymous = !!auth.currentUser?.isAnonymous;
+  const isUnverifiedLinked =
+    !isAnonymous && !!auth.currentUser && !auth.currentUser.emailVerified;
+  const showAccountForm = isAnonymous || isUnverifiedLinked;
+
+  useEffect(() => {
+    if (!isUnverifiedLinked) {
+      setProfileLoaded(true);
+      return undefined;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const currentUser = auth.currentUser;
+      if (!currentUser?.uid) {
+        if (!cancelled) setProfileLoaded(true);
+        return;
+      }
+
+      try {
+        const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+        if (cancelled) return;
+
+        if (userSnap.exists()) {
+          const data = userSnap.data();
+          if (data.username) setUsername(data.username);
+          if (data.pendingEmailChange) {
+            setEmail(data.pendingEmailChange);
+          } else if (currentUser.email) {
+            setEmail(currentUser.email);
+          }
+        } else if (currentUser.email) {
+          setEmail(currentUser.email);
+        }
+      } catch (error) {
+        console.error('Load account prompt profile failed:', error?.code || error?.message || error);
+      } finally {
+        if (!cancelled) setProfileLoaded(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isUnverifiedLinked]);
 
   const handleFinalizeAccount = useCallback(async () => {
     const trimmedUsername = username.trim();
@@ -494,6 +547,31 @@ function AccountPromptScreen({ onDone, onLoginInstead }) {
       if (currentUser.isAnonymous) {
         const credential = EmailAuthProvider.credential(trimmedEmail, password);
         await linkWithCredential(currentUser, credential);
+      } else if (!currentUser.emailVerified) {
+        const credential = EmailAuthProvider.credential(currentUser.email, password);
+        await reauthenticateWithCredential(currentUser, credential);
+
+        if (trimmedEmail !== currentUser.email) {
+          const emailResult = await changeUserEmail(currentUser, trimmedEmail, {
+            forceSend: true,
+            password,
+            skipReauth: true,
+          });
+          if (emailResult.pendingVerification) {
+            Alert.alert(
+              'Confirm your email',
+              `We sent a link to ${trimmedEmail}. Open it to confirm your new address, then return here and tap I've verified.`
+            );
+          } else if (emailResult.verificationError) {
+            Alert.alert(
+              'Email updated',
+              `Your email was saved, but we could not send a verification email: ${emailResult.verificationError?.message || 'Please try again.'}`
+            );
+          }
+        } else {
+          await sendVerificationEmail(currentUser, { force: true });
+        }
+        await updatePassword(currentUser, password);
       }
 
       await setDoc(doc(db, 'users', currentUser.uid), {
@@ -502,6 +580,12 @@ function AccountPromptScreen({ onDone, onLoginInstead }) {
         email: auth.currentUser?.email || trimmedEmail,
         createdAt: serverTimestamp(),
       }, { merge: true });
+
+      await saveOnboardingRelogin({
+        email: trimmedEmail,
+        password,
+        uid: auth.currentUser?.uid || currentUser.uid,
+      });
 
       onDone?.();
     } catch (error) {
@@ -516,14 +600,24 @@ function AccountPromptScreen({ onDone, onLoginInstead }) {
         onDone?.();
       } else if (code === 'auth/credential-already-in-use') {
         Alert.alert('Credential in use', 'These credentials are already linked to another account.');
+      } else if (code === 'auth/requires-recent-login') {
+        Alert.alert('Authentication required', formatEmailChangeError(error));
       } else {
-        Alert.alert('Could not finalize account', 'Please try again.');
+        Alert.alert('Could not finalize account', error?.message || 'Please try again.');
       }
       console.error('Finalize account failed:', code || error?.message || error);
     } finally {
       setSubmitting(false);
     }
   }, [confirmPassword, email, onDone, password, username]);
+
+  if (isUnverifiedLinked && !profileLoaded) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={theme.accent} />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -539,19 +633,15 @@ function AccountPromptScreen({ onDone, onLoginInstead }) {
         <View style={{ width: '100%', maxWidth: 420, alignSelf: 'center' }}>
 
           {/* Header */}
-          <Text style={accountStyles.title}>
-            {isAnonymous ? 'Create your Account' : 'Almost done'}
-          </Text>
+          <Text style={accountStyles.title}>Create your Account</Text>
           <Text style={accountStyles.subtitle}>
-            {isAnonymous
-              ? ''
-              : 'Your account is already linked. Continue to finish onboarding.'}
+            {isUnverifiedLinked ? 'Update your details and we will resend the verification email.' : ''}
           </Text>
 
           <View style={accountStyles.divider} />
 
           {/* Form fields */}
-          {isAnonymous ? (
+          {showAccountForm ? (
             <View style={accountStyles.card}>
               <Text style={accountStyles.inputLabel}>Username</Text>
               <TextInput
@@ -578,7 +668,7 @@ function AccountPromptScreen({ onDone, onLoginInstead }) {
                 onChangeText={setPassword}
                 secureTextEntry
                 autoCapitalize="none"
-                placeholder="At least 6 characters"
+                placeholder={isUnverifiedLinked ? 'Re-enter your password' : 'At least 6 characters'}
                 placeholderTextColor="#9b948d"
                 style={accountStyles.input}
               />
@@ -600,7 +690,7 @@ function AccountPromptScreen({ onDone, onLoginInstead }) {
             <View pointerEvents="none" style={[accountStyles.actionButtonShadow, accountStyles.actionButtonShadowPrimary]} />
             <HapticPressable
               disabled={submitting}
-              onPress={isAnonymous ? handleFinalizeAccount : onDone}
+              onPress={showAccountForm ? handleFinalizeAccount : onDone}
               style={({ pressed }) => [
                 accountStyles.actionButtonFace,
                 accountStyles.actionButtonPrimary,
@@ -612,7 +702,7 @@ function AccountPromptScreen({ onDone, onLoginInstead }) {
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={accountStyles.actionButtonTextPrimary}>
-                  {isAnonymous ? 'Create Account' : 'Continue'}
+                  {showAccountForm ? 'Create Account' : 'Continue'}
                 </Text>
               )}
             </HapticPressable>
@@ -780,9 +870,7 @@ function CreateGoalIntroScreen({ onNext, onBack }) {
 
       <View style={{ marginBottom: 22 }}>
         <Text style={{ fontSize: 18, fontWeight: '900', color: '#363636', marginBottom: 14, textAlign: 'center', fontFamily: 'CeraRoundProDEMO-Black' }}>
-          Ready to start?
         </Text>
-        <View style={{ height: 3, backgroundColor: '#cfcfcf', marginTop: 4, marginBottom: 22, marginHorizontal: 14, borderRadius: 100 }} />
         <View style={{ width: '100%', alignSelf: 'center', maxWidth: 420, height: 56, position: 'relative' }}>
           <View pointerEvents="none" style={{ position: 'absolute', top: 4, left: 0, right: 0, bottom: 0, borderRadius: 20, backgroundColor: '#509a18' }} />
           <HapticPressable
@@ -796,7 +884,7 @@ function CreateGoalIntroScreen({ onNext, onBack }) {
               transform: [{ translateY: pressed ? 4 : 0 }],
             })}
           >
-            <Text style={{ fontSize: 19, fontWeight: '800', color: '#ffffff', textAlign: 'center', fontFamily: 'CeraRoundProDEMO-Black' }}>Next</Text>
+            <Text style={{ fontSize: 19, fontWeight: '800', color: '#ffffff', textAlign: 'center', fontFamily: 'CeraRoundProDEMO-Black' }}>Ready to start?</Text>
           </HapticPressable>
         </View>
       </View>
@@ -816,6 +904,7 @@ export default function App() {
   const [onboardingLoaded, setOnboardingLoaded] = useState(false);
   const [onboardingActions, setOnboardingActions] = useState(ONBOARDING_ACTION_DEFAULTS);
   const [onboardingGoalId, setOnboardingGoalId] = useState(null);
+  const [restoringOnboardingSession, setRestoringOnboardingSession] = useState(false);
   const userRef = useRef(null);
   const unsubFirestoreRef = useRef(null);
   const appStateListenerRef = useRef(null);
@@ -942,13 +1031,25 @@ export default function App() {
           }
         );
       } else {
-        setHasUsername(false);
-        setInitializing(false);
-        setShowEnterScreen(false);
-        setOnboardingLoaded(false);
-        setOnboardingStep(ONBOARDING_STEP.WELCOME);
-        setOnboardingActions(ONBOARDING_ACTION_DEFAULTS);
-        setOnboardingGoalId(null);
+        void (async () => {
+          const pendingRelogin = await getOnboardingRelogin();
+          if (pendingRelogin) {
+            setRestoringOnboardingSession(true);
+            const relogin = await tryOnboardingRelogin();
+            setRestoringOnboardingSession(false);
+            if (relogin.signedIn) {
+              return;
+            }
+          }
+
+          setHasUsername(false);
+          setInitializing(false);
+          setShowEnterScreen(false);
+          setOnboardingLoaded(false);
+          setOnboardingStep(ONBOARDING_STEP.WELCOME);
+          setOnboardingActions(ONBOARDING_ACTION_DEFAULTS);
+          setOnboardingGoalId(null);
+        })();
       }
     });
 
@@ -970,17 +1071,54 @@ export default function App() {
   }, [updateOnboardingStep]);
 
   const handleEmailVerified = useCallback(async () => {
-    const currentUser = auth.currentUser;
-    if (currentUser) {
-      await currentUser.reload();
-      // reload() mutates User in place; bump version so gate re-reads emailVerified
-      setAuthUserVersion((version) => version + 1);
-      setUser(auth.currentUser);
-    }
-    if (onboardingStep !== ONBOARDING_STEP.DONE) {
-      await updateOnboardingStep(ONBOARDING_STEP.DONE);
+    setRestoringOnboardingSession(true);
+    try {
+      let currentUser = auth.currentUser;
+      if (!currentUser) {
+        const relogin = await tryOnboardingRelogin();
+        if (!relogin.signedIn) {
+          return;
+        }
+        currentUser = auth.currentUser;
+      }
+
+      if (currentUser) {
+        await currentUser.reload();
+        if (!currentUser.emailVerified) {
+          return;
+        }
+        await clearOnboardingRelogin();
+        setAuthUserVersion((version) => version + 1);
+        setUser(auth.currentUser);
+      }
+
+      if (onboardingStep !== ONBOARDING_STEP.DONE) {
+        await updateOnboardingStep(ONBOARDING_STEP.DONE);
+      }
+    } finally {
+      setRestoringOnboardingSession(false);
     }
   }, [onboardingStep, updateOnboardingStep]);
+
+  const resetToAccountCreation = useCallback(async () => {
+    await clearOnboardingRelogin();
+    await abandonUnverifiedSignup({
+      onboardingStep: ONBOARDING_STEP.ACCOUNT_PROMPT,
+      getOnboardingKey,
+      getOnboardingGoalKey,
+    });
+    setOnboardingStep(ONBOARDING_STEP.ACCOUNT_PROMPT);
+    setOnboardingActions(ONBOARDING_ACTION_DEFAULTS);
+    setOnboardingGoalId(null);
+    setOnboardingLoaded(true);
+    setAuthUserVersion((version) => version + 1);
+  }, [getOnboardingGoalKey, getOnboardingKey]);
+
+  const handleStartOver = resetToAccountCreation;
+
+  const handleBackToEditAccount = useCallback(async () => {
+    await updateOnboardingStep(ONBOARDING_STEP.ACCOUNT_PROMPT);
+  }, [updateOnboardingStep]);
 
   useEffect(() => {
     const currentUser = auth.currentUser;
@@ -995,7 +1133,7 @@ export default function App() {
     }
   }, [onboardingStep, hasUsername, updateOnboardingStep, user?.emailVerified]);
 
-  if (initializing) return null;
+  if (initializing || restoringOnboardingSession) return null;
   if (user && hasUsername && !onboardingLoaded) return null;
 
   const activeAuthUser = auth.currentUser ?? user;
@@ -1026,10 +1164,14 @@ export default function App() {
               <StatusBar style="dark" />
               <RootStack.Navigator screenOptions={{ headerShown: false }}>
                 {user && hasUsername ? (
-                  userNeedsEmailVerification ? (
+                  userNeedsEmailVerification && onboardingStep !== ONBOARDING_STEP.ACCOUNT_PROMPT ? (
                     <RootStack.Screen name="VerifyEmail" options={{ headerShown: false }}>
                       {() => (
-                        <VerifyEmailScreen onVerified={handleEmailVerified} />
+                        <VerifyEmailScreen
+                          onVerified={handleEmailVerified}
+                          onStartOver={handleStartOver}
+                          onBack={handleBackToEditAccount}
+                        />
                       )}
                     </RootStack.Screen>
                   ) : onboardingStep === ONBOARDING_STEP.WELCOME ? (

@@ -1,4 +1,6 @@
 import { applyActionCode, sendEmailVerification } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
+import { db } from "../firebaseConfig";
 import {
   ANDROID_PACKAGE_NAME,
   EMAIL_VERIFY_CONTINUE_URL,
@@ -95,11 +97,11 @@ export function parseEmailActionCodeFromUrl(url) {
     const parsed = new URL(url);
     const mode = parsed.searchParams.get("mode");
     const oobCode = parsed.searchParams.get("oobCode");
-    if (mode === "verifyEmail" && oobCode) {
+    if ((mode === "verifyEmail" || mode === "verifyAndChangeEmail") && oobCode) {
       return oobCode;
     }
   } catch {
-    const modeMatch = url.match(/[?&]mode=verifyEmail/i);
+    const modeMatch = url.match(/[?&]mode=(verifyEmail|verifyAndChangeEmail)/i);
     const codeMatch = url.match(/[?&]oobCode=([^&]+)/i);
     if (modeMatch && codeMatch?.[1]) {
       return decodeURIComponent(codeMatch[1]);
@@ -179,5 +181,14 @@ export async function applyEmailVerificationCode(authInstance, oobCode) {
   if (!authInstance || !oobCode) return false;
   await applyActionCode(authInstance, oobCode);
   await authInstance.currentUser?.reload();
-  return authInstance.currentUser?.emailVerified ?? false;
+  const verified = authInstance.currentUser?.emailVerified ?? false;
+  const uid = authInstance.currentUser?.uid;
+  if (uid) {
+    await setDoc(
+      doc(db, "users", uid),
+      { pendingEmailChange: null, email: authInstance.currentUser?.email || null },
+      { merge: true }
+    );
+  }
+  return verified;
 }

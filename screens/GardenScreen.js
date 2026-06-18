@@ -1528,6 +1528,8 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   const bubbleScale = useRef(new Animated.Value(0.8)).current;
   const bubbleTranslate = useRef(new Animated.ValueXY({ x: 40, y: 40 })).current;
   const bubbleSway = useRef(new Animated.Value(0)).current;
+  const tutorialNextRippleScale = useRef(new Animated.Value(1)).current;
+  const tutorialNextRippleOpacity = useRef(new Animated.Value(0)).current;
   const lastBubbleTutorialTaskRef = useRef(null);
   const drawerShouldShowRef = useRef((shouldPersistState ? (persistedGardenState.currentPageId || "default") : "default") !== STORAGE_PAGE_ID);
   const sharedDropOverridesRef = useRef({});
@@ -1703,6 +1705,76 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     swayLoop.start();
     return () => swayLoop.stop();
   }, [onboardingStep, bubbleSway]);
+
+  useEffect(() => {
+    if (!educationPanelMode) {
+      tutorialNextRippleScale.stopAnimation();
+      tutorialNextRippleOpacity.stopAnimation();
+      tutorialNextRippleScale.setValue(1);
+      tutorialNextRippleOpacity.setValue(0);
+      return undefined;
+    }
+
+    const rippleLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(tutorialNextRippleScale, {
+          toValue: 1,
+          duration: 0,
+          useNativeDriver: true,
+        }),
+        Animated.timing(tutorialNextRippleOpacity, {
+          toValue: 0.65,
+          duration: 60,
+          useNativeDriver: true,
+        }),
+        Animated.parallel([
+          Animated.timing(tutorialNextRippleScale, {
+            toValue: 1.28,
+            duration: 450,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(tutorialNextRippleOpacity, {
+            toValue: 0,
+            duration: 450,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.delay(550),
+      ])
+    );
+
+    rippleLoop.start();
+    return () => {
+      rippleLoop.stop();
+      tutorialNextRippleScale.setValue(1);
+      tutorialNextRippleOpacity.setValue(0);
+    };
+  }, [educationPanelMode, tutorialNextRippleOpacity, tutorialNextRippleScale]);
+
+  useEffect(() => {
+    if (!educationPanelMode || onboardingStep !== 'garden_tutorial') return undefined;
+
+    bubbleScale.setValue(0.6);
+    bubbleTranslate.setValue({ x: 100, y: 200 });
+    Animated.parallel([
+      Animated.spring(bubbleScale, {
+        toValue: 1,
+        friction: 8,
+        tension: 10,
+        useNativeDriver: true,
+      }),
+      Animated.spring(bubbleTranslate, {
+        toValue: { x: 0, y: 0 },
+        friction: 8,
+        tension: 10,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    return undefined;
+  }, [educationPanelMode, onboardingStep, bubbleScale, bubbleTranslate]);
 
   const measureTutorialHotspot = useCallback(() => {
     if (onboardingStep !== 'garden_tutorial') {
@@ -3727,70 +3799,87 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       : `Next ${educationDemoFrame + 1}/${educationTotalFrames}`)
     : (tutorialComplete ? "Next" : "Finish tasks first");
 
+  const mascotBubbleTransforms = {
+    transform: [
+      { scale: bubbleScale },
+      {
+        translateX: Animated.add(
+          bubbleTranslate.x,
+          bubbleSway.interpolate({
+            inputRange: [-1, 0, 1],
+            outputRange: [-4, 0, 4],
+          })
+        ),
+      },
+      { translateY: bubbleTranslate.y },
+      {
+        rotate: bubbleSway.interpolate({
+          inputRange: [-1, 0, 1],
+          outputRange: ['-2deg', '0deg', '2deg'],
+        }),
+      },
+    ],
+  };
+
+  const mascotBubbleContent = showingEducationPreview ? (
+    <>
+      <Text style={styles.educationModeLabel}>
+        {effectiveEducationMode === "growth" ? "GROWTH PREVIEW" : "HEALTH PREVIEW"}
+      </Text>
+      <Text style={styles.mascotBubbleTitle}>{educationBubbleLabel}</Text>
+      <Text style={styles.mascotBubbleText}>{educationBubbleHint}</Text>
+      <View style={styles.educationProgressRow}>
+        {Array.from({ length: educationTotalFrames }).map((_, index) => (
+          <View
+            key={`education-progress-${index}`}
+            style={[
+              styles.educationProgressDot,
+              index <= educationDemoFrame && styles.educationProgressDotActive,
+            ]}
+          />
+        ))}
+      </View>
+    </>
+  ) : (
+    <>
+      <Text style={styles.tutorialStepLabel}>
+        {`STEP ${tutorialStepNumber} OF ${GARDEN_TUTORIAL_TASKS.length}`}
+      </Text>
+      <Text style={styles.mascotBubbleTitle}>{tutorialTaskTitle}</Text>
+      {nextTutorialTask?.key === 'addedPage' && isEditing ? (
+        <Text style={styles.mascotBubbleText}>
+          {'Tap  '}
+          <Image source={require('../assets/Icons/addPageBlack.png')} style={{ width: 13, height: 13 }} />
+          {'  to add a page.'}
+        </Text>
+      ) : (
+        <Text style={styles.mascotBubbleText}>{tutorialBubbleText}</Text>
+      )}
+    </>
+  );
+
   return (
   <View style={styles.container}>
     {showGardenTutorialCard && (
-      <View pointerEvents="none" style={[styles.mascotGuideWrap, { right: 18, bottom: insets.bottom + 138 }]}> 
+      <View pointerEvents="box-none" style={[styles.mascotGuideWrap, { right: 18, bottom: insets.bottom + 138 }]}> 
         <Animated.View
           style={[
             styles.mascotBubble,
             showingEducationPreview && styles.mascotBubbleEducation,
-            {
-              transform: [
-                { scale: bubbleScale },
-                { translateX: bubbleTranslate.x },
-                { translateY: bubbleTranslate.y },
-                {
-                  translateX: bubbleSway.interpolate({
-                    inputRange: [-1, 0, 1],
-                    outputRange: [-4, 0, 4],
-                  }),
-                },
-                {
-                  rotate: bubbleSway.interpolate({
-                    inputRange: [-1, 0, 1],
-                    outputRange: ['-2deg', '0deg', '2deg'],
-                  }),
-                },
-              ],
-            },
+            mascotBubbleTransforms,
           ]}
         >
-          {showingEducationPreview ? (
-            <>
-              <Text style={styles.educationModeLabel}>
-                {effectiveEducationMode === "growth" ? "GROWTH PREVIEW" : "HEALTH PREVIEW"}
-              </Text>
-              <Text style={styles.mascotBubbleTitle}>{educationBubbleLabel}</Text>
-              <Text style={styles.mascotBubbleText}>{educationBubbleHint}</Text>
-              <View style={styles.educationProgressRow}>
-                {Array.from({ length: educationTotalFrames }).map((_, index) => (
-                  <View
-                    key={`education-progress-${index}`}
-                    style={[
-                      styles.educationProgressDot,
-                      index <= educationDemoFrame && styles.educationProgressDotActive,
-                    ]}
-                  />
-                ))}
-              </View>
-            </>
+          {educationActive ? (
+            <HapticPressable
+              onPress={handleEducationNext}
+              accessibilityRole="button"
+              accessibilityLabel={educationOnLastFrame ? "Finish preview" : "Next preview step"}
+              style={styles.mascotBubbleTapArea}
+            >
+              {mascotBubbleContent}
+            </HapticPressable>
           ) : (
-            <>
-              <Text style={styles.tutorialStepLabel}>
-                {`STEP ${tutorialStepNumber} OF ${GARDEN_TUTORIAL_TASKS.length}`}
-              </Text>
-              <Text style={styles.mascotBubbleTitle}>{tutorialTaskTitle}</Text>
-              {nextTutorialTask?.key === 'addedPage' && isEditing ? (
-                <Text style={styles.mascotBubbleText}>
-                  {'Tap  '}
-                  <Image source={require('../assets/Icons/addPageBlack.png')} style={{ width: 13, height: 13 }} />
-                  {'  to add a page.'}
-                </Text>
-              ) : (
-                <Text style={styles.mascotBubbleText}>{tutorialBubbleText}</Text>
-              )}
-            </>
+            mascotBubbleContent
           )}
         </Animated.View>
         <Image source={GARDEN_MASCOT} style={styles.mascotImage} resizeMode="contain" />
@@ -3799,42 +3888,58 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
     {showGardenTutorialCard && (
       <View style={[styles.tutorialNextWrap, { left: 24, bottom: insets.bottom + 10 }]}>
         <View style={styles.tutorialNextButtonWrap}>
-          <View pointerEvents="none" style={[styles.tutorialNextButtonShadow, styles.tutorialSkipButtonShadowColor]} />
-          <HapticPressable
-            onPress={() => {
-              if (nextTutorialTask?.key) {
-                onOnboardingAction?.(nextTutorialTask.key);
-              }
-            }}
-            disabled={!nextTutorialTask || showingEducationPreview}
-            style={({ pressed }) => [
-              styles.tutorialNextButtonFace,
-              styles.tutorialSkipButtonFaceColor,
-              (!nextTutorialTask || showingEducationPreview) && styles.tutorialSkipButtonFaceDisabled,
-              pressed && !!nextTutorialTask && !showingEducationPreview && styles.tutorialNextButtonPressed,
-            ]}
-          >
-            <Text style={[styles.tutorialSkipBtnText, (!nextTutorialTask || showingEducationPreview) && styles.tutorialSkipBtnTextDisabled]}>Skip</Text>
-          </HapticPressable>
+          <View style={styles.tutorialNextButtonShell}>
+            <View pointerEvents="none" style={[styles.tutorialNextButtonShadow, styles.tutorialSkipButtonShadowColor]} />
+            <HapticPressable
+              onPress={() => {
+                if (nextTutorialTask?.key) {
+                  onOnboardingAction?.(nextTutorialTask.key);
+                }
+              }}
+              disabled={!nextTutorialTask || showingEducationPreview}
+              style={({ pressed }) => [
+                styles.tutorialNextButtonFace,
+                styles.tutorialSkipButtonFaceColor,
+                (!nextTutorialTask || showingEducationPreview) && styles.tutorialSkipButtonFaceDisabled,
+                pressed && !!nextTutorialTask && !showingEducationPreview && styles.tutorialNextButtonPressed,
+              ]}
+            >
+              <Text style={[styles.tutorialSkipBtnText, (!nextTutorialTask || showingEducationPreview) && styles.tutorialSkipBtnTextDisabled]}>Skip</Text>
+            </HapticPressable>
+          </View>
         </View>
       </View>
     )}
     {showGardenTutorialCard && (
       <View style={[styles.tutorialNextWrap, { right: 24, bottom: insets.bottom + 10 }]}> 
         <View style={styles.tutorialNextButtonWrap}>
-          <View pointerEvents="none" style={[styles.tutorialNextButtonShadow, styles.tutorialNextButtonShadowColor]} />
-          <HapticPressable
-            onPress={showingEducationPreview ? handleEducationNext : (tutorialComplete ? onGardenTutorialNext : undefined)}
-            disabled={!tutorialRightEnabled}
-            style={({ pressed }) => [
-              styles.tutorialNextButtonFace,
-              styles.tutorialNextButtonFaceColor,
-              pressed && tutorialRightEnabled && styles.tutorialNextButtonPressed,
-              !tutorialRightEnabled && styles.tutorialNextButtonFaceDisabled,
-            ]}
-          >
-            <Text style={[styles.tutorialNextBtnText, !tutorialRightEnabled && styles.tutorialNextBtnTextDisabled]}>{tutorialRightLabel}</Text>
-          </HapticPressable>
+          <View style={styles.tutorialNextButtonShell}>
+            {educationActive ? (
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.tutorialNextRipple,
+                  {
+                    opacity: tutorialNextRippleOpacity,
+                    transform: [{ scale: tutorialNextRippleScale }],
+                  },
+                ]}
+              />
+            ) : null}
+            <View pointerEvents="none" style={[styles.tutorialNextButtonShadow, styles.tutorialNextButtonShadowColor]} />
+            <HapticPressable
+              onPress={showingEducationPreview ? handleEducationNext : (tutorialComplete ? onGardenTutorialNext : undefined)}
+              disabled={!tutorialRightEnabled}
+              style={({ pressed }) => [
+                styles.tutorialNextButtonFace,
+                styles.tutorialNextButtonFaceColor,
+                pressed && tutorialRightEnabled && styles.tutorialNextButtonPressed,
+                !tutorialRightEnabled && styles.tutorialNextButtonFaceDisabled,
+              ]}
+            >
+              <Text style={[styles.tutorialNextBtnText, !tutorialRightEnabled && styles.tutorialNextBtnTextDisabled]}>{tutorialRightLabel}</Text>
+            </HapticPressable>
+          </View>
         </View>
       </View>
     )}
@@ -4209,6 +4314,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingBottom: 70,
   },
+  mascotBubbleTapArea: {
+    alignSelf: 'stretch',
+  },
   mascotBubble: {
     backgroundColor: 'rgba(255,255,255,0.97)',
     borderRadius: 18,
@@ -4336,11 +4444,35 @@ const styles = StyleSheet.create({
     position: 'absolute',
     zIndex: 13050,
     elevation: 30,
+    overflow: 'visible',
   },
   tutorialNextButtonWrap: {
+    overflow: 'visible',
+  },
+  tutorialNextButtonShell: {
     height: 56,
     position: 'relative',
     minWidth: 140,
+  },
+  tutorialNextRipple: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 52,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+    backgroundColor: 'transparent',
+  },
+  tutorialNextButtonFace: {
+    height: 52,
+    minWidth: 140,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    zIndex: 1,
   },
   tutorialNextButtonShadow: {
     position: 'absolute',
@@ -4355,13 +4487,6 @@ const styles = StyleSheet.create({
   },
   tutorialSkipButtonShadowColor: {
     backgroundColor: '#bebebe',
-  },
-  tutorialNextButtonFace: {
-    height: 52,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
   },
   tutorialNextButtonFaceColor: {
     backgroundColor: '#59d700',

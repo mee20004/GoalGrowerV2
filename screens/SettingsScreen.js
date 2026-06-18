@@ -4,7 +4,8 @@ import { View, Text, StyleSheet, TextInput, ScrollView, Alert, ActivityIndicator
 import HapticPressable from "../components/HapticPressable";
 import HapticTouchableOpacity from "../components/HapticTouchableOpacity";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { updateEmail, updatePassword, signOut, onAuthStateChanged } from "firebase/auth";
+import { updatePassword, signOut, onAuthStateChanged } from "firebase/auth";
+import { changeUserEmail, formatEmailChangeError } from "../utils/accountEmail";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import theme, { useTheme } from "../theme";
@@ -30,7 +31,7 @@ import { getDateFormatSync, setDateFormat, FORMATS, getWeekStartSync, setWeekSta
 import { useSubscription } from '../components/SubscriptionProvider';
 import { PRO_ENTITLEMENT_DISPLAY_NAME } from '../constants/revenueCat';
 import { FREE_LIMITS_SUMMARY, PRO_BENEFITS_SUMMARY } from '../constants/subscriptionLimits';
-import { sendVerificationEmail, formatEmailVerificationError } from '../utils/emailVerification';
+import { formatEmailVerificationError } from '../utils/emailVerification';
 import { useSubscriptionLimits } from '../hooks/useSubscriptionLimits';
 
 export default function SettingsScreen({ navigation }) {
@@ -394,10 +395,13 @@ export default function SettingsScreen({ navigation }) {
       }
       // --- 2. Update Email in Firebase Auth ---
       let emailChanged = false;
+      let emailUpdateResult = null;
       if (email !== auth.currentUser.email) {
-        await updateEmail(auth.currentUser, email);
-        emailChanged = true;
-        changesMade = true;
+        emailUpdateResult = await changeUserEmail(auth.currentUser, email);
+        if (emailUpdateResult.changed) {
+          emailChanged = true;
+          changesMade = true;
+        }
       }
       // --- 3. Update Password in Firebase Auth ---
       if (newPassword.length > 0) {
@@ -416,17 +420,15 @@ export default function SettingsScreen({ navigation }) {
         changesMade = true;
       }
       if (emailChanged) {
-        try {
-          await sendVerificationEmail(auth.currentUser);
+        if (emailUpdateResult?.verificationSent === false && emailUpdateResult?.verificationError) {
+          Alert.alert(
+            'Email updated',
+            `Your email was saved, but we could not send a verification email: ${formatEmailVerificationError(emailUpdateResult.verificationError)}`
+          );
+        } else {
           Alert.alert(
             'Email updated',
             'Verify your new address to keep full access. Check your inbox and spam folder for a verification link.'
-          );
-        } catch (verifyError) {
-          console.error('Send verification email after email change failed:', verifyError);
-          Alert.alert(
-            'Email updated',
-            `Your email was saved, but we could not send a verification email: ${formatEmailVerificationError(verifyError)}`
           );
         }
       } else if (changesMade) {
@@ -443,6 +445,8 @@ export default function SettingsScreen({ navigation }) {
           "Authentication Required", 
           "For your security, please log out and log back in to change your email or password."
         );
+      } else if (error.code === 'auth/email-already-in-use' || error.code === 'auth/invalid-email') {
+        Alert.alert("Error", formatEmailChangeError(error));
       } else {
         Alert.alert("Error", error.message);
       }

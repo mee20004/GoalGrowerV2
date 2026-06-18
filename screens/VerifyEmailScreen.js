@@ -11,8 +11,10 @@ import {
 } from "react-native";
 import { signOut } from "firebase/auth";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import HapticPressable from "../components/HapticPressable";
-import { auth } from "../firebaseConfig";
+import { auth, db } from "../firebaseConfig";
+import { doc, getDoc } from "firebase/firestore";
 import theme from "../theme";
 import { RESEND_COOLDOWN_SECONDS, RATE_LIMIT_COOLDOWN_SECONDS } from "../constants/emailVerification";
 import {
@@ -23,13 +25,52 @@ import {
 } from "../utils/emailVerification";
 import { useEmailVerificationDeepLink } from "../hooks/useEmailVerificationDeepLink";
 
-export default function VerifyEmailScreen({ onVerified }) {
+export default function VerifyEmailScreen({ onVerified, onStartOver, onBack }) {
   const user = auth.currentUser;
-  const email = user?.email || "";
+  const insets = useSafeAreaInsets();
+  const authEmail = user?.email || "";
+  const [displayEmail, setDisplayEmail] = useState(authEmail);
+  const [hasPendingEmailChange, setHasPendingEmailChange] = useState(false);
+  const [profileReady, setProfileReady] = useState(false);
+  const [startingOver, setStartingOver] = useState(false);
+  const [goingBack, setGoingBack] = useState(false);
   const [resending, setResending] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [sendError, setSendError] = useState(null);
   const initialSendStartedRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const currentUser = auth.currentUser;
+      if (!currentUser?.uid) {
+        setDisplayEmail("");
+        setProfileReady(true);
+        return;
+      }
+
+      try {
+        const userSnap = await getDoc(doc(db, "users", currentUser.uid));
+        const pendingEmail = userSnap.exists()
+          ? userSnap.data()?.pendingEmailChange
+          : null;
+        if (!cancelled) {
+          setHasPendingEmailChange(!!pendingEmail);
+          setDisplayEmail(pendingEmail || currentUser.email || "");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDisplayEmail(currentUser.email || "");
+        }
+      } finally {
+        if (!cancelled) setProfileReady(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.email, user?.uid]);
 
   const applySendCooldown = useCallback((seconds) => {
     setCooldown(Math.max(0, seconds));
@@ -54,7 +95,7 @@ export default function VerifyEmailScreen({ onVerified }) {
   }, [cooldown]);
 
   useEffect(() => {
-    if (!user?.uid || initialSendStartedRef.current) return undefined;
+    if (!user?.uid || !profileReady || initialSendStartedRef.current || hasPendingEmailChange) return undefined;
     initialSendStartedRef.current = true;
 
     let cancelled = false;
@@ -85,10 +126,17 @@ export default function VerifyEmailScreen({ onVerified }) {
     return () => {
       cancelled = true;
     };
-  }, [applySendCooldown, user]);
+  }, [applySendCooldown, hasPendingEmailChange, profileReady, user]);
 
   const handleResend = useCallback(async () => {
     if (!user || cooldown > 0 || resending) return;
+    if (hasPendingEmailChange) {
+      Alert.alert(
+        "Confirm your new email",
+        `Open the link we sent to ${displayEmail} to confirm your address.`
+      );
+      return;
+    }
     setResending(true);
     setSendError(null);
     try {
@@ -106,7 +154,46 @@ export default function VerifyEmailScreen({ onVerified }) {
     } finally {
       setResending(false);
     }
-  }, [applySendCooldown, cooldown, resending, user]);
+  }, [applySendCooldown, cooldown, displayEmail, hasPendingEmailChange, resending, user]);
+
+  const handleStartOver = useCallback(() => {
+    Alert.alert(
+      "Start over?",
+      "This deletes your unverified account and onboarding progress on this device so you can sign up again with the correct email and username.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Start over",
+          style: "destructive",
+          onPress: async () => {
+            if (startingOver) return;
+            setStartingOver(true);
+            try {
+              await onStartOver?.();
+            } catch (error) {
+              console.error("Start over failed", error);
+              Alert.alert("Error", "Could not start over. Please try again.");
+            } finally {
+              setStartingOver(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [onStartOver, startingOver]);
+
+  const handleBack = useCallback(async () => {
+    if (!onBack || goingBack) return;
+    setGoingBack(true);
+    try {
+      await onBack();
+    } catch (error) {
+      console.error("Back to account creation failed", error);
+      Alert.alert("Error", "Could not go back. Please try again.");
+    } finally {
+      setGoingBack(false);
+    }
+  }, [goingBack, onBack]);
 
   const handleSignOut = useCallback(async () => {
     try {
@@ -117,7 +204,7 @@ export default function VerifyEmailScreen({ onVerified }) {
     }
   }, []);
 
-  const busy = processing || resending;
+  const busy = processing || resending || startingOver || goingBack;
 
   return (
     <KeyboardAvoidingView
@@ -125,6 +212,23 @@ export default function VerifyEmailScreen({ onVerified }) {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
     >
+      {onBack ? (
+        <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+          <HapticPressable
+            disabled={busy}
+            onPress={handleBack}
+            style={styles.backButton}
+            hitSlop={8}
+          >
+            {goingBack ? (
+              <ActivityIndicator color={theme.accent} />
+            ) : (
+              <Ionicons name="chevron-back" size={26} color={theme.accent} />
+            )}
+          </HapticPressable>
+        </View>
+      ) : null}
+
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
@@ -138,20 +242,9 @@ export default function VerifyEmailScreen({ onVerified }) {
           <Text style={styles.title}>Verify your email</Text>
           <Text style={styles.subtitle}>
             We sent a verification link to{" "}
-            <Text style={styles.emailHighlight}>{maskEmail(email)}</Text>.
+            <Text style={styles.emailHighlight}>{maskEmail(displayEmail)}</Text>.
             Tap the link in your email to continue.
           </Text>
-
-          <View style={styles.hintCard}>
-            <Text style={styles.hintTitle}>Using the app on a device?</Text>
-            <Text style={styles.hintBody}>
-              The link should open Goal Grower automatically after you verify.
-            </Text>
-            <Text style={[styles.hintTitle, { marginTop: 10 }]}>Using Expo Go?</Text>
-            <Text style={styles.hintBody}>
-              Verify in your browser, return here, then tap I've verified.
-            </Text>
-          </View>
 
           {sendError ? (
             <Text style={styles.errorText}>{sendError}</Text>
@@ -201,10 +294,6 @@ export default function VerifyEmailScreen({ onVerified }) {
               )}
             </HapticPressable>
           </View>
-
-          <HapticPressable onPress={handleSignOut} style={styles.signOutBtn}>
-            <Text style={styles.signOutText}>Sign out</Text>
-          </HapticPressable>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -215,6 +304,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.bg,
+  },
+  topBar: {
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
   scrollContent: {
     flexGrow: 1,
@@ -263,31 +362,6 @@ const styles = StyleSheet.create({
     color: theme.accent,
     fontWeight: "900",
   },
-  hintCard: {
-    marginTop: 20,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 14,
-    shadowColor: "#4c6782",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  hintTitle: {
-    fontSize: 12,
-    fontWeight: "900",
-    color: theme.text,
-    fontFamily: "CeraRoundProDEMO-Black",
-    marginBottom: 4,
-  },
-  hintBody: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#6b6560",
-    lineHeight: 18,
-    fontFamily: "CeraRoundProDEMO-Black",
-  },
   errorText: {
     marginTop: 14,
     textAlign: "center",
@@ -333,8 +407,22 @@ const styles = StyleSheet.create({
     color: theme.accent,
     fontFamily: "CeraRoundProDEMO-Black",
   },
-  signOutBtn: {
+  startOverBtn: {
     marginTop: 18,
+    alignSelf: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    minHeight: 32,
+    justifyContent: "center",
+  },
+  startOverText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#c63b3b",
+    fontFamily: "CeraRoundProDEMO-Black",
+  },
+  signOutBtn: {
+    marginTop: 6,
     alignSelf: "center",
     paddingVertical: 8,
     paddingHorizontal: 12,

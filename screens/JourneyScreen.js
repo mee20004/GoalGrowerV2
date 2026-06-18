@@ -156,13 +156,15 @@ export default function JourneyScreen({ route, navigation }) {
     platinumGoals: 0,
   });
 
-  const loadJourney = useCallback(async () => {
+  const loadJourney = useCallback(async ({ silent = false } = {}) => {
     if (!targetUid) {
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const uid = targetUid;
       const userRef = doc(db, "users", uid);
@@ -464,7 +466,7 @@ export default function JourneyScreen({ route, navigation }) {
           } else {
             cancelFlyReward(balanceBefore);
           }
-          await loadJourney();
+          await loadJourney({ silent: true });
         } else {
           cancelFlyReward(balanceBefore);
         }
@@ -497,7 +499,7 @@ export default function JourneyScreen({ route, navigation }) {
           } else {
             cancelFlyReward(balanceBefore);
           }
-          await loadJourney();
+          await loadJourney({ silent: true });
         } else {
           cancelFlyReward(balanceBefore);
         }

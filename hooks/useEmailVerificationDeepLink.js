@@ -7,6 +7,20 @@ import {
   parseEmailActionCodeFromUrl,
   refreshEmailVerificationStatus,
 } from "../utils/emailVerification";
+import { tryOnboardingRelogin } from "../utils/onboardingRelogin";
+
+async function ensureSignedInForVerification() {
+  if (auth.currentUser) {
+    return auth.currentUser;
+  }
+
+  const relogin = await tryOnboardingRelogin();
+  if (relogin.signedIn) {
+    return auth.currentUser;
+  }
+
+  return null;
+}
 
 export function useEmailVerificationDeepLink({ onVerified }) {
   const [processing, setProcessing] = useState(false);
@@ -15,8 +29,9 @@ export function useEmailVerificationDeepLink({ onVerified }) {
   const handledCodesRef = useRef(new Set());
 
   const finishIfVerified = useCallback(async () => {
-    const user = auth.currentUser;
+    const user = await ensureSignedInForVerification();
     if (!user) return false;
+
     const verified = await refreshEmailVerificationStatus(user);
     if (verified) {
       setLastSuccess(true);
@@ -38,12 +53,23 @@ export function useEmailVerificationDeepLink({ onVerified }) {
     setLastError(null);
 
     try {
-      const verified = await applyEmailVerificationCode(auth, oobCode);
+      await applyEmailVerificationCode(auth, oobCode);
+
+      const user = await ensureSignedInForVerification();
+      if (!user) {
+        setLastError(
+          "Your email was verified, but we could not restore your session. Try signing in with your email and password."
+        );
+        return false;
+      }
+
+      const verified = await refreshEmailVerificationStatus(user);
       if (verified) {
         setLastSuccess(true);
         await onVerified?.();
         return true;
       }
+
       setLastError("Could not verify this link. Try again or tap I've verified.");
       return false;
     } catch (error) {

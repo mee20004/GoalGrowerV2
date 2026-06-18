@@ -14,11 +14,14 @@ export default function DailyQuestCard({
 }) {
   const hasWeekly = weeklyQuests.length > 0;
 
+  const hasQuests = dailyQuests.length > 0 || weeklyQuests.length > 0;
+  const showInitialLoading = loading && !hasQuests;
+
   return (
     <View style={styles.card}>
       <Text style={styles.subtitle}>Small wins, daily coins</Text>
 
-      {loading ? (
+      {showInitialLoading ? (
         <Text style={styles.helper}>Loading quests...</Text>
       ) : dailyQuests.length === 0 ? (
         <Text style={styles.helper}>
