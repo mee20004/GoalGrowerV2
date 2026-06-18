@@ -6,6 +6,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Image,
   ImageBackground,
   useWindowDimensions,
 } from "react-native";
@@ -15,7 +16,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { PAYWALL_RESULT } from "react-native-purchases-ui";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Page from "../components/Page";
-import theme, { useTheme, getDarkerAccentColor } from "../theme";
+import theme, { useTheme } from "../theme";
 import { cpShadow, hardDropShadowSm } from "../utils/shadows";
 import { useSubscription } from "../components/SubscriptionProvider";
 import { useShopInventory } from "../components/ShopInventoryProvider";
@@ -28,10 +29,14 @@ import {
   IAP_COIN_GRANTS,
   getShopItemsByCategory,
 } from "../constants/ShopCatalog";
+import { SHOP_CATALOG_TABS, SHOP_TAB_ICONS } from "../constants/ShopTabIcons";
 import { PRO_BENEFITS_SUMMARY } from "../constants/subscriptionLimits";
 import { creditCoins } from "../utils/shopInventory";
 
 const BANNER_IMAGE = require("../assets/FarBG/beach_b.png");
+const COINS_BUTTON_HEIGHT = 58;
+const SEGMENT_TRACK_PADDING = 6;
+const SEGMENT_TAB_GAP = 8;
 
 const DECOR_ITEM_TYPES = new Set([
   DECOR_TYPES.FARBG,
@@ -40,14 +45,6 @@ const DECOR_ITEM_TYPES = new Set([
   DECOR_TYPES.SHELF,
 ]);
 
-const CATALOG_TABS = [
-  { key: SHOP_CATEGORIES.PLANTS, label: "Plants", icon: "leaf" },
-  { key: SHOP_CATEGORIES.POTS, label: "Pots", icon: "color-palette" },
-  { key: SHOP_CATEGORIES.BACKGROUNDS, label: "Backgrounds", icon: "image" },
-  { key: SHOP_CATEGORIES.WINDOWS, label: "Windows", icon: "grid" },
-  { key: SHOP_CATEGORIES.WALLS, label: "Walls", icon: "color-fill" },
-  { key: SHOP_CATEGORIES.SHELVES, label: "Shelves", icon: "layers" },
-];
 
 export default function ShopScreen() {
   const { theme } = useTheme();
@@ -73,8 +70,17 @@ export default function ShopScreen() {
     unavailableReason,
   } = useSubscription();
 
-  const cardWidth = (width - theme.pad * 2 - 14) / 2;
+  const cardWidth = (width - theme.pad * 2 - 14 * 2) / 3;
   const catalogItems = useMemo(() => getShopItemsByCategory(activeTab), [activeTab]);
+  const tabCount = SHOP_CATALOG_TABS.length;
+  const segmentContentWidth = width - theme.pad * 2;
+  const segmentTabWidth =
+    (segmentContentWidth
+      - SEGMENT_TRACK_PADDING * 2
+      - SEGMENT_TAB_GAP * (tabCount - 1))
+    / tabCount;
+  const segmentTabHeight = COINS_BUTTON_HEIGHT - SEGMENT_TRACK_PADDING * 2;
+  const segmentIconSize = Math.min(segmentTabWidth - 8, segmentTabHeight - 8);
 
   const handleBuy = useCallback(
     async (item) => {
@@ -237,42 +243,42 @@ export default function ShopScreen() {
       {/* Products */}
       <View style={styles.catalogSection}>
         <Text style={styles.sectionTitle}>Collection</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={[
+        <View
+          style={[
             styles.segmentTrack,
+            { width: segmentContentWidth, height: COINS_BUTTON_HEIGHT },
             cpShadow({ color: "#cbd5e1", offset: { width: 0, height: 3 }, opacity: 0.5, radius: 6, elevation: 2 }),
           ]}
         >
-          {CATALOG_TABS.map((tab) => {
+          {SHOP_CATALOG_TABS.map((tab) => {
             const active = activeTab === tab.key;
             return (
               <HapticPressable
                 key={tab.key}
+                accessibilityLabel={tab.label}
                 onPress={() => setActiveTab(tab.key)}
                 style={[
                   styles.segmentChip,
+                  {
+                    width: segmentTabWidth,
+                    height: segmentTabHeight,
+                  },
                   !active && styles.segmentChipInactive,
                   active && [
                     styles.segmentChipActive,
-                    { backgroundColor: theme.accent },
-                    cpShadow({ color: getDarkerAccentColor(theme.accent, 0.65), offset: { width: 0, height: 0 }, opacity: 0.45, radius: 0, elevation: 3 }),
+                    { borderColor: theme.accent },
                   ],
                 ]}
               >
-                <Ionicons
-                  name={tab.icon}
-                  size={16}
-                  color={active ? "#fff" : theme.accent}
+                <Image
+                  source={SHOP_TAB_ICONS[tab.key]}
+                  style={{ width: segmentIconSize, height: segmentIconSize }}
+                  resizeMode="contain"
                 />
-                <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
-                  {tab.label}
-                </Text>
               </HapticPressable>
             );
           })}
-        </ScrollView>
+        </View>
       </View>
 
       {inventoryLoading ? (
@@ -439,12 +445,12 @@ const styles = StyleSheet.create({
   coinsButton: {
     backgroundColor: "#f5b942",
     borderRadius: 18,
-    height: 58,
+    height: COINS_BUTTON_HEIGHT,
     paddingHorizontal: 18,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
+    marginBottom: 28,
   },
   coinsButtonPressed: {
     transform: [{ translateY: 2 }],
@@ -496,37 +502,26 @@ const styles = StyleSheet.create({
   },
   segmentTrack: {
     flexDirection: "row",
-    gap: 8,
+    alignItems: "center",
+    gap: SEGMENT_TAB_GAP,
     backgroundColor: "#ced4db",
     borderRadius: 18,
-    padding: 6,
-    paddingRight: 10,
+    padding: SEGMENT_TRACK_PADDING,
+    alignSelf: "center",
   },
   segmentChip: {
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    minHeight: 44,
     borderRadius: 14,
-    paddingHorizontal: 12,
   },
   segmentChipInactive: {
     backgroundColor: "#fff",
-    borderWidth: 0,
-    borderColor: "#dce3eb",
-  },
-  segmentChipActive: {
     borderWidth: 2,
     borderColor: "transparent",
   },
-  segmentLabel: {
-    fontSize: 13,
-    fontFamily: "CeraRoundProDEMO-Black",
-    color: "#334155",
-  },
-  segmentLabelActive: {
-    color: "#fff",
+  segmentChipActive: {
+    backgroundColor: "#fff",
+    borderWidth: 4,
   },
   grid: {
     flexDirection: "row",

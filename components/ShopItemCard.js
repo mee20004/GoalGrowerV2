@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -11,21 +11,60 @@ import { HapticType } from "../utils/haptics";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import TutorialPlantInPot from "./tutorial/TutorialPlantInPot";
 import CoinIcon from "./CoinIcon";
-import { getDecorPreview, getPlantPreview, DECOR_TYPES } from "../constants/ShopCatalog";
+import { getDecorPreview, getPlantPreview } from "../constants/ShopCatalog";
+import {
+  getShopDecorPreviewLayout,
+  resolveDecorPreviewLayout,
+  SHOP_PREVIEW_FRAME_HEIGHT,
+} from "../constants/ShopDecorPreviewLayout";
 import { hardDropShadowSm } from "../utils/shadows";
 import { getDarkerAccentColor } from "../theme";
 
-function getDecorImageProps(type) {
-  switch (type) {
-    case DECOR_TYPES.FARBG:
-      return { style: styles.farBgSquareImage, resizeMode: "cover" };
-    case DECOR_TYPES.WALL:
-      return { style: styles.wallSquareImage, resizeMode: "cover" };
-    case DECOR_TYPES.WINDOW:
-      return { style: styles.windowSquareImage, resizeMode: "contain" };
-    default:
-      return null;
-  }
+function DecorShopPreview({ preview, layout }) {
+  const [stageSize, setStageSize] = useState(null);
+
+  const resolved = useMemo(
+    () => resolveDecorPreviewLayout(layout, stageSize),
+    [layout, stageSize]
+  );
+
+  return (
+    <View
+      style={styles.decorPreviewStage}
+      onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout;
+        setStageSize((prev) =>
+          prev?.width === width && prev?.height === height ? prev : { width, height }
+        );
+      }}
+    >
+      {resolved && preview.kind === "image" ? (
+        <Image
+          source={preview.source}
+          style={{
+            position: "absolute",
+            width: resolved.width,
+            height: resolved.height,
+            left: resolved.left,
+            top: resolved.top,
+          }}
+          resizeMode={resolved.resizeMode}
+        />
+      ) : null}
+      {resolved && preview.kind === "shelf" ? (
+        <View
+          style={{
+            position: "absolute",
+            width: resolved.width,
+            height: resolved.height,
+            left: resolved.left,
+            top: resolved.top,
+            backgroundColor: preview.color,
+          }}
+        />
+      ) : null}
+    </View>
+  );
 }
 
 function ShopItemCard({ item, owned, canAfford, loading, accent, onPress }) {
@@ -34,7 +73,7 @@ function ShopItemCard({ item, owned, canAfford, loading, accent, onPress }) {
     item.type === "plant" ? getPlantPreview(item.assetKey) : getPlantPreview("fern");
   const potPreview = item.type === "pot" ? item.assetKey : "default";
   const decorPreview = !isPlantPot ? getDecorPreview(item) : null;
-  const decorImageProps = decorPreview?.kind === "image" ? getDecorImageProps(item.type) : null;
+  const decorPreviewLayout = !isPlantPot ? getShopDecorPreviewLayout(item) : null;
   const disabled = loading || owned || !canAfford;
 
   const buttonColor = owned ? "#9aa6b2" : canAfford ? accent : "#e2e8f0";
@@ -47,25 +86,15 @@ function ShopItemCard({ item, owned, canAfford, loading, accent, onPress }) {
         hardDropShadowSm,
       ]}
     >
-      <View style={styles.previewWrap}>
+      <View style={[styles.previewWrap, !isPlantPot && styles.previewWrapDecor]}>
         {isPlantPot ? (
           <TutorialPlantInPot
             plantSource={plantPreview}
             potKey={potPreview}
-            size={item.type === "pot" ? 92 : 104}
+            size={item.type === "pot" ? 72 : 80}
           />
         ) : decorPreview ? (
-          <View style={styles.decorSwatch}>
-            {decorPreview.kind === "image" ? (
-              <Image
-                source={decorPreview.source}
-                style={decorImageProps?.style}
-                resizeMode={decorImageProps?.resizeMode}
-              />
-            ) : (
-              <View style={[styles.swatchFill, { backgroundColor: decorPreview.color }]} />
-            )}
-          </View>
+          <DecorShopPreview preview={decorPreview} layout={decorPreviewLayout} />
         ) : null}
         {item.tag ? (
           <View style={[styles.tag, { backgroundColor: getDarkerAccentColor(accent, 0.9) }]}>
@@ -74,16 +103,13 @@ function ShopItemCard({ item, owned, canAfford, loading, accent, onPress }) {
         ) : null}
         {owned ? (
           <View style={styles.ownedCheck}>
-            <Ionicons name="checkmark" size={13} color="#fff" />
+            <Ionicons name="checkmark" size={11} color="#fff" />
           </View>
         ) : null}
       </View>
 
       <Text style={styles.name} numberOfLines={1}>
         {item.name}
-      </Text>
-      <Text style={styles.description} numberOfLines={2}>
-        {item.description}
       </Text>
 
       <HapticPressable
@@ -102,7 +128,7 @@ function ShopItemCard({ item, owned, canAfford, loading, accent, onPress }) {
           <Text style={[styles.buttonText, { color: buttonTextColor }]}>Owned</Text>
         ) : (
           <View style={styles.priceRow}>
-            <CoinIcon size={25} />
+            <CoinIcon size={20} />
             <Text style={[styles.buttonText, { color: buttonTextColor }]}>{item.price}</Text>
           </View>
         )}
@@ -117,49 +143,24 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 12,
+    borderRadius: 16,
+    padding: 8,
   },
   previewWrap: {
     alignItems: "center",
     justifyContent: "center",
-    height: 110,
-    marginBottom: 10,
+    height: SHOP_PREVIEW_FRAME_HEIGHT,
+    marginBottom: 6,
     backgroundColor: "#f6f8fa",
-    borderRadius: 16,
+    borderRadius: 12,
   },
-  decorSwatch: {
-    width: 76,
-    height: 76,
-    borderRadius: 18,
+  previewWrapDecor: {
     overflow: "hidden",
-    borderWidth: 2,
-    borderColor: "#e5e7eb",
-    backgroundColor: "#f8fafc",
-    position: "relative",
+    padding: 0,
   },
-  farBgSquareImage: {
-    width: 100,
-    height: 100,
-  },
-  wallSquareImage: {
-    position: "absolute",
-    width: 150,
-    height: 150,
-    top: -1,
-    left: -12,
-  },
-  windowSquareImage: {
-    position: "absolute",
-    width: 280,
-    height: 280,
-    top: -125,
-    left: -105,
-  },
-  swatchFill: {
-    flex: 1,
-    width: "100%",
-    height: "100%",
+  decorPreviewStage: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: "hidden",
   },
   tag: {
     position: "absolute",
@@ -178,31 +179,25 @@ const styles = StyleSheet.create({
   },
   ownedCheck: {
     position: "absolute",
-    top: 8,
-    right: 8,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    top: 6,
+    right: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     backgroundColor: "#22c55e",
     alignItems: "center",
     justifyContent: "center",
   },
   name: {
-    fontSize: 16,
+    fontSize: 12,
     fontFamily: "CeraRoundProDEMO-Black",
     color: "#0f172a",
-    marginBottom: 3,
-  },
-  description: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: "#94a3b8",
-    height: 32,
-    marginBottom: 10,
+    marginBottom: 6,
+    textAlign: "center",
   },
   button: {
-    height: 42,
-    borderRadius: 13,
+    height: 34,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -211,12 +206,12 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
   buttonText: {
-    fontSize: 15,
+    fontSize: 13,
     fontFamily: "CeraRoundProDEMO-Black",
   },
   priceRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
   },
 });
