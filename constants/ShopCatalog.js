@@ -71,6 +71,15 @@ export const SHOP_ITEMS = [
     price: 180,
   },
   {
+    id: "plant_tulip",
+    category: SHOP_CATEGORIES.PLANTS,
+    type: "plant",
+    assetKey: "tulip",
+    name: "Tulip",
+    description: "Bright blooms for goals in full swing.",
+    price: 220,
+  },
+  {
     id: "pot_default",
     category: SHOP_CATEGORIES.POTS,
     type: "pot",
@@ -296,6 +305,7 @@ export const DEFAULT_OWNED_PLANTS = {
   fern: true,
   cactus: false,
   succulent: false,
+  tulip: false,
 };
 
 export const DEFAULT_OWNED_POTS = {
