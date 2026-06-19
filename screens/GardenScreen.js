@@ -4085,6 +4085,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         visible={showCustomization}
         onClose={() => setShowCustomization(false)}
         onSave={async (pageId, values) => {
+          if (isSharedGarden && !canCustomize) return;
           setCustomizations(prev => ({ ...prev, [pageId]: values }));
           if (isSharedGarden && sharedGardenId) {
             await saveSharedCustomizations(sharedGardenId, pageId, values);
@@ -4096,6 +4097,8 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         customizations={customizations}
         customizerType={customizerType}
         customizerTypeSetter={setCustomizerType}
+        enforceOwnedSelection={!isSharedGarden}
+        canSave={canCustomize}
       />
     )}
     {!isReadOnly && isEditing && !canCustomize && (

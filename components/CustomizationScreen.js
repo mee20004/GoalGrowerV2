@@ -133,6 +133,8 @@ export default function CustomizationScreen({
   customizations,
   customizerType,
   customizerTypeSetter,
+  enforceOwnedSelection = true,
+  canSave = true,
 }) {
   const { theme } = useTheme();
   const accent = theme.accent;
@@ -185,6 +187,7 @@ export default function CustomizationScreen({
   }, [selectedPageId, customizations]);
 
   useEffect(() => {
+    if (!enforceOwnedSelection) return;
     if (!isFarBgOwned(farBg)) {
       setFarBg(firstOwnedIndex(FAR_BG_ASSETS.length, isFarBgOwned));
     }
@@ -198,6 +201,7 @@ export default function CustomizationScreen({
       setShelfColor(firstOwnedIndex(SHELF_COLOR_SCHEMES.length, isShelfColorOwned));
     }
   }, [
+    enforceOwnedSelection,
     farBg,
     windowFrame,
     wallBg,
@@ -209,7 +213,7 @@ export default function CustomizationScreen({
   ]);
 
   useEffect(() => {
-    if (!visible) return undefined;
+    if (!visible || !canSave) return undefined;
 
     const saved = customizations?.[selectedPageId] || {};
     const values = { farBg, windowFrame, wallBg, shelfColor };
@@ -230,7 +234,7 @@ export default function CustomizationScreen({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [farBg, windowFrame, wallBg, shelfColor, visible, selectedPageId, customizations, onSave, onCustomizationChange]);
+  }, [farBg, windowFrame, wallBg, shelfColor, visible, canSave, selectedPageId, customizations, onSave, onCustomizationChange]);
 
   useEffect(() => {
     if (!visible) {
