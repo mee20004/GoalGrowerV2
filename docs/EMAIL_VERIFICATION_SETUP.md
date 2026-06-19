@@ -17,8 +17,8 @@ Firebase Console → **Project settings → Your apps**
 
 | Platform | Identifier |
 | -------- | ---------- |
-| iOS      | `com.ziyu.goalgrower` |
-| Android  | `com.ziyu.goalgrower` |
+| iOS      | `com.goalgrower.app` |
+| Android  | `com.goalgrower.app` |
 
 No `GoogleService-Info.plist` or native Firebase SDK is required for the current JS SDK setup—Console registration is enough for App Links / Universal Links.
 
@@ -75,7 +75,7 @@ Until custom email is built, users verify by **copy/pasting the link into a brow
 
 If you see the Firebase banner about Dynamic Links shutting down:
 
-1. Ensure iOS + Android apps are registered with bundle/package `com.ziyu.goalgrower`
+1. Ensure iOS + Android apps are registered with bundle/package `com.goalgrower.app`
 2. The app uses `linkDomain: goalgrower-2a859.firebaseapp.com` and Android intent filter for `/__/auth/links`
 3. Optionally configure Firebase Auth mobile links via Admin SDK (`mobileLinksConfig.domain`) — see [Firebase migration guide](https://firebase.google.com/docs/auth/android/email-link-migration)
 

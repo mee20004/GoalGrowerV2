@@ -31,6 +31,13 @@ import { cardShadow, subtleBorderShadow, cpShadow } from "./utils/shadows";
 import { FRAME_ASSETS } from "./constants/FrameAssets";
 import { WALLPAPER_ASSETS } from "./constants/WallpaperAssets";
 import { initializeNotifications, teardownNotificationListeners } from "./utils/notifications";
+import {
+  getActiveRouteName,
+  initializeAnalytics,
+  logAnalyticsEvent,
+  logScreenView,
+  setAnalyticsUserId,
+} from "./utils/analytics";
 
 // Screens
 import GoalsScreen from "./screens/GoalsScreen";
@@ -794,22 +801,47 @@ export default function App() {
   const appStateListenerRef = useRef(null);
   const navigationRef = useNavigationContainerRef();
   const notificationCleanupRef = useRef(null);
+  const routeNameRef = useRef(null);
+
+  const trackNavigationState = useCallback(() => {
+    const currentRouteName = getActiveRouteName(navigationRef);
+    if (currentRouteName && routeNameRef.current !== currentRouteName) {
+      routeNameRef.current = currentRouteName;
+      logScreenView(currentRouteName);
+    }
+  }, [navigationRef]);
 
   const getOnboardingKey = (uid) => `onboardingStep_${uid}`;
   const getOnboardingGoalKey = (uid) => `onboardingGoalId_${uid}`;
 
-  const loadOnboardingStep = useCallback(async (uid) => {
+  const loadOnboardingStep = useCallback(async (uid, options = {}) => {
     if (!uid) return;
+    const { defaultIfMissing = ONBOARDING_STEP.WELCOME } = options;
     const key = getOnboardingKey(uid);
     const goalKey = getOnboardingGoalKey(uid);
     const saved = await AsyncStorage.getItem(key);
     const savedGoalId = await AsyncStorage.getItem(goalKey);
     setOnboardingGoalId(savedGoalId || null);
+
+    let nextStep = defaultIfMissing;
     if (saved && Object.values(ONBOARDING_STEP).includes(saved)) {
-      setOnboardingStep(saved);
-    } else {
-      setOnboardingStep(ONBOARDING_STEP.WELCOME);
-      await AsyncStorage.setItem(key, ONBOARDING_STEP.WELCOME);
+      nextStep = saved;
+    }
+
+    // Returning email users should never restart guest onboarding at Welcome.
+    const currentUser = auth.currentUser;
+    if (
+      currentUser &&
+      !currentUser.isAnonymous &&
+      nextStep === ONBOARDING_STEP.WELCOME &&
+      defaultIfMissing === ONBOARDING_STEP.DONE
+    ) {
+      nextStep = ONBOARDING_STEP.DONE;
+    }
+
+    setOnboardingStep(nextStep);
+    if (!saved || saved !== nextStep) {
+      await AsyncStorage.setItem(key, nextStep);
     }
     setOnboardingLoaded(true);
   }, []);
@@ -838,6 +870,8 @@ export default function App() {
     if (nextStep !== ONBOARDING_STEP.GARDEN_TUTORIAL) {
       setOnboardingActions(ONBOARDING_ACTION_DEFAULTS);
     }
+
+    logAnalyticsEvent("onboarding_step", { step: nextStep });
   }, [onboardingStep]);
 
   const onboardingTransitionOptions = {
@@ -867,6 +901,10 @@ export default function App() {
   };
 
   useEffect(() => {
+    void initializeAnalytics();
+  }, []);
+
+  useEffect(() => {
     let unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (unsubFirestoreRef.current) {
         unsubFirestoreRef.current();
@@ -877,6 +915,8 @@ export default function App() {
       userRef.current = firebaseUser;
 
       if (firebaseUser) {
+        setAnalyticsUserId(firebaseUser.uid);
+
         if (firebaseUser.isAnonymous) {
           setHasUsername(true);
           loadOnboardingStep(firebaseUser.uid);
@@ -884,11 +924,17 @@ export default function App() {
           return;
         }
 
+        // Hold the UI in a loading state until Firestore confirms profile/onboarding.
+        // Without this, a restored session briefly renders the logged-out Welcome screen.
+        setInitializing(true);
+        setHasUsername(false);
+        setOnboardingLoaded(false);
+
         teardownNotificationListeners();
         void initializeNotifications(navigationRef);
         unsubFirestoreRef.current = onSnapshot(
           doc(db, "users", firebaseUser.uid),
-          (docSnap) => {
+          async (docSnap) => {
             if (docSnap.exists()) {
               const data = docSnap.data();
 
@@ -896,7 +942,9 @@ export default function App() {
               setAccentColor(data.accentColor || theme.accent);
 
               if (data.username) {
-                loadOnboardingStep(firebaseUser.uid);
+                await loadOnboardingStep(firebaseUser.uid, {
+                  defaultIfMissing: ONBOARDING_STEP.DONE,
+                });
               } else {
                 setOnboardingLoaded(false);
               }
@@ -918,6 +966,8 @@ export default function App() {
         );
       } else {
         teardownNotificationListeners();
+        setAnalyticsUserId(null);
+
         void (async () => {
           const pendingRelogin = await getOnboardingRelogin();
           if (pendingRelogin) {
@@ -1020,10 +1070,30 @@ export default function App() {
     }
   }, [onboardingStep, hasUsername, updateOnboardingStep, user?.emailVerified]);
 
-  if (initializing || restoringOnboardingSession) return null;
-  if (user && hasUsername && !onboardingLoaded) return null;
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    if (
+      !onboardingLoaded ||
+      !hasUsername ||
+      !currentUser ||
+      currentUser.isAnonymous ||
+      onboardingStep !== ONBOARDING_STEP.WELCOME
+    ) {
+      return;
+    }
+    updateOnboardingStep(ONBOARDING_STEP.DONE);
+  }, [onboardingLoaded, hasUsername, onboardingStep, updateOnboardingStep, user?.uid]);
 
   const activeAuthUser = auth.currentUser ?? user;
+  const sessionPendingProfile =
+    activeAuthUser &&
+    !activeAuthUser.isAnonymous &&
+    (initializing ||
+      !user ||
+      (hasUsername && !onboardingLoaded));
+
+  if (sessionPendingProfile || restoringOnboardingSession) return null;
+  if (activeAuthUser && hasUsername && !onboardingLoaded) return null;
   void authUserVersion;
   const userNeedsEmailVerification =
     activeAuthUser && hasUsername && needsEmailVerification(activeAuthUser);
@@ -1047,10 +1117,14 @@ export default function App() {
           <ShopInventoryProvider>
           <GoalsProvider>
             <ThemeProvider accentColor={accentColor}>
-            <NavigationContainer ref={navigationRef}>
+            <NavigationContainer
+              ref={navigationRef}
+              onReady={trackNavigationState}
+              onStateChange={trackNavigationState}
+            >
               <StatusBar style="dark" />
               <RootStack.Navigator screenOptions={{ headerShown: false }}>
-                {user && hasUsername ? (
+                {activeAuthUser && hasUsername ? (
                   userNeedsEmailVerification && onboardingStep !== ONBOARDING_STEP.ACCOUNT_PROMPT ? (
                     <RootStack.Screen name="VerifyEmail" options={{ headerShown: false }}>
                       {() => (

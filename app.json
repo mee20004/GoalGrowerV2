@@ -15,7 +15,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ziyu.goalgrower",
+      "bundleIdentifier": "com.goalgrower.app",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "associatedDomains": [
         "applinks:goalgrower-2a859.firebaseapp.com"
       ],
@@ -24,7 +25,8 @@
       }
     },
     "android": {
-      "package": "com.ziyu.goalgrower",
+      "package": "com.goalgrower.app",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/Goal_Grower_Logo.png",
         "backgroundColor": "#ffffff"
@@ -87,7 +89,25 @@
     "plugins": [
       "expo-web-browser",
       "expo-font",
-      "expo-notifications"
+      "expo-notifications",
+      "@react-native-firebase/app",
+      [
+        "@react-native-firebase/analytics",
+        {
+          "ios": {
+            "withoutAdIdSupport": true
+          }
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static",
+            "forceStaticLinking": ["RNFBApp", "RNFBAnalytics"]
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {

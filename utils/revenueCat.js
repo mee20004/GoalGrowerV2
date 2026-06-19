@@ -6,6 +6,7 @@ import {
   OFFERING_IDS,
   REVENUECAT_API_KEY,
 } from "../constants/revenueCat";
+import { logAnalyticsEvent } from "./analytics";
 
 let configured = false;
 let operationChain = Promise.resolve();
@@ -197,15 +198,26 @@ function alertRevenueCatUnavailable() {
   Alert.alert("Unavailable", reason || "Subscriptions are not available in this environment.");
 }
 
+async function logPaywallResult(result, offeringId) {
+  await logAnalyticsEvent("paywall_result", {
+    result: String(result),
+    offering_id: offeringId,
+  });
+}
+
 export async function presentPaywall(offeringId = OFFERING_IDS.DEFAULT) {
   if (!configured) {
     alertRevenueCatUnavailable();
-    return PAYWALL_RESULT.ERROR;
+    const result = PAYWALL_RESULT.ERROR;
+    await logPaywallResult(result, offeringId);
+    return result;
   }
 
   if (!isRevenueCatUISupported()) {
     alertRevenueCatUnavailable();
-    return PAYWALL_RESULT.ERROR;
+    const result = PAYWALL_RESULT.ERROR;
+    await logPaywallResult(result, offeringId);
+    return result;
   }
 
   try {
@@ -217,14 +229,20 @@ export async function presentPaywall(offeringId = OFFERING_IDS.DEFAULT) {
         "Offering Unavailable",
         `Could not load the "${offeringId}" offering. Check that it exists in RevenueCat and has a paywall attached.`
       );
-      return PAYWALL_RESULT.ERROR;
+      const result = PAYWALL_RESULT.ERROR;
+      await logPaywallResult(result, offeringId);
+      return result;
     }
 
-    return await RevenueCatUI.presentPaywall({ offering });
+    const result = await RevenueCatUI.presentPaywall({ offering });
+    await logPaywallResult(result, offeringId);
+    return result;
   } catch (error) {
     console.error("RevenueCat presentPaywall failed:", error);
     Alert.alert("Paywall Error", getReadablePurchaseError(error));
-    return PAYWALL_RESULT.ERROR;
+    const result = PAYWALL_RESULT.ERROR;
+    await logPaywallResult(result, offeringId);
+    return result;
   }
 }
 
@@ -233,7 +251,9 @@ export async function presentPaywallIfNeeded(
   requiredEntitlementIdentifier = PRO_ENTITLEMENT_ID
 ) {
   if (!configured || !isRevenueCatUISupported()) {
-    return PAYWALL_RESULT.NOT_PRESENTED;
+    const result = PAYWALL_RESULT.NOT_PRESENTED;
+    await logPaywallResult(result, offeringId);
+    return result;
   }
 
   try {
@@ -242,17 +262,23 @@ export async function presentPaywallIfNeeded(
 
     if (!offering) {
       console.warn(`RevenueCat offering "${offeringId}" was not found.`);
-      return PAYWALL_RESULT.ERROR;
+      const result = PAYWALL_RESULT.ERROR;
+      await logPaywallResult(result, offeringId);
+      return result;
     }
 
-    return await RevenueCatUI.presentPaywallIfNeeded({
+    const result = await RevenueCatUI.presentPaywallIfNeeded({
       requiredEntitlementIdentifier,
       offering,
     });
+    await logPaywallResult(result, offeringId);
+    return result;
   } catch (error) {
     console.error("RevenueCat presentPaywallIfNeeded failed:", error);
     Alert.alert("Paywall Error", getReadablePurchaseError(error));
-    return PAYWALL_RESULT.ERROR;
+    const result = PAYWALL_RESULT.ERROR;
+    await logPaywallResult(result, offeringId);
+    return result;
   }
 }
 

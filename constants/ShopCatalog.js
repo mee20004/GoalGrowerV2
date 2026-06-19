@@ -41,6 +41,47 @@ export const IAP_COIN_GRANTS = {
   coins: 500,
 };
 
+const SHELF_SHOP_META = [
+  { description: "The original garden shelf style.", price: 0, starter: true },
+  { description: "Light and airy shelf tones.", price: 90 },
+  { description: "Rich dark wood for cozy gardens.", price: 140 },
+  { description: "Warm honey-brown oak finish.", price: 170 },
+  { description: "Golden maple with a sunny glow.", price: 190 },
+  { description: "Deep reddish cherry wood.", price: 210 },
+  { description: "Bold mahogany for a luxe look.", price: 230 },
+  { description: "Natural pine with soft green undertones.", price: 250 },
+  { description: "Golden teak with tropical warmth.", price: 270 },
+  { description: "Deep espresso for a modern edge.", price: 290 },
+  { description: "Rustic cedar with warm red tones.", price: 310 },
+  { description: "Cool ash gray wood grain.", price: 330 },
+  { description: "Plum-toned rosewood finish.", price: 350 },
+  { description: "Weathered driftwood gray.", price: 370 },
+  { description: "Soft sage green painted shelf.", price: 390 },
+  { description: "Deep navy blue painted shelf.", price: 410 },
+  { description: "Soft blush pink painted shelf.", price: 430 },
+  { description: "Fresh mint green painted shelf.", price: 450 },
+  { description: "Calm lavender painted shelf.", price: 470 },
+  { description: "Sleek charcoal painted shelf.", price: 490 },
+];
+
+function buildShelfShopItems() {
+  return SHELF_COLOR_SCHEMES.map((scheme, index) => {
+    const meta = SHELF_SHOP_META[index] || {};
+    const woodSuffix = index <= 12 ? " Wood" : "";
+    return {
+      id: `shelf_${index}`,
+      category: SHOP_CATEGORIES.SHELVES,
+      type: DECOR_TYPES.SHELF,
+      assetIndex: index,
+      assetKey: String(index),
+      name: `${scheme.name}${woodSuffix}`,
+      description: meta.description || `${scheme.name} shelf finish for your garden.`,
+      price: meta.price ?? 90 + index * 30,
+      ...(meta.starter ? { starter: true } : {}),
+    };
+  });
+}
+
 export const SHOP_ITEMS = [
   {
     id: "plant_fern",
@@ -269,41 +310,41 @@ export const SHOP_ITEMS = [
     price: 180,
   },
   {
-    id: "shelf_0",
-    category: SHOP_CATEGORIES.SHELVES,
-    type: DECOR_TYPES.SHELF,
-    assetIndex: 0,
-    assetKey: "0",
-    name: "Classic Wood",
-    description: "The original garden shelf style.",
-    price: 0,
-    starter: true,
+    id: "wall_4",
+    category: SHOP_CATEGORIES.WALLS,
+    type: DECOR_TYPES.WALL,
+    assetIndex: 4,
+    assetKey: "4",
+    name: "Coral Sunset",
+    description: "Warm peach and coral rolling waves.",
+    price: 200,
   },
   {
-    id: "shelf_1",
-    category: SHOP_CATEGORIES.SHELVES,
-    type: DECOR_TYPES.SHELF,
-    assetIndex: 1,
-    assetKey: "1",
-    name: "Birch Wood",
-    description: "Light and airy shelf tones.",
-    price: 90,
+    id: "wall_5",
+    category: SHOP_CATEGORIES.WALLS,
+    type: DECOR_TYPES.WALL,
+    assetIndex: 5,
+    assetKey: "5",
+    name: "Sage Lines",
+    description: "Soft green scalloped pattern.",
+    price: 220,
   },
   {
-    id: "shelf_2",
-    category: SHOP_CATEGORIES.SHELVES,
-    type: DECOR_TYPES.SHELF,
-    assetIndex: 2,
-    assetKey: "2",
-    name: "Walnut Wood",
-    description: "Rich dark wood for cozy gardens.",
-    price: 140,
+    id: "wall_6",
+    category: SHOP_CATEGORIES.WALLS,
+    type: DECOR_TYPES.WALL,
+    assetIndex: 6,
+    assetKey: "6",
+    name: "Ocean Waves",
+    description: "Layered blue waves for a calm room.",
+    price: 240,
   },
+  ...buildShelfShopItems(),
 ];
 
 export const DEFAULT_OWNED_PLANTS = {
   fern: true,
-  cactus: false,
+  cactus: true,
   succulent: false,
   tulip: false,
 };
@@ -311,14 +352,14 @@ export const DEFAULT_OWNED_PLANTS = {
 export const DEFAULT_OWNED_POTS = {
   default: true,
   bronze: false,
-  silver: false,
+  silver: true,
   gold: false,
   platinum: false,
 };
 
 export const DEFAULT_OWNED_FARBG = {
   0: true,
-  1: false,
+  1: true,
   2: false,
   3: false,
   4: false,
@@ -327,23 +368,18 @@ export const DEFAULT_OWNED_FARBG = {
 
 export const DEFAULT_OWNED_WINDOW_FRAMES = {
   0: true,
-  1: false,
+  1: true,
   2: false,
   3: false,
 };
 
-export const DEFAULT_OWNED_WALL_BG = {
-  0: true,
-  1: false,
-  2: false,
-  3: false,
-};
+export const DEFAULT_OWNED_WALL_BG = Object.fromEntries(
+  WALLPAPER_ASSETS.map((_, index) => [String(index), index <= 1])
+);
 
-export const DEFAULT_OWNED_SHELF_COLORS = {
-  0: true,
-  1: false,
-  2: false,
-};
+export const DEFAULT_OWNED_SHELF_COLORS = Object.fromEntries(
+  SHELF_COLOR_SCHEMES.map((_, index) => [String(index), index <= 1])
+);
 
 function parseDecorIndex(assetKey) {
   const index = Number(assetKey);

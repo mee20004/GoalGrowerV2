@@ -9,6 +9,7 @@ import {
   useWindowDimensions,
   Animated,
   Easing,
+  InteractionManager,
 } from "react-native";
 import HapticPressable from "./HapticPressable";
 import { useTheme, getDarkerAccentColor, getLighterAccentColor } from "../theme";
@@ -19,6 +20,23 @@ import { FAR_BG_ASSETS } from "../constants/FarBGAssets";
 import { WALLPAPER_ASSETS } from "../constants/WallpaperAssets";
 import { FRAME_ASSETS } from "../constants/FrameAssets";
 import { useShopInventory } from "./ShopInventoryProvider";
+import CoinBadge from "./CoinBadge";
+import { SHOP_CATEGORIES } from "../constants/ShopCatalog";
+import { SHOP_TAB_ICONS } from "../constants/ShopTabIcons";
+import { useNavigation } from "@react-navigation/native";
+
+const SHOP_NAV_ICON = require("../assets/Icons/Taskbar/Shop.png");
+
+const CUSTOMIZER_SECTIONS = [
+  { key: "farbg", label: "Background", shopCategory: SHOP_CATEGORIES.BACKGROUNDS },
+  { key: "window", label: "Window", shopCategory: SHOP_CATEGORIES.WINDOWS },
+  { key: "wall", label: "Wall", shopCategory: SHOP_CATEGORIES.WALLS },
+  { key: "shelf", label: "Shelf", shopCategory: SHOP_CATEGORIES.SHELVES },
+];
+
+const SECTION_SHOP_CATEGORY = Object.fromEntries(
+  CUSTOMIZER_SECTIONS.map((section) => [section.key, section.shopCategory])
+);
 
 function firstOwnedIndex(length, isOwned) {
   for (let index = 0; index < length; index += 1) {
@@ -27,13 +45,6 @@ function firstOwnedIndex(length, isOwned) {
   return 0;
 }
 
-const SECTIONS = [
-  { key: "farbg", tabLabel: "Background" },
-  { key: "window", tabLabel: "Window" },
-  { key: "wall", tabLabel: "Wall" },
-  { key: "shelf", tabLabel: "Shelf" },
-];
-
 const FIXED_HOTSPOTS = [
   { key: "farbg", left: 0.18, top: 0.50, label: "Background" },
   { key: "window", left: 0.50, top: 0.56, label: "Window" },
@@ -41,7 +52,13 @@ const FIXED_HOTSPOTS = [
   { key: "shelf", left: 0.43, top: 0.35, label: "Shelf" },
 ];
 
-const SHEET_HEIGHT = 184;
+const SHEET_HEIGHT = 196;
+const SHEET_ANIM_MS = 260;
+const SHEET_DISMISS_MS = 280;
+const FILTER_ROW_HEIGHT = 44;
+const SEGMENT_TRACK_PADDING = 4;
+const SEGMENT_TAB_GAP = 4;
+const FILTER_ICON_SIZE = 22;
 const HOTSPOT_CONTAINER_WIDTH = 104;
 const APP_FONT = "CeraRoundProDEMO-Black";
 
@@ -120,8 +137,10 @@ export default function CustomizationScreen({
   const { theme } = useTheme();
   const accent = theme.accent;
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const {
+    coinBalance,
     isFarBgOwned,
     isWindowFrameOwned,
     isWallBgOwned,
@@ -152,7 +171,9 @@ export default function CustomizationScreen({
 
   const activeSection = customizerType || "wall";
   const isInitialSaveSkipped = useRef(true);
-  const sheetTranslate = useRef(new Animated.Value(32)).current;
+  const isClosingRef = useRef(false);
+  const sheetTranslate = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -212,15 +233,30 @@ export default function CustomizationScreen({
   }, [farBg, windowFrame, wallBg, shelfColor, visible, selectedPageId, customizations, onSave, onCustomizationChange]);
 
   useEffect(() => {
-    if (!visible) return;
-    sheetTranslate.setValue(32);
-    Animated.timing(sheetTranslate, {
-      toValue: 0,
-      duration: 250,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [visible, sheetTranslate]);
+    if (!visible) {
+      sheetTranslate.setValue(SHEET_HEIGHT + insets.bottom);
+      overlayOpacity.setValue(0);
+      isClosingRef.current = false;
+      return;
+    }
+
+    sheetTranslate.setValue(SHEET_HEIGHT + insets.bottom);
+    overlayOpacity.setValue(0);
+    Animated.parallel([
+      Animated.timing(sheetTranslate, {
+        toValue: 0,
+        duration: SHEET_ANIM_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(overlayOpacity, {
+        toValue: 1,
+        duration: SHEET_ANIM_MS,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [visible, sheetTranslate, overlayOpacity, insets.bottom]);
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -239,6 +275,46 @@ export default function CustomizationScreen({
     },
     [customizerTypeSetter, customizerType]
   );
+
+  const dismissSheet = useCallback(
+    (onComplete) => {
+      if (isClosingRef.current) return;
+      isClosingRef.current = true;
+
+      Animated.parallel([
+        Animated.timing(sheetTranslate, {
+          toValue: SHEET_HEIGHT + insets.bottom,
+          duration: SHEET_DISMISS_MS,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(overlayOpacity, {
+          toValue: 0,
+          duration: SHEET_DISMISS_MS,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        isClosingRef.current = false;
+        if (finished) onComplete?.();
+      });
+    },
+    [sheetTranslate, overlayOpacity, insets.bottom]
+  );
+
+  const handleClose = useCallback(() => {
+    dismissSheet(onClose);
+  }, [dismissSheet, onClose]);
+
+  const openShop = useCallback(() => {
+    const category = SECTION_SHOP_CATEGORY[activeSection];
+    dismissSheet(() => {
+      onClose?.();
+      InteractionManager.runAfterInteractions(() => {
+        navigation.getParent()?.navigate("Shop", { category });
+      });
+    });
+  }, [activeSection, dismissSheet, navigation, onClose]);
 
   const renderOptions = () => {
     switch (activeSection) {
@@ -329,11 +405,17 @@ export default function CustomizationScreen({
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="none" transparent onRequestClose={handleClose}>
       <View style={styles.root} pointerEvents="box-none">
-        <HapticPressable style={styles.dismissLayer} onPress={onClose} accessibilityLabel="Close customization" />
+        <Animated.View style={[styles.dismissLayer, { opacity: overlayOpacity }]}>
+          <HapticPressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={handleClose}
+            accessibilityLabel="Close customization"
+          />
+        </Animated.View>
 
-        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+        <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { opacity: overlayOpacity }]}>
           {FIXED_HOTSPOTS.map((spot) => (
             <HotspotButton
               key={spot.key}
@@ -347,7 +429,7 @@ export default function CustomizationScreen({
               pulseAnim={pulseAnim}
             />
           ))}
-        </View>
+        </Animated.View>
 
         <Animated.View
           pointerEvents="auto"
@@ -363,22 +445,39 @@ export default function CustomizationScreen({
         >
           <View style={styles.sheetHandle} />
 
-          <View style={styles.segmentTrack}>
-            {SECTIONS.map((section) => {
-              const active = activeSection === section.key;
-              return (
-                <HapticPressable
-                  key={section.key}
-                  onPress={() => selectSection(section.key)}
-                  style={[
-                    styles.tabChip,
-                    active && [styles.tabChipActive, { backgroundColor: accent }],
-                  ]}
-                >
-                  <Text style={[styles.tabChipText, active && styles.tabChipTextActive]}>{section.tabLabel}</Text>
-                </HapticPressable>
-              );
-            })}
+          <View style={styles.filterRow}>
+            <View style={styles.segmentTrack}>
+              {CUSTOMIZER_SECTIONS.map((section) => {
+                const active = activeSection === section.key;
+                return (
+                  <HapticPressable
+                    key={section.key}
+                    accessibilityLabel={section.label}
+                    onPress={() => selectSection(section.key)}
+                    style={[
+                      styles.tabChip,
+                      !active && styles.tabChipInactive,
+                      active && [styles.tabChipActive, { borderColor: accent }],
+                    ]}
+                  >
+                    <Image
+                      source={SHOP_TAB_ICONS[section.shopCategory]}
+                      style={{ width: FILTER_ICON_SIZE, height: FILTER_ICON_SIZE }}
+                      resizeMode="contain"
+                    />
+                  </HapticPressable>
+                );
+              })}
+            </View>
+
+            <HapticPressable
+              accessibilityLabel="Open shop"
+              onPress={openShop}
+              style={styles.shopButton}
+            >
+              <Image source={SHOP_NAV_ICON} style={styles.shopButtonIcon} resizeMode="contain" />
+              <CoinBadge amount={coinBalance} size="sm" />
+            </HapticPressable>
           </View>
 
           <View style={styles.optionsArea}>{renderOptions()}</View>
@@ -394,7 +493,7 @@ const styles = StyleSheet.create({
   },
   dismissLayer: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "transparent",
+    backgroundColor: "rgba(0,0,0,0.16)",
   },
   sheet: {
     position: "absolute",
@@ -421,36 +520,52 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   segmentTrack: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#eef2f6",
+    backgroundColor: "#ced4db",
     borderRadius: 16,
-    padding: 4,
+    padding: SEGMENT_TRACK_PADDING,
+    gap: SEGMENT_TAB_GAP,
+    height: FILTER_ROW_HEIGHT,
+  },
+  filterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     marginBottom: 12,
-    gap: 4,
   },
   tabChip: {
     flex: 1,
-    minHeight: 34,
-    paddingHorizontal: 6,
-    paddingVertical: 7,
+    height: FILTER_ROW_HEIGHT - SEGMENT_TRACK_PADDING * 2,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
+  tabChipInactive: {
+    backgroundColor: "#fff",
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
   tabChipActive: {
-    ...cpShadow({ color: "#000", offset: { width: 0, height: 2 }, opacity: 0.08, radius: 3, elevation: 2 }),
+    backgroundColor: "#fff",
+    borderWidth: 2,
   },
-  tabChipText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#6b7280",
-    fontFamily: APP_FONT,
-    letterSpacing: 0.1,
+  shopButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: FILTER_ROW_HEIGHT,
+    paddingHorizontal: 10,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    ...cpShadow({ color: "#cbd5e1", offset: { width: 0, height: 2 }, opacity: 0.45, radius: 4, elevation: 2 }),
   },
-  tabChipTextActive: {
-    color: "#ffffff",
-    fontFamily: APP_FONT,
+  shopButtonIcon: {
+    width: 22,
+    height: 22,
   },
   optionsArea: {
     flex: 1,
