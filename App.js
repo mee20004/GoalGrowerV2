@@ -30,7 +30,7 @@ import { cardShadow, subtleBorderShadow, cpShadow } from "./utils/shadows";
 
 import { FRAME_ASSETS } from "./constants/FrameAssets";
 import { WALLPAPER_ASSETS } from "./constants/WallpaperAssets";
-import { initializeNotifications } from "./utils/notifications";
+import { initializeNotifications, teardownNotificationListeners } from "./utils/notifications";
 
 // Screens
 import GoalsScreen from "./screens/GoalsScreen";
@@ -188,23 +188,21 @@ function MainTabs({ onboardingStep, onboardingActions, onOnboardingAction, onGar
     return activeRoute?.name === 'AddGoal';
   };
 
-  const handleTabPress = (e, navigation, targetActivity) => {
-    if (hasAddGoalDirty() && isAddGoalScreenActive(navigation)) {
+  const createTabPressListener = (navigation, tabName) => ({
+    tabPress: (e) => {
+      if (!hasAddGoalDirty() || !isAddGoalScreenActive(navigation)) return;
+
       e.preventDefault();
       Alert.alert(
         'Discard changes?',
         'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
         [
           { text: 'Stay', style: 'cancel' },
-          { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate(...targetActivity) },
+          { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate(tabName) },
         ]
       );
-      return;
-    }
-
-    e.preventDefault();
-    navigation.navigate(...targetActivity);
-  };
+    },
+  });
 
   return (
     <Tab.Navigator
@@ -212,6 +210,7 @@ function MainTabs({ onboardingStep, onboardingActions, onOnboardingAction, onGar
       tabBar={props => <CenteredTabBar {...props} disabled={lockTaskbar} hidden={lockTaskbar} />}
       screenOptions={({ route }) => ({
         headerShown: false,
+        unmountOnBlur: false,
         tabBarShowLabel: false, // Hide text under icons
         tabBarHideOnKeyboard: false,
         tabBarActiveTintColor: theme.text,
@@ -241,73 +240,19 @@ function MainTabs({ onboardingStep, onboardingActions, onOnboardingAction, onGar
               name="Shop"
               component={ShopScreen}
               options={{ tabBarLabel: "Shop" }}
-              listeners={({ navigation }) => ({
-                tabPress: e => {
-                  if (hasAddGoalDirty()) {
-                    e.preventDefault();
-                    Alert.alert(
-                      'Discard changes?',
-                      'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
-                      [
-                        { text: 'Stay', style: 'cancel' },
-                        { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('Shop') },
-                      ]
-                    );
-                    return;
-                  }
-                  e.preventDefault();
-                  navigation.navigate('Shop');
-                },
-              })}
+              listeners={({ navigation }) => createTabPressListener(navigation, 'Shop')}
             />
       <Tab.Screen
         name="Rank"
         component={RankStack}
         options={{ tabBarLabel: "Rank" }}
-        listeners={({ navigation }) => ({
-          tabPress: e => {
-            if (hasAddGoalDirty()) {
-              e.preventDefault();
-              Alert.alert(
-                'Discard changes?',
-                'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
-                [
-                  { text: 'Stay', style: 'cancel' },
-                  { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('Rank') },
-                ]
-              );
-              return;
-            }
-            e.preventDefault();
-            navigation.navigate('Rank');
-          },
-        })}
+        listeners={({ navigation }) => createTabPressListener(navigation, 'Rank')}
       />
       <Tab.Screen
         name="Goals"
         component={GoalsStack}
         options={{ tabBarLabel: "Goals" }}
-        listeners={({ navigation }) => ({
-          tabPress: e => {
-            if (hasAddGoalDirty()) {
-              e.preventDefault();
-              Alert.alert(
-                'Discard changes?',
-                'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
-                [
-                  { text: 'Stay', style: 'cancel' },
-                  { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('Goals', { screen: 'GoalsHome', params: {} }) },
-                ]
-              );
-              return;
-            }
-            e.preventDefault();
-            navigation.navigate('Goals', {
-              screen: 'GoalsHome',
-              params: {},
-            });
-          },
-        })}
+        listeners={({ navigation }) => createTabPressListener(navigation, 'Goals')}
       />
       <Tab.Screen
         name="Journey"
@@ -322,24 +267,7 @@ function MainTabs({ onboardingStep, onboardingActions, onOnboardingAction, onGar
             />
           ),
         }}
-        listeners={({ navigation }) => ({
-          tabPress: e => {
-            if (hasAddGoalDirty()) {
-              e.preventDefault();
-              Alert.alert(
-                'Discard changes?',
-                'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
-                [
-                  { text: 'Stay', style: 'cancel' },
-                  { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('Journey') },
-                ]
-              );
-              return;
-            }
-            e.preventDefault();
-            navigation.navigate('Journey');
-          },
-        })}
+        listeners={({ navigation }) => createTabPressListener(navigation, 'Journey')}
       />
       {/* <-- 3. WIRE UP THE GARDEN TAB --> */}
       <Tab.Screen
@@ -352,51 +280,14 @@ function MainTabs({ onboardingStep, onboardingActions, onOnboardingAction, onGar
             onGardenTutorialNext={onGardenTutorialNext}
           />
         )}
-        options={{ tabBarLabel: "Garden", unmountOnBlur: false }}
-        listeners={({ navigation }) => ({
-          tabPress: e => {
-            if (hasAddGoalDirty()) {
-              e.preventDefault();
-              Alert.alert(
-                'Discard changes?',
-                'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
-                [
-                  { text: 'Stay', style: 'cancel' },
-                  { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('Garden', { screen: 'GardenHome', params: {} }) },
-                ]
-              );
-              return;
-            }
-            e.preventDefault();
-            navigation.navigate('Garden', {
-              screen: 'GardenHome',
-              params: {},
-            });
-          },
-        })}
+        options={{ tabBarLabel: "Garden" }}
+        listeners={({ navigation }) => createTabPressListener(navigation, 'Garden')}
       />
       <Tab.Screen
         name="ProfileTab"
         component={ProfileStack}
         options={{ tabBarLabel: "Profile" }}
-        listeners={({ navigation }) => ({
-          tabPress: e => {
-            if (hasAddGoalDirty()) {
-              e.preventDefault();
-              Alert.alert(
-                'Discard changes?',
-                'You have unsaved changes in Add Goal. Leave and lose progress or stay and continue editing?',
-                [
-                  { text: 'Stay', style: 'cancel' },
-                  { text: 'Leave', style: 'destructive', onPress: () => navigation.navigate('ProfileTab') },
-                ]
-              );
-              return;
-            }
-            e.preventDefault();
-            navigation.navigate('ProfileTab');
-          },
-        })}
+        listeners={({ navigation }) => createTabPressListener(navigation, 'ProfileTab')}
       />
     </Tab.Navigator>
   );
@@ -902,6 +793,7 @@ export default function App() {
   const unsubFirestoreRef = useRef(null);
   const appStateListenerRef = useRef(null);
   const navigationRef = useNavigationContainerRef();
+  const notificationCleanupRef = useRef(null);
 
   const getOnboardingKey = (uid) => `onboardingStep_${uid}`;
   const getOnboardingGoalKey = (uid) => `onboardingGoalId_${uid}`;
@@ -992,7 +884,8 @@ export default function App() {
           return;
         }
 
-        initializeNotifications(null);
+        teardownNotificationListeners();
+        void initializeNotifications(navigationRef);
         unsubFirestoreRef.current = onSnapshot(
           doc(db, "users", firebaseUser.uid),
           (docSnap) => {
@@ -1024,6 +917,7 @@ export default function App() {
           }
         );
       } else {
+        teardownNotificationListeners();
         void (async () => {
           const pendingRelogin = await getOnboardingRelogin();
           if (pendingRelogin) {
@@ -1153,7 +1047,7 @@ export default function App() {
           <ShopInventoryProvider>
           <GoalsProvider>
             <ThemeProvider accentColor={accentColor}>
-            <NavigationContainer>
+            <NavigationContainer ref={navigationRef}>
               <StatusBar style="dark" />
               <RootStack.Navigator screenOptions={{ headerShown: false }}>
                 {user && hasUsername ? (

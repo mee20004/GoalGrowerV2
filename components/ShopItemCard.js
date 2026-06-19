@@ -12,7 +12,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import TutorialPlantInPot from "./tutorial/TutorialPlantInPot";
 import CoinIcon from "./CoinIcon";
 import { getDecorPreview, getPlantPreview, DECOR_TYPES } from "../constants/ShopCatalog";
-import { hardDropShadowSm } from "../utils/shadows";
+import { hardDropShadowSm, cpShadow } from "../utils/shadows";
 import { getDarkerAccentColor } from "../theme";
 
 function getDecorImageProps(type) {
@@ -73,7 +73,7 @@ function ShopItemCard({ item, owned, canAfford, loading, accent, onPress }) {
           </View>
         ) : null}
         {owned ? (
-          <View style={styles.ownedCheck}>
+          <View style={[styles.ownedCheck, { backgroundColor: accent }]}>
             <Ionicons name="checkmark" size={13} color="#fff" />
           </View>
         ) : null}
@@ -93,6 +93,15 @@ function ShopItemCard({ item, owned, canAfford, loading, accent, onPress }) {
         style={({ pressed }) => [
           styles.button,
           { backgroundColor: buttonColor },
+          canAfford && !owned && {
+            ...cpShadow({
+              color: getDarkerAccentColor(accent),
+              offset: { width: 0, height: 4 },
+              opacity: 1,
+              radius: 0,
+              elevation: 2,
+            }),
+          },
           pressed && !disabled && styles.buttonPressed,
         ]}
       >
@@ -183,7 +192,6 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: "#22c55e",
     alignItems: "center",
     justifyContent: "center",
   },

@@ -184,13 +184,37 @@ export default function GoalsScreen({ navigation }) {
   const sharedGoalCardShadow = useMemo(
     () =>
       cpShadow({
-        color: getLighterAccentColor(theme.accent, 0),
+        color: theme.accent,
         offset: { width: 0, height: 6 },
         opacity: 1,
         radius: 0,
         elevation: 2,
       }),
     [theme.accent]
+  );
+
+  const accentShadowColor = useMemo(
+    () => getDarkerAccentColor(theme.accent),
+    [theme.accent]
+  );
+
+  const quantitySegmentFilledStyle = useMemo(
+    () => ({ backgroundColor: theme.accent }),
+    [theme.accent]
+  );
+
+  const fabDynamicStyle = useMemo(
+    () => ({
+      backgroundColor: theme.accent,
+      ...cpShadow({
+        color: accentShadowColor,
+        offset: { width: 0, height: 5 },
+        opacity: 1,
+        radius: 0,
+        elevation: 12,
+      }),
+    }),
+    [theme.accent, accentShadowColor]
   );
 
   const getOptimisticGoalKey = (goalId, sharedGardenId) => `${sharedGardenId ? `shared-${sharedGardenId}` : 'personal'}-${goalId}`;
@@ -579,7 +603,6 @@ export default function GoalsScreen({ navigation }) {
       : 0;
 
     // --- Button coloring (match GoalScreen) ---
-    const accentShadowColor = getDarkerAccentColor(theme.accent);
     const uncheckedButtonShadowColor = '#cdcdcd';
     let buttonBgColor = '#f1f1f1';
     let buttonShadowColor = uncheckedButtonShadowColor;
@@ -703,7 +726,7 @@ export default function GoalsScreen({ navigation }) {
                         style={[
                           styles.quantitySegment,
                           index < filled
-                            ? (userDone ? styles.quantitySegmentDone : styles.quantitySegmentFilled)
+                            ? (userDone ? styles.quantitySegmentDone : quantitySegmentFilledStyle)
                             : styles.quantitySegmentEmpty,
                         ]}
                       />
@@ -720,7 +743,7 @@ export default function GoalsScreen({ navigation }) {
                       style={[
                         styles.quantitySegment,
                         index < filledQuantitySegments
-                          ? (isDone ? styles.quantitySegmentDone : styles.quantitySegmentFilled)
+                          ? (isDone ? styles.quantitySegmentDone : quantitySegmentFilledStyle)
                           : styles.quantitySegmentEmpty,
                       ]}
                     />
@@ -826,7 +849,7 @@ export default function GoalsScreen({ navigation }) {
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No goals yet</Text>
           <Text style={styles.emptySubtext}>Create your first goal to get started</Text>
-          <HapticPressable onPress={handleAddGoal} style={styles.addBtn}>
+          <HapticPressable onPress={handleAddGoal} style={[styles.addBtn, { backgroundColor: theme.accent }]}>
             <Text style={styles.addBtnText}>+ Add Goal</Text>
           </HapticPressable>
         </View>
@@ -835,13 +858,14 @@ export default function GoalsScreen({ navigation }) {
           data={filteredGoals}
           keyExtractor={(item) => item._flatListKey}
           renderItem={renderGoal}
+          extraData={`${theme.accent}:${accentShadowColor}`}
           scrollEnabled={true}
           contentContainerStyle={[styles.list, { paddingBottom: 175 }]}
           showsVerticalScrollIndicator={false}
         />
       )}
 
-      <View style={[styles.fab, { bottom: insets.bottom + 85 }]}>
+      <View style={[styles.fab, fabDynamicStyle, { bottom: insets.bottom + 85 }]}>
         <HapticPressable
           style={styles.fabPressable}
           onPress={handleAddGoal}
@@ -1048,9 +1072,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     minWidth: 4,
   },
-  quantitySegmentFilled: {
-    backgroundColor: '#58cc02',
-  },
   quantitySegmentDone: {
     backgroundColor: 'rgba(255,255,255,1)',
   },
@@ -1109,7 +1130,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
   addBtn: {
-    backgroundColor: theme.accent,
     borderRadius: theme.radius,
     paddingHorizontal: 20,
     paddingVertical: 12,
@@ -1137,12 +1157,10 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: 'rgb(82, 153, 61)',
     zIndex: 12000,
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0)',
     elevation: 12000,
-    ...cpShadow({ color: '#2c6e28', offset: { width: 0, height: 5 }, opacity: 1, radius: 0, elevation: 12 }),
   },
   fabPressable: {
     width: '100%',

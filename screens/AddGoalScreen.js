@@ -629,6 +629,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
 
   // Form State
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
   const [selectedIcon, setSelectedIcon] = useState("target");
   const [selectedPlantSpecies, setSelectedPlantSpecies] = useState("fern");
@@ -729,6 +730,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     const unsubscribe = navigation.addListener('focus', () => {
       setStep(0);
       setName("");
+      setDescription("");
       setIsPrivate(false);
       setSelectedIcon("target");
       setSelectedPlantSpecies("fern");
@@ -759,6 +761,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
   const isFormDirty = () => {
     if (isLeavingAfterSaveRef.current) return false;
     if (name.trim()) return true;
+    if (description.trim()) return true;
     if (isPrivate) return true;
     if (selectedIcon !== 'target') return true;
     if (selectedPlantSpecies !== 'fern') return true;
@@ -790,6 +793,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
   }, [
     isFocused,
     name,
+    description,
     isPrivate,
     selectedIcon,
     selectedPlantSpecies,
@@ -886,6 +890,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     navigation,
     promptDiscard,
     name,
+    description,
     isPrivate,
     selectedIcon,
     selectedPlantSpecies,
@@ -1228,6 +1233,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     completionMode,
     multiUserWateringEnabled,
     name,
+    description,
     requiredContributors,
     scheduleDays,
     selectedGardenId,
@@ -1254,6 +1260,17 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
               style={[styles.input, styles.nameInlineInput]}
             />
           </View>
+          <Text style={[styles.sectionLabel, styles.descriptionLabel]}>Description</Text>
+          <TextInput
+            value={description}
+            onChangeText={setDescription}
+            placeholder="What is this goal about?"
+            placeholderTextColor={theme.muted2}
+            style={[styles.input, styles.textArea]}
+            multiline
+            numberOfLines={3}
+            textAlignVertical="top"
+          />
           </View>
 
           <View style={styles.sectionGap} />
@@ -1602,6 +1619,9 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
       <View style={styles.card}>
         <Text style={styles.sectionLabel}>Review</Text>
         <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Name</Text><Text style={styles.reviewValue}>{name || "—"}</Text></View>
+        {description.trim() ? (
+          <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Description</Text><Text style={styles.reviewValue}>{description.trim()}</Text></View>
+        ) : null}
         <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Schedule</Text><Text style={styles.reviewValue}>{frequencyLabel}</Text></View>
         <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Garden</Text><Text style={styles.reviewValue}>{selectedGardenName}</Text></View>
       </View>
@@ -1635,6 +1655,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     try {
       const goalData = {
         name: name.trim(),
+        description: description.trim(),
         category: "Other",
         isPrivate,
         icon: selectedIcon,
@@ -2005,6 +2026,10 @@ const styles = StyleSheet.create({
     flex: 1,
     marginBottom: 0,
     fontFamily: 'CeraRoundProDEMO-Black',
+  },
+  descriptionLabel: {
+    marginTop: 12,
+    marginBottom: 6,
   },
   nameHeaderCard: {
     backgroundColor: 'rgba(255,255,255,0.98)',

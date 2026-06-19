@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Image, Alert, Animated, Easing } fr
 import GoalActionButton from "../components/GoalActionButton";
 import HapticTouchableOpacity from "../components/HapticTouchableOpacity";
 import { GROWTH_BLUE, GROWTH_BLUE_SHADOW } from "../constants/GrowthTheme";
+import { CLAIMED_BUTTON_FACE, CLAIMED_BUTTON_SHADOW, CLAIMED_BUTTON_TEXT, CLAIMED_CONTENT_TEXT, CLAIMED_TRACK_BG, CLAIMED_TRACK_FILL } from "../constants/QuestTheme";
 import { HapticType, triggerLightHaptic } from "../utils/haptics";
 import CoinBadge from "../components/CoinBadge";
 import CoinFlyReward, {
@@ -665,18 +666,15 @@ export default function JourneyScreen({ route, navigation }) {
                 return (
                   <View
                     key={item.key}
-                    style={[
-                      styles.nextGoalCardWrap,
-                      isClaimed && { opacity: 0.55 },
-                    ]}
+                    style={styles.nextGoalCardWrap}
                   >
-                    <View
-                      style={styles.nextGoalRow}
-                    >
-                      <View style={{ flex: 1, flexDirection: 'column', justifyContent: 'center' }}>
+                    <View style={styles.nextGoalRow}>
+                      <View
+                        style={{ flex: 1, flexDirection: 'column', justifyContent: 'center' }}
+                      >
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                          <Text style={styles.nextGoalLabel}>{item.label}</Text>
-                          <Text style={styles.nextGoalValue}>
+                          <Text style={[styles.nextGoalLabel, isClaimed && styles.nextGoalTextDone]}>{item.label}</Text>
+                          <Text style={[styles.nextGoalValue, isClaimed && styles.nextGoalTextDone]}>
                             {item.value}/{item.target}
                           </Text>
                         </View>
@@ -684,12 +682,14 @@ export default function JourneyScreen({ route, navigation }) {
                           <View
                             style={[
                               styles.nextGoalMiniTrack,
+                              isClaimed && styles.nextGoalMiniTrackDone,
                               { width: '100%' },
                             ]}
                           >
                             <View
                               style={[
                                 styles.nextGoalMiniFill,
+                                isClaimed && styles.nextGoalMiniFillDone,
                                 { width: `${Math.min(100, Math.round((item.value / item.target) * 100))}%` },
                               ]}
                             />
@@ -708,6 +708,7 @@ export default function JourneyScreen({ route, navigation }) {
                           ref={(node) => {
                             claimOriginRefs.current[claimKey] = node;
                           }}
+                          style={styles.completeGoalButtonAnchor}
                         >
                           <GoalActionButton
                             onPress={() => {
@@ -716,15 +717,16 @@ export default function JourneyScreen({ route, navigation }) {
                               });
                             }}
                             disabled={!canClaim || isClaiming}
+                            locked={isClaimed}
                             haptic={canClaim ? HapticType.MEDIUM : false}
-                            backgroundColor={canClaim ? GROWTH_BLUE : '#b7c0c9'}
-                            shadowColor={canClaim ? GROWTH_BLUE_SHADOW : '#9aa3ad'}
+                            backgroundColor={canClaim ? GROWTH_BLUE : CLAIMED_BUTTON_FACE}
+                            shadowColor={canClaim ? GROWTH_BLUE_SHADOW : CLAIMED_BUTTON_SHADOW}
                             borderRadius={14}
                             size={40}
                             style={styles.completeGoalButtonWrap}
                             faceStyle={styles.completeGoalButton}
                           >
-                            <Text style={styles.completeGoalButtonText}>
+                            <Text style={[styles.completeGoalButtonText, isClaimed && styles.completeGoalButtonTextClaimed]}>
                               {isClaimed ? "Claimed" : isClaiming ? "..." : "Claim"}
                             </Text>
                           </GoalActionButton>
@@ -853,7 +855,22 @@ const styles = StyleSheet.create({
     // backgroundColor, shadow, and zIndex removed to let GoalActionButton handle them
   },
   completeGoalButtonDisabled: { opacity: 0.6 },
-  completeGoalButtonText: { color: "#FFF", fontSize: 15, fontWeight: "900", fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1 },
+  completeGoalButtonAnchor: {
+    alignSelf: 'center',
+    flexShrink: 0,
+  },
+  completeGoalButtonText: {
+    color: "#FFF",
+    fontSize: 15,
+    fontWeight: "900",
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
+    includeFontPadding: false,
+    textAlign: "center",
+  },
+  completeGoalButtonTextClaimed: {
+    color: CLAIMED_BUTTON_TEXT,
+  },
   container: {
     flex: 1,
   },
@@ -955,6 +972,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     ...hardDropShadow,
+  },
+  nextGoalTextDone: {
+    color: CLAIMED_CONTENT_TEXT,
+  },
+  nextGoalMiniTrackDone: {
+    backgroundColor: CLAIMED_TRACK_BG,
+  },
+  nextGoalMiniFillDone: {
+    backgroundColor: CLAIMED_TRACK_FILL,
   },
   heroScene: {
     position: "relative",

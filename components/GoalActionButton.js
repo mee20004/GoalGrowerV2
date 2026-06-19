@@ -1,7 +1,18 @@
 import React from 'react';
-import { View, StyleSheet, Text } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import HapticPressable from './HapticPressable';
 import { HapticType } from '../utils/haptics';
+
+const PRESS_DEPTH = 4;
+
+function resolveDimension(...candidates) {
+  for (const value of candidates) {
+    if (typeof value === 'number' && value > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
 
 /**
  * GoalActionButton
@@ -9,6 +20,7 @@ import { HapticType } from '../utils/haptics';
  * Props:
  * - onPress: function
  * - disabled: boolean
+ * - locked: boolean (static claimed pill — solid colors, no Pressable/opacity)
  * - children: node (button content)
  * - backgroundColor: string (button face color)
  * - shadowColor: string (button shadow color)
@@ -18,6 +30,7 @@ import { HapticType } from '../utils/haptics';
 export default function GoalActionButton({
   onPress,
   disabled,
+  locked = false,
   children,
   backgroundColor = '#0bd700',
   shadowColor = '#9aa3ad',
@@ -28,39 +41,104 @@ export default function GoalActionButton({
   haptic = HapticType.LIGHT,
   ...props
 }) {
-  return (
-    <View style={[styles.buttonWrap, { width: size, height: size + 4 }, style]}>
+  const flatStyle = StyleSheet.flatten(style) || {};
+  const flatFaceStyle = StyleSheet.flatten(faceStyle) || {};
+
+  const faceWidth = resolveDimension(
+    flatFaceStyle.width,
+    flatFaceStyle.minWidth,
+    flatStyle.width,
+    flatStyle.minWidth,
+    size
+  );
+  const faceHeight = resolveDimension(
+    flatFaceStyle.height,
+    flatStyle.height,
+    size
+  );
+
+  const faceStyles = [
+    styles.buttonFace,
+    {
+      width: faceWidth,
+      height: faceHeight,
+      borderRadius,
+      backgroundColor,
+    },
+    faceStyle,
+  ];
+
+  const shadowStyles = [
+    styles.buttonShadow,
+    {
+      borderRadius,
+      backgroundColor: shadowColor,
+      shadowColor,
+      top: 8,
+      left: 0,
+      right: 0,
+      bottom: -1,
+    },
+  ];
+
+  if (locked) {
+    return (
       <View
-        pointerEvents="none"
+        collapsable={false}
         style={[
-          styles.buttonShadow,
-          {
-            borderRadius,
-            backgroundColor: shadowColor,
-            shadowColor,
-            top: 8,
-            left: 0,
-            right: 0,
-            bottom: -1,
-          },
+          styles.buttonWrap,
+          { width: faceWidth, height: faceHeight + PRESS_DEPTH },
+          style,
         ]}
-      />
+      >
+        <View
+          style={[
+            styles.buttonLockedShell,
+            {
+              width: faceWidth,
+              height: faceHeight + PRESS_DEPTH,
+              borderRadius,
+              backgroundColor: shadowColor,
+            },
+          ]}
+        >
+          <View
+            style={[
+              ...faceStyles,
+              styles.buttonFaceLocked,
+              {
+                borderBottomLeftRadius: 0,
+                borderBottomRightRadius: 0,
+              },
+            ]}
+          >
+            {children}
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={[
+        styles.buttonWrap,
+        { width: faceWidth, height: faceHeight + PRESS_DEPTH },
+        style,
+      ]}
+    >
+      <View pointerEvents="none" style={shadowStyles} />
       <HapticPressable
         hitSlop={8}
         disabled={disabled}
         haptic={disabled ? false : haptic}
         onPress={onPress}
+        android_ripple={disabled ? null : undefined}
         style={({ pressed }) => [
-          styles.buttonFace,
+          ...faceStyles,
           {
-            width: size,
-            height: size,
-            borderRadius,
-            backgroundColor,
-            transform: [{ translateY: pressed && !disabled ? 4 : 0 }],
-            // Remove opacity change for disabled state; only color should indicate disabled
+            transform: [{ translateY: pressed && !disabled ? PRESS_DEPTH : 0 }],
           },
-          faceStyle,
         ]}
         {...props}
       >
@@ -76,6 +154,9 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     position: 'relative',
   },
+  buttonLockedShell: {
+    overflow: 'hidden',
+  },
   buttonShadow: {
     position: 'absolute',
     zIndex: 0,
@@ -87,6 +168,9 @@ const styles = StyleSheet.create({
   buttonFace: {
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 1,
+  },
+  buttonFaceLocked: {
     zIndex: 1,
   },
 });

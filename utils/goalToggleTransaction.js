@@ -1,7 +1,8 @@
 // Shared goal toggle/update transaction logic for all screens
 import { doc, updateDoc, runTransaction, setDoc, increment, arrayUnion, getDoc, deleteField } from "firebase/firestore";
 import { getPlantHealthState, calculateGoalStreak, isGoalDoneForDate } from "../utils/goalState";
-import { fromKey } from "../components/GoalsStore";
+import { fromKey, toKey } from "../components/GoalsStore";
+import { reconcileGoalHealthLogsFromDate } from "./backfillGoalHealthLogs";
 import { updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
 import { awardGoalCompletionCoins } from "../utils/shopInventory";
 import { auth, db } from "../firebaseConfig";
@@ -32,6 +33,8 @@ export async function toggleGoalTransaction({
   archiveToStorage = false,
   findFirstOpenStorageSlot = null,
   clearLocalOptimisticProgress = null,
+  forceComplete = false,
+  setDone = null,
 }) {
   // Debug: print goal type detection flags and relevant properties
   console.log('[toggleGoalTransaction] goal.type:', goal?.type, 'goal.kind:', goal?.kind, 'goal.multiUserWateringEnabled:', goal?.multiUserWateringEnabled, 'goal.gardenType:', goal?.gardenType);
@@ -106,11 +109,11 @@ export async function toggleGoalTransaction({
         const existingEntry = updatedLogs.completion[selectedDateKey] || {};
         const existingUsers = existingEntry.users || {};
         let nextUsers;
-        if (existingUsers[currentUserId]) {
-          // Uncheck: set user to false
+        if (typeof setDone === 'boolean') {
+          nextUsers = { ...existingUsers, [currentUserId]: setDone };
+        } else if (existingUsers[currentUserId]) {
           nextUsers = { ...existingUsers, [currentUserId]: false };
         } else {
-          // Check: add user
           nextUsers = { ...existingUsers, [currentUserId]: true };
         }
         // --- Contributors: all users who are checked for that day ---
@@ -144,11 +147,11 @@ export async function toggleGoalTransaction({
           const existingQuantityUsers = todayQuantityLog.users || {};
           let prevValue = Number(existingQuantityUsers[currentUserId]) || 0;
           let nextValue;
-          if (prevValue >= targetValue) {
-            // If already at target, reset to 0 (toggle off)
+          if (typeof setDone === 'boolean') {
+            nextValue = setDone ? targetValue : 0;
+          } else if (prevValue >= targetValue) {
             nextValue = 0;
           } else {
-            // Otherwise, increment by 1
             nextValue = Math.min(prevValue + 1, targetValue);
           }
           // Update quantity log for this user
@@ -249,7 +252,7 @@ export async function toggleGoalTransaction({
       } else if ((latestGoal.type || latestGoal.kind) === "completion") {
         console.log('[toggleGoalTransaction] Entered SINGLE-USER COMPLETION branch');
         if (!updatedLogs.completion) updatedLogs.completion = {};
-        isNowDone = !latestWasDone;
+        isNowDone = typeof setDone === 'boolean' ? setDone : !latestWasDone;
         // For shared (non-multi-user) completion goals, update contributors
         if (isSharedGoalView) {
           const { deleteField } = require('firebase/firestore');
@@ -275,9 +278,13 @@ export async function toggleGoalTransaction({
            0,
            Math.min(Number(updatedLogs.quantity?.[selectedDateKey]?.value) || 0, targetValue)
          );
-         const nextValue = latestWasDone
-           ? 0
-           : Math.min(currentValue + 1, targetValue);
+         const nextValue = typeof setDone === 'boolean'
+           ? (setDone ? targetValue : 0)
+           : latestWasDone
+             ? 0
+             : forceComplete
+               ? targetValue
+               : Math.min(currentValue + 1, targetValue);
          updatedLogs.quantity[selectedDateKey] = { value: nextValue };
          updateData[`logs.quantity.${selectedDateKey}`] = updatedLogs.quantity[selectedDateKey];
          isNowDone = nextValue >= targetValue;
@@ -324,21 +331,22 @@ export async function toggleGoalTransaction({
       }
 
       // Health, streaks, completions (for all cases)
+      const streakHealthRefKey = typeof setDone === 'boolean' ? toKey(new Date()) : selectedDateKey;
       const healthGoalObj = { ...latestGoal, logs: updatedLogs };
       if (latestGoal?.shelfPosition || shelfPosition) {
         healthGoalObj.shelfPosition = latestGoal?.shelfPosition || shelfPosition;
       }
-      const recalculatedHealth = getPlantHealthState(healthGoalObj, fromKey(selectedDateKey)).healthLevel;
-      const safeHealthLevel = Number.isFinite(recalculatedHealth) ? recalculatedHealth : 1;
-      updatedLogs.healthHistory[selectedDateKey] = safeHealthLevel;
-      updateData[`logs.healthHistory.${selectedDateKey}`] = safeHealthLevel;
+      const dayHealthLevel = getPlantHealthState(healthGoalObj, fromKey(selectedDateKey)).healthLevel;
+      const safeDayHealthLevel = Number.isFinite(dayHealthLevel) ? dayHealthLevel : 1;
+      updatedLogs.healthHistory[selectedDateKey] = safeDayHealthLevel;
+      updateData[`logs.healthHistory.${selectedDateKey}`] = safeDayHealthLevel;
       const growthChange = isNowDone === latestWasDone ? 0 : isNowDone ? 1 : -1;
-      const { currentStreak, longestStreak } = calculateGoalStreak(latestGoal, updatedLogs, selectedDateKey);
+      const { currentStreak, longestStreak } = calculateGoalStreak(latestGoal, updatedLogs, streakHealthRefKey);
       const healthGoalObj2 = { ...latestGoal, logs: updatedLogs };
       if (latestGoal?.shelfPosition || shelfPosition) {
         healthGoalObj2.shelfPosition = latestGoal?.shelfPosition || shelfPosition;
       }
-      const recalculatedHealth2 = getPlantHealthState(healthGoalObj2, fromKey(selectedDateKey)).healthLevel;
+      const recalculatedHealth2 = getPlantHealthState(healthGoalObj2, fromKey(streakHealthRefKey)).healthLevel;
       const safeHealthLevel2 = Number.isFinite(recalculatedHealth2) ? recalculatedHealth2 : 1;
       updateData.currentStreak = currentStreak;
       updateData.longestStreak = longestStreak;
@@ -351,15 +359,14 @@ export async function toggleGoalTransaction({
       // Unified health log: logs/health/{dateKey} with health, frozen, done, timestamp
       // Store health log as a map under logs.health.{dateKey} in the goal document
       if (typeof selectedDateKey === 'string' && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(selectedDateKey)) {
-        let streakToStore = currentStreak;
-        if (latestGoal?.isFrozenTrophyState && typeof latestGoal.frozenCurrentStreak === 'number') {
-          streakToStore = latestGoal.frozenCurrentStreak;
-        }
+        const { currentStreak: dayStreak } = calculateGoalStreak(latestGoal, updatedLogs, selectedDateKey);
         updateData[`logs.health.${selectedDateKey}`] = {
-          health: safeHealthLevel2,
+          health: safeDayHealthLevel,
           frozen: !!latestGoal.isFrozenTrophyState,
           done: !!isNowDone,
-          streak: streakToStore,
+          streak: latestGoal?.isFrozenTrophyState && typeof latestGoal.frozenCurrentStreak === 'number'
+            ? latestGoal.frozenCurrentStreak
+            : dayStreak,
           timestamp: new Date(),
         };
       } else {
@@ -425,6 +432,40 @@ export async function toggleGoalTransaction({
         await awardGoalCompletionCoins();
       } catch (coinError) {
         console.error("Goal completion coin reward failed:", coinError);
+      }
+    }
+
+    const todayKey = toKey(new Date());
+    const shouldReconcileHealth = typeof setDone === 'boolean'
+      ? selectedDateKey <= todayKey
+      : selectedDateKey < todayKey;
+    if (shouldReconcileHealth) {
+      try {
+        const freshSnap = await getDoc(goalRef);
+        if (freshSnap.exists()) {
+          await reconcileGoalHealthLogsFromDate(
+            currentUserId,
+            { id: freshSnap.id, ...freshSnap.data() },
+            selectedDateKey,
+            todayKey,
+            { goalRef }
+          );
+        }
+        if (isSharedGoalView && goal?.ownerId && goal?.sourceGoalId) {
+          const ownerRef = doc(db, "users", goal.ownerId, "goals", goal.sourceGoalId);
+          const ownerSnap = await getDoc(ownerRef);
+          if (ownerSnap.exists()) {
+            await reconcileGoalHealthLogsFromDate(
+              goal.ownerId,
+              { id: ownerSnap.id, ...ownerSnap.data() },
+              selectedDateKey,
+              todayKey,
+              { goalRef: ownerRef }
+            );
+          }
+        }
+      } catch (reconcileError) {
+        console.error("[toggleGoalTransaction] Health reconcile after backdate failed:", reconcileError);
       }
     }
   } catch (error) {

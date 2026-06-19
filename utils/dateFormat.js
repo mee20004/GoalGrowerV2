@@ -140,6 +140,22 @@ export function parseDisplayToISO(input) {
 
 export const FORMATS = ['YYYY-MM-DD','DD-MM-YYYY','MM-DD-YYYY'];
 
+export function getDateFormatPreview(format) {
+  const now = new Date();
+  const y = String(now.getFullYear());
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  if (format === 'DD-MM-YYYY') return `${d}-${m}-${y}`;
+  if (format === 'MM-DD-YYYY') return `${m}-${d}-${y}`;
+  return `${y}-${m}-${d}`;
+}
+
+export const DATE_FORMAT_LABELS = {
+  'YYYY-MM-DD': 'Year first',
+  'DD-MM-YYYY': 'Day first',
+  'MM-DD-YYYY': 'Month first',
+};
+
 // Format a partial/raw user input to include separators matching chosen format
 export function formatPartialDisplay(input) {
   if (!input) return '';

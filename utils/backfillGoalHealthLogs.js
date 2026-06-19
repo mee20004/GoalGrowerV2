@@ -188,3 +188,73 @@ export async function backfillGoalHealthLogs(userId, goal, todayKey) {
 
   return { wrote: true, fieldsUpdated: Object.keys(updateData).length };
 }
+
+/**
+ * Re-simulates logs.health from a given date through today after a retroactive edit.
+ * Overwrites existing health entries in that range so streak/plant health stay consistent.
+ */
+export async function reconcileGoalHealthLogsFromDate(
+  userId,
+  goal,
+  fromDateKey,
+  todayKey,
+  { goalRef: externalGoalRef } = {}
+) {
+  if (!userId || !goal?.id || !fromDateKey || !todayKey) return { wrote: false };
+  if (fromDateKey > todayKey) return { wrote: false };
+  if (!goal.schedule) return { wrote: false };
+
+  const scheduleMode = getScheduleMode(goal);
+  if (scheduleMode === "floating") return { wrote: false };
+  if (goal.isFrozenTrophyState) return { wrote: false };
+
+  const workingLogs = cloneLogs(goal);
+  const goalWithLogs = { ...goal, logs: workingLogs };
+  const updateData = {};
+
+  const simulationStartKey = toKey(getSimulationStartDate(goal, todayKey));
+  let cursorKey = fromDateKey > simulationStartKey ? fromDateKey : simulationStartKey;
+  const frozen = !!goal.isFrozenTrophyState;
+
+  while (cursorKey <= todayKey) {
+    const cursorDate = fromKey(cursorKey);
+    cursorDate.setHours(0, 0, 0, 0);
+    const scheduledToday = isScheduledOn(goal, cursorDate);
+    const done = scheduledToday
+      ? isGoalDoneForDate(goalWithLogs, cursorKey, userId)
+      : false;
+    const { healthLevel } = getPlantHealthState(goalWithLogs, cursorDate, userId);
+    const { currentStreak } = calculateGoalStreak(goalWithLogs, workingLogs, cursorKey);
+
+    const healthEntry = {
+      health: healthLevel,
+      frozen,
+      done,
+      streak: currentStreak,
+      timestamp: new Date(),
+    };
+
+    workingLogs.health[cursorKey] = healthEntry;
+    workingLogs.healthHistory[cursorKey] = healthLevel;
+    updateData[`logs.health.${cursorKey}`] = healthEntry;
+    updateData[`logs.healthHistory.${cursorKey}`] = healthLevel;
+
+    if (cursorKey === todayKey) break;
+    cursorKey = addDaysKey(cursorKey, 1);
+  }
+
+  if (Object.keys(updateData).length === 0) return { wrote: false };
+
+  const todayDate = fromKey(todayKey);
+  todayDate.setHours(0, 0, 0, 0);
+  const { healthLevel: finalHealthLevel } = getPlantHealthState(goalWithLogs, todayDate, userId);
+  const { currentStreak, longestStreak } = calculateGoalStreak(goalWithLogs, workingLogs, todayKey);
+
+  updateData.healthLevel = finalHealthLevel;
+  updateData.currentStreak = currentStreak;
+  updateData.longestStreak = Math.max(Number(goal?.longestStreak) || 0, longestStreak);
+
+  const goalRef = externalGoalRef || doc(db, "users", userId, "goals", goal.id);
+  await updateDoc(goalRef, updateData);
+  return { wrote: true, fieldsUpdated: Object.keys(updateData).length };
+}
