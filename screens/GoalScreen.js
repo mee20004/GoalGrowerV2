@@ -39,12 +39,8 @@ import { subscribePersonalCustomizations, subscribeSharedCustomizations } from "
 import { collection, doc, onSnapshot, deleteDoc, updateDoc, getDoc, getDocs, setDoc, arrayUnion, increment, deleteField, query, where, runTransaction } from "firebase/firestore";
 import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
 import { auth, db } from "../firebaseConfig";
+import { useShopInventory } from "../components/ShopInventoryProvider";
 import { updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
-import {
-  getNotificationSettings,
-  getGoalNotificationSettings,
-  saveGoalNotificationSettings,
-} from "../utils/notifications";
 import {
   calculateGoalStreak,
   countCompletedDates,
@@ -57,9 +53,13 @@ import {
   dateFromFirestoreValue,
 } from "../utils/goalState";
 import { getBadgeImageForTrophyKey } from "./badgeImages";
+<<<<<<< HEAD
+import { formatISOToDisplay, parseDisplayToISO, getWeekStartSync, getShowLast6DaysSync, getDateFormatSync, formatPartialFromDigits } from '../utils/dateFormat';
+=======
 import { formatISOToDisplay, getWeekStartSync, getShowLast6DaysSync } from '../utils/dateFormat';
 import { formatTime12 } from '../utils/timeFormat';
 import TimePickerSheet from '../components/settings/TimePickerSheet';
+>>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
 
 // Consistent frozen day blue color for streak and health bar
 const FROZEN_DAY_BLUE = '#a6e6ff';
@@ -380,7 +380,20 @@ const DAYS = [
   { label: "Fri", day: 5 },
   { label: "Sat", day: 6 },
 ];
-const CATEGORIES = ["Body", "Mind", "Spirit", "Work", "Custom"];
+const DAY_LABELS = ["S", "M", "T", "W", "Th", "F", "Sa"];
+
+const getScheduleDays = () => {
+  const weekStart = getWeekStartSync();
+  return [...DAYS.slice(weekStart), ...DAYS.slice(0, weekStart)];
+};
+
+const isValidISODate = (value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return false;
+  const [y, m, d] = value.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+};
+
 const STORAGE_PAGE_ID = "storage";
 const STORAGE_SHELF_COUNT = 10;
 const STORAGE_SHELF_SLOTS = 4;
@@ -436,6 +449,12 @@ const clampNum = (n, min, max) => {
   if (!Number.isFinite(v)) return min;
   return Math.max(min, Math.min(max, v));
 };
+
+function getGoalDescriptionText(goalData) {
+  if (!goalData) return "";
+  if (typeof goalData.description === "string") return goalData.description.trim();
+  return (goalData.why || "").trim();
+}
 
 function getGoalDescriptionText(goalData) {
   if (!goalData) return "";
@@ -542,7 +561,16 @@ async function findFirstOpenSharedStorageSlot(gardenId, goalId) {
 }
 
 function Chip({ label, active, onPress, accent }) {
+function Chip({ label, active, onPress, accent }) {
   return (
+    <HapticPressable
+      onPress={onPress}
+      style={[
+        styles.chip,
+        active && styles.chipActive,
+        active && accent ? { backgroundColor: accent, borderColor: accent } : null,
+      ]}
+    >
     <HapticPressable
       onPress={onPress}
       style={[
@@ -557,6 +585,7 @@ function Chip({ label, active, onPress, accent }) {
 }
 
 function Segmented({ left, right, value, onChange, accent }) {
+function Segmented({ left, right, value, onChange, accent }) {
   return (
     <View style={styles.segmentWrap}>
       <HapticPressable
@@ -567,8 +596,24 @@ function Segmented({ left, right, value, onChange, accent }) {
           value === left.value && accent ? { backgroundColor: accent, borderColor: accent } : null,
         ]}
       >
+      <HapticPressable
+        onPress={() => onChange(left.value)}
+        style={[
+          styles.segment,
+          value === left.value && styles.segmentActive,
+          value === left.value && accent ? { backgroundColor: accent, borderColor: accent } : null,
+        ]}
+      >
         <Text style={[styles.segmentText, value === left.value && styles.segmentTextActive]}>{left.label}</Text>
       </HapticPressable>
+      <HapticPressable
+        onPress={() => onChange(right.value)}
+        style={[
+          styles.segment,
+          value === right.value && styles.segmentActive,
+          value === right.value && accent ? { backgroundColor: accent, borderColor: accent } : null,
+        ]}
+      >
       <HapticPressable
         onPress={() => onChange(right.value)}
         style={[
@@ -628,8 +673,10 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const { goalId, source, sharedGardenId: routeSharedGardenId, ownerId: paramOwnerId, sourceGoalId: paramSourceGoalId } = route.params || {};
   const isSharedGoalView = Boolean(routeSharedGardenId);
   const { selectedDateKey, setSelectedDateKey, goals } = useGoals();
+  const { selectedDateKey, setSelectedDateKey, goals } = useGoals();
   const { isPro, openDefaultPaywall } = useSubscription();
   const { theme } = useTheme();
+  const { isPlantOwned, isPotOwned } = useShopInventory();
 
   const [goal, setGoal] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -653,16 +700,22 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const [sharedCustomizationsByGarden, setSharedCustomizationsByGarden] = useState({});
   const [optimisticProgress, setOptimisticProgress] = useState(null);
   const [historyWeekOffset, setHistoryWeekOffset] = useState(0);
+  const [historyWeekOffset, setHistoryWeekOffset] = useState(0);
   const optimisticProgressRef = useRef(null);
   const optimisticResetTimerRef = useRef(null);
   const tapCooldownRef = useRef(false);
   const tapCooldownTimerRef = useRef(null);
 
   const [name, setName] = useState("");
+<<<<<<< HEAD
+=======
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("Custom");
+>>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
   const [isPrivate, setIsPrivate] = useState(false);
   const [selectedIcon, setSelectedIcon] = useState("target");
+  const [selectedPlantSpecies, setSelectedPlantSpecies] = useState("fern");
+  const [selectedPotType, setSelectedPotType] = useState("default");
   const [type, setType] = useState("completion");
   const [target, setTarget] = useState("1");
   const [unit, setUnit] = useState("times");
@@ -673,20 +726,26 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const [whyStr, setWhyStr] = useState("");
   const [completionMode, setCompletionMode] = useState("none");
   const [completionEndDate, setCompletionEndDate] = useState("");
+  const [completionEndDisplay, setCompletionEndDisplay] = useState("");
   const [completionEndAmount, setCompletionEndAmount] = useState("");
   const [completionEndUnit, setCompletionEndUnit] = useState("times");
   const [multiUserWateringEnabled, setMultiUserWateringEnabled] = useState(false);
   const [requiredContributors, setRequiredContributors] = useState("2");
   const [editCalendarMonth, setEditCalendarMonth] = useState(toStartOfDay(new Date()));
+<<<<<<< HEAD
+=======
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [goalNotificationEnabled, setGoalNotificationEnabled] = useState(false);
   const [originalGoalNotificationEnabled, setOriginalGoalNotificationEnabled] = useState(false);
+  const [originalGoalNotificationTime, setOriginalGoalNotificationTime] = useState(9);
+  const [originalGoalNotificationTimeMinute, setOriginalGoalNotificationTimeMinute] = useState(0);
   const [originalGoalNotificationTime, setOriginalGoalNotificationTime] = useState(9);
   const [originalGoalNotificationTimeMinute, setOriginalGoalNotificationTimeMinute] = useState(0);
   const [goalNotificationTime, setGoalNotificationTime] = useState(9);
   const [goalNotificationTimeMinute, setGoalNotificationTimeMinute] = useState(0);
   const [showGoalTimeModal, setShowGoalTimeModal] = useState(false);
   const [hasUnsavedNotificationChanges, setHasUnsavedNotificationChanges] = useState(false);
+>>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
   const uid = auth.currentUser?.uid;
 
   const setLocalOptimisticProgress = (nextStateOrUpdater) => {
@@ -742,6 +801,8 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     };
   }, []);
 
+<<<<<<< HEAD
+=======
   // Load notification settings when edit modal opens
   useEffect(() => {
     if (!showEditModal) return;
@@ -759,6 +820,8 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
           setOriginalGoalNotificationEnabled(goalSettings.enabled);
           setGoalNotificationTime(goalSettings.time || 9);
           setGoalNotificationTimeMinute(goalSettings.timeMinute || 0);
+          setOriginalGoalNotificationTime(goalSettings.time || 9);
+          setOriginalGoalNotificationTimeMinute(goalSettings.timeMinute || 0);
           setOriginalGoalNotificationTime(goalSettings.time || 9);
           setOriginalGoalNotificationTimeMinute(goalSettings.timeMinute || 0);
           setHasUnsavedNotificationChanges(false);
@@ -781,6 +844,11 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
         goalNotificationTime !== originalGoalNotificationTime
         || goalNotificationTimeMinute !== originalGoalNotificationTimeMinute
       ));
+      goalNotificationEnabled !== originalGoalNotificationEnabled
+      || (goalNotificationEnabled && (
+        goalNotificationTime !== originalGoalNotificationTime
+        || goalNotificationTimeMinute !== originalGoalNotificationTimeMinute
+      ));
 
     setHasUnsavedNotificationChanges(hasChanges);
   }, [
@@ -792,7 +860,17 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     originalGoalNotificationTimeMinute,
     showEditModal,
   ]);
+  }, [
+    goalNotificationEnabled,
+    goalNotificationTime,
+    goalNotificationTimeMinute,
+    originalGoalNotificationEnabled,
+    originalGoalNotificationTime,
+    originalGoalNotificationTimeMinute,
+    showEditModal,
+  ]);
 
+>>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
   useEffect(() => {
     if (!goalId) {
       setGoal(null);
@@ -863,6 +941,10 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
 
     return () => unsubscribe();
   }, [goalId, isSharedGoalView, routeSharedGardenId, uid]);
+
+  useEffect(() => {
+    setHistoryWeekOffset(0);
+  }, [goalId]);
 
   useEffect(() => {
     setHistoryWeekOffset(0);
@@ -981,11 +1063,70 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     setEditCalendarMonth(monthFromISOOrToday(goalData?.completionCondition?.endDate || ""));
   };
 
+  const applyGoalToEditForm = (goalData) => {
+    if (!goalData) return;
+    setName(goalData.name || "");
+    setDescription(getGoalDescriptionText(goalData));
+    setCategory(goalData.category || "Custom");
+    setIsPrivate(!!goalData.isPrivate);
+    setSelectedIcon(goalData.icon || "target");
+    setType(goalData.type || "completion");
+    setTarget(String(clampNum(goalData?.measurable?.target ?? 1, 1, MAX_QUANTITY_TARGET)));
+    setUnit(goalData?.measurable?.unit || "times");
+    setMode(goalData?.schedule?.type || "days");
+    setDays(goalData?.schedule?.days || []);
+    setWhenStr(goalData?.plan?.when || "");
+    setWhereStr(goalData?.plan?.where || "");
+    setWhyStr(goalData?.why || "");
+    setCompletionMode(goalData?.completionCondition?.type || "none");
+    setCompletionEndDate(goalData?.completionCondition?.endDate || "");
+    setCompletionEndAmount(goalData?.completionCondition?.targetAmount ? String(goalData.completionCondition.targetAmount) : "");
+    setCompletionEndUnit(goalData?.completionCondition?.unit || "times");
+    setSelectedGardenId(goalData?.sharedGardenId || goalData?.gardenId || "personal");
+    setMultiUserWateringEnabled(!!goalData?.multiUserWateringEnabled);
+    setRequiredContributors(String(Math.max(2, Math.floor(Number(goalData?.requiredContributors) || 2))));
+    setEditCalendarMonth(monthFromISOOrToday(goalData?.completionCondition?.endDate || ""));
+  };
+
   useEffect(() => {
     if (!goal) return;
+<<<<<<< HEAD
+    setName(goal.name || "");
+    setIsPrivate(!!goal.isPrivate);
+    setSelectedIcon(goal.icon || "target");
+    setSelectedPlantSpecies(goal.plantSpecies || goal.species || "fern");
+    setSelectedPotType(goal.potType || goal.potStyle || "default");
+    setType(goal.type || "completion");
+    setTarget(String(clampNum(goal?.measurable?.target ?? 1, 1, MAX_QUANTITY_TARGET)));
+    setUnit(goal?.measurable?.unit || "times");
+    setMode(goal?.schedule?.type || "days");
+    setDays(goal?.schedule?.days?.length ? goal.schedule.days : []);
+    setWhenStr(goal?.plan?.when || "");
+    setWhereStr(goal?.plan?.where || "");
+    setWhyStr(goal?.why || "");
+    const completionType = goal?.completionCondition?.type || "none";
+    setCompletionMode(completionType === "both" ? (goal?.completionCondition?.endDate ? "date" : "amount") : completionType);
+    const endDate = goal?.completionCondition?.endDate || "";
+    setCompletionEndDate(endDate);
+    setCompletionEndDisplay(formatISOToDisplay(endDate));
+    setCompletionEndAmount(goal?.completionCondition?.targetAmount ? String(goal.completionCondition.targetAmount) : "");
+    setCompletionEndUnit(goal?.completionCondition?.unit || "times");
+    setSelectedGardenId(goal?.sharedGardenId || goal?.gardenId || "personal");
+    setMultiUserWateringEnabled(!!goal?.multiUserWateringEnabled);
+    setRequiredContributors(String(Math.max(2, Math.floor(Number(goal?.requiredContributors) || 2))));
+    setEditCalendarMonth(monthFromISOOrToday(endDate));
+  }, [goal]);
+=======
     if (showEditModal || showIconModal) return;
     applyGoalToEditForm(goal);
   }, [goal, showEditModal, showIconModal]);
+>>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
+
+  useEffect(() => {
+    if (isValidISODate(completionEndDate.trim())) {
+      setCompletionEndDisplay(formatISOToDisplay(completionEndDate));
+    }
+  }, [completionEndDate]);
 
   const handleBack = () => {
     if (tutorialLocked) {
@@ -1063,10 +1204,90 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const scheduleDays = useMemo(() => {
     if (mode === "everyday") return [0, 1, 2, 3, 4, 5, 6];
     if (mode === "weekdays") return [1, 2, 3, 4, 5];
-    return days;
+    return days.length ? days : [];
   }, [days, mode]);
 
-  const frequencyLabel = useMemo(() => formatScheduleLabel({ type: mode, days: scheduleDays }), [mode, scheduleDays]);
+  const frequencyLabel = useMemo(() => {
+    if (mode === "everyday") return "Everyday";
+    if (mode === "weekdays") return "Weekdays";
+    return [...scheduleDays].sort((a, b) => a - b).map((d) => DAY_LABELS[d]).join("");
+  }, [mode, scheduleDays]);
+
+  const plantOptions = useMemo(() => {
+    return Object.keys(PLANT_ASSETS || {})
+      .filter((species) => {
+        const stages = PLANT_ASSETS?.[species];
+        return stages?.stage4?.alive || stages?.stage3?.alive || stages?.stage2?.alive || stages?.stage1?.alive;
+      })
+      .filter((species) => isPlantOwned(species))
+      .map((species) => ({
+        species,
+        preview:
+          PLANT_ASSETS?.[species]?.stage4?.alive ||
+          PLANT_ASSETS?.[species]?.stage3?.alive ||
+          PLANT_ASSETS?.[species]?.stage2?.alive ||
+          PLANT_ASSETS?.[species]?.stage1?.alive,
+      }));
+  }, [isPlantOwned]);
+
+  const potOptions = useMemo(() => {
+    return Object.entries(POT_ASSETS || {})
+      .filter(([key]) => isPotOwned(key))
+      .map(([key, preview]) => ({ key, preview }))
+      .filter((option) => !!option.preview);
+  }, [isPotOwned]);
+
+  const completionDateMeta = useMemo(() => {
+    if (!isValidISODate(completionEndDate.trim())) return null;
+    const [year, month, day] = completionEndDate.trim().split("-").map(Number);
+    const endDate = new Date(year, month - 1, day);
+    const today = toStartOfDay(new Date());
+    const endStart = toStartOfDay(endDate);
+    const daysLeft = Math.round((endStart.getTime() - today.getTime()) / 86400000);
+    return {
+      readable: endDate.toLocaleDateString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+      daysLeft,
+    };
+  }, [completionEndDate]);
+
+  const getScheduleModeFromDays = (dayList) => {
+    const uniqueDays = [...new Set(dayList)].sort((a, b) => a - b);
+    if (uniqueDays.length === 7) return "everyday";
+    const weekdays = [1, 2, 3, 4, 5];
+    if (uniqueDays.length === 5 && weekdays.every((day, idx) => day === uniqueDays[idx])) return "weekdays";
+    return "days";
+  };
+
+  const handleDayPress = (d) => {
+    if (mode === "everyday") {
+      const all = [0, 1, 2, 3, 4, 5, 6];
+      const newDays = all.filter((x) => x !== d);
+      setDays(newDays);
+      setMode(getScheduleModeFromDays(newDays));
+      return;
+    }
+    if (mode === "weekdays") {
+      const weekdays = [1, 2, 3, 4, 5];
+      const newDays = d >= 1 && d <= 5 ? weekdays.filter((x) => x !== d) : [...weekdays, d].sort();
+      setDays(newDays);
+      setMode(getScheduleModeFromDays(newDays));
+      return;
+    }
+    setDays((prev) => {
+      const newDays = prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d];
+      setMode(getScheduleModeFromDays(newDays));
+      return newDays;
+    });
+  };
+
+  const changeCompletionMode = (nextMode) => {
+    setCompletionMode(nextMode);
+  };
 
   const selectedGardenName = useMemo(() => {
     if (selectedGardenId === "personal") return "Personal Garden";
@@ -1079,38 +1300,27 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   }, [target, type, unit]);
 
   const completionCondition = useMemo(() => {
-    if (completionMode === "date" && completionEndDate.trim()) {
+    if (completionMode === "date" && isValidISODate(completionEndDate.trim())) {
       return { type: "date", endDate: completionEndDate.trim() };
     }
     if (completionMode === "amount" && Number(completionEndAmount) > 0) {
       return { type: "amount", targetAmount: clampNum(completionEndAmount, 1, 999999), unit: completionEndUnit.trim() || "times" };
     }
-    if (completionMode === "both" && completionEndDate.trim() && Number(completionEndAmount) > 0) {
-      return {
-        type: "both",
-        endDate: completionEndDate.trim(),
-        targetAmount: clampNum(completionEndAmount, 1, 999999),
-        unit: completionEndUnit.trim() || "times",
-      };
-    }
     return { type: "none" };
   }, [completionEndAmount, completionEndDate, completionEndUnit, completionMode]);
-
-
 
   const formError = useMemo(() => {
     if (name.trim().length < 3) return "Give it a short name (at least 3 characters).";
     if (!selectedIcon) return "Please select an icon.";
     if (type === "quantity" && (!(Number(target) > 0) || unit.trim().length < 1)) return "Quantity needs a number and unit.";
     if (type === "quantity" && Number(target) > MAX_QUANTITY_TARGET) return `Quantity max is ${MAX_QUANTITY_TARGET}.`;
-    if (!scheduleDays.length) return "Pick at least one day.";
-    if ((completionMode === "date" || completionMode === "both") && !completionEndDate.trim()) return "Enter an end date.";
-    if ((completionMode === "amount" || completionMode === "both") && !(Number(completionEndAmount) > 0)) return "End amount must be greater than 0.";
+    if ((mode === "days" && !days.length) || !scheduleDays.length) return "Pick at least one day.";
+    if (completionMode === "date" && !isValidISODate(completionEndDate.trim())) return "Enter a valid end date.";
+    if (completionMode === "date" && completionDateMeta && completionDateMeta.daysLeft < 0) return "End date cannot be in the past.";
+    if (completionMode === "amount" && !(Number(completionEndAmount) > 0)) return "End amount must be greater than 0.";
     if (selectedGardenId !== "personal" && multiUserWateringEnabled && !(Number(requiredContributors) >= 2)) return "Required contributors must be at least 2.";
     return "";
-  }, [completionEndAmount, completionEndDate, completionMode, multiUserWateringEnabled, name, requiredContributors, scheduleDays.length, selectedGardenId, selectedIcon, target, type, unit]);
-
-  const toggleDay = (day) => setDays((prev) => (prev.includes(day) ? prev.filter((item) => item !== day) : [...prev, day]));
+  }, [completionDateMeta, completionEndAmount, completionEndDate, completionMode, days.length, mode, multiUserWateringEnabled, name, requiredContributors, scheduleDays.length, selectedGardenId, selectedIcon, target, type, unit]);
 
   useEffect(() => {
     return () => {
@@ -1138,8 +1348,11 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     setShowIconModal(false);
     setEditView("form");
     setIconSearch("");
+<<<<<<< HEAD
+=======
     setHasUnsavedNotificationChanges(false);
     if (goal) applyGoalToEditForm(goal);
+>>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
     setShowEditModal(true);
   };
 
@@ -1150,6 +1363,12 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   };
 
   const handleCancelEdit = () => {
+<<<<<<< HEAD
+    setShowIconModal(false);
+    setShowEditModal(false);
+    setEditView("form");
+    setIconSearch("");
+=======
     if (hasUnsavedNotificationChanges) {
       Alert.alert(
         "Unsaved Changes",
@@ -1159,6 +1378,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
           {
             text: "Discard Changes",
             onPress: () => {
+              if (goal) applyGoalToEditForm(goal);
               if (goal) applyGoalToEditForm(goal);
               setShowIconModal(false);
               setShowEditModal(false);
@@ -1172,11 +1392,13 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
       );
     } else {
       if (goal) applyGoalToEditForm(goal);
+      if (goal) applyGoalToEditForm(goal);
       setShowIconModal(false);
       setShowEditModal(false);
       setEditView("form");
       setIconSearch("");
     }
+>>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
   };
 
   const closeIconModal = () => {
@@ -1211,8 +1433,12 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
       // Unfreeze trophy state if moving out of storage
       let updatedGoalData = {
         name: name.trim(),
+<<<<<<< HEAD
+        category: "Other",
+=======
         description: description.trim(),
         category,
+>>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
         isPrivate,
         icon: selectedIcon,
         type,
@@ -1221,7 +1447,15 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
         frequencyLabel,
         completionCondition,
         plan: { when: whenStr.trim(), where: whereStr.trim() },
+<<<<<<< HEAD
+        why: whyStr.trim(),
+        species: selectedPlantSpecies,
+        plantSpecies: selectedPlantSpecies,
+        potType: selectedPotType,
+        potStyle: selectedPotType,
+=======
         why: description.trim() ? "" : whyStr.trim(),
+>>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
         ...nextGardenPayload,
       };
 
@@ -1297,12 +1531,15 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
         await deleteDoc(doc(db, "sharedGardens", wasSharedGardenId, "layout", goal.id));
       }
 
+<<<<<<< HEAD
+=======
       // Save notification settings for this goal
       if (goalNotificationEnabled) {
         await saveGoalNotificationSettings(goal.id, {
           enabled: true,
           time: goalNotificationTime,
           timeMinute: goalNotificationTimeMinute,
+          goalName: name.trim(),
           goalName: name.trim(),
         });
       } else {
@@ -1311,8 +1548,8 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
         });
       }
 
+>>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
       setShowEditModal(false);
-      setHasUnsavedNotificationChanges(false);
     } catch (error) {
       Alert.alert("Error", "Could not update goal.");
     } finally {
@@ -1351,11 +1588,20 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     forceComplete = false,
     setDone = null,
   } = {}) => {
+  const performToggleComplete = async ({
+    archiveToStorage = false,
+    dateKey = null,
+    forceComplete = false,
+    setDone = null,
+  } = {}) => {
     if (!auth.currentUser || !goal || shelfPosition?.pageId === STORAGE_PAGE_ID) return;
+    const effectiveDateKey = dateKey || selectedDateKey;
+    const selectedDateObj = fromKey(effectiveDateKey);
     const effectiveDateKey = dateKey || selectedDateKey;
     const selectedDateObj = fromKey(effectiveDateKey);
     if (!isGoalScheduledOnDate(goal, selectedDateObj)) {
       Alert.alert(
+        "Not scheduled",
         "Not scheduled",
         "You can't complete this goal on this date because it is not scheduled."
       );
@@ -1364,6 +1610,9 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     try {
       if (tapCooldownRef.current) return;
       startTapCooldown();
+      const selectedDateKeyString = typeof effectiveDateKey === 'string'
+        ? effectiveDateKey
+        : toKey(effectiveDateKey);
       const selectedDateKeyString = typeof effectiveDateKey === 'string'
         ? effectiveDateKey
         : toKey(effectiveDateKey);
@@ -1379,13 +1628,106 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
         clearLocalOptimisticProgress,
         forceComplete,
         setDone,
+        forceComplete,
+        setDone,
       });
     } catch (error) {
       clearLocalOptimisticProgress();
       console.error("Error toggling goal status:", error);
       Alert.alert("Error", "Could not update goal progress.");
       throw error;
+      throw error;
     }
+  };
+
+  const canEditHistoryDay = (entry) => {
+    if (!entry || shelfPosition?.pageId === STORAGE_PAGE_ID || entry.isFrozenDay || isTapCoolingDown) {
+      return false;
+    }
+    if (!entry.scheduled) return false;
+    return entry.missed || entry.done;
+  };
+
+  const markHistoryDayToggle = async (dateKey, markComplete) => {
+    if (!dateKey || shelfPosition?.pageId === STORAGE_PAGE_ID || isTapCoolingDown || !goal) return;
+    setSelectedDateKey(dateKey);
+
+    const previousGoal = goal;
+    const uid = auth.currentUser?.uid;
+    const nextLogs = JSON.parse(JSON.stringify(goal.logs || {}));
+    const goalType = goal.type || goal.kind;
+
+    if (goalType === 'completion') {
+      if (!nextLogs.completion) nextLogs.completion = {};
+      nextLogs.completion[dateKey] = {
+        ...(nextLogs.completion[dateKey] || {}),
+        done: markComplete,
+        contributors: markComplete && uid ? [uid] : [],
+      };
+    } else {
+      const target = Math.max(1, Math.floor(Number(goal.measurable?.target) || 1));
+      if (!nextLogs.quantity) nextLogs.quantity = {};
+      nextLogs.quantity[dateKey] = { value: markComplete ? target : 0 };
+    }
+
+    const patchedGoal = { ...goal, logs: nextLogs };
+    const today = toKey(new Date());
+    const { currentStreak, longestStreak } = calculateGoalStreak(patchedGoal, nextLogs, today);
+    const { healthLevel } = getPlantHealthState(patchedGoal, new Date(), uid);
+    setGoal({
+      ...patchedGoal,
+      currentStreak,
+      longestStreak,
+      healthLevel,
+    });
+
+    try {
+      await performToggleComplete({
+        dateKey,
+        forceComplete: markComplete && goalType === 'quantity',
+        setDone: markComplete,
+      });
+    } catch {
+      setGoal(previousGoal);
+    }
+  };
+
+  const handleHistoryDayPress = (entry) => {
+    if (!canEditHistoryDay(entry)) return;
+    const dateLabel = fromKey(entry.dateKey).toLocaleDateString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    });
+    const goalName = goal?.name || 'this goal';
+
+    if (entry.done) {
+      Alert.alert(
+        'Mark as not complete?',
+        `Remove completion for "${goalName}" on ${dateLabel}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Undo',
+            style: 'destructive',
+            onPress: () => markHistoryDayToggle(entry.dateKey, false),
+          },
+        ]
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Mark as complete?',
+      `Mark "${goalName}" complete for ${dateLabel}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Complete',
+          onPress: () => markHistoryDayToggle(entry.dateKey, true),
+        },
+      ]
+    );
   };
 
   const canEditHistoryDay = (entry) => {
@@ -1602,14 +1944,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     } finally {
       setIsCompletingToTrophy(false);
     }
-  };
-
-  const isValidISODate = (value) => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-    const [year, month, day] = value.split("-").map(Number);
-    const date = new Date(year, month - 1, day);
-    if (Number.isNaN(date.getTime())) return false;
-    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
   };
 
   const monthFromISOOrToday = (value) => {
@@ -1948,15 +2282,20 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     goal.category || "Custom",
   ].filter(Boolean).join(" • ");
   const goalDescription = getGoalDescriptionText(goal);
+  const goalDescription = getGoalDescriptionText(goal);
   const todayKey = toKey(new Date());
   const anchor = fromKey(todayKey);
   anchor.setHours(0, 0, 0, 0);
   const showLast6Days = getShowLast6DaysSync();
   const weekStart = getWeekStartSync();
   const rangeEndDate = new Date(anchor);
+  const rangeEndDate = new Date(anchor);
   if (showLast6Days) {
     rangeEndDate.setDate(anchor.getDate() - historyWeekOffset * 7);
+    rangeEndDate.setDate(anchor.getDate() - historyWeekOffset * 7);
   } else {
+    const offsetInWeek = (anchor.getDay() - weekStart + 7) % 7;
+    rangeEndDate.setDate(anchor.getDate() - offsetInWeek + 6 - historyWeekOffset * 7);
     const offsetInWeek = (anchor.getDay() - weekStart + 7) % 7;
     rangeEndDate.setDate(anchor.getDate() - offsetInWeek + 6 - historyWeekOffset * 7);
   }
@@ -1964,7 +2303,29 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   rangeStartDate.setDate(rangeEndDate.getDate() - 6);
   rangeStartDate.setHours(0, 0, 0, 0);
   rangeEndDate.setHours(0, 0, 0, 0);
+  const rangeStartDate = new Date(rangeEndDate);
+  rangeStartDate.setDate(rangeEndDate.getDate() - 6);
+  rangeStartDate.setHours(0, 0, 0, 0);
+  rangeEndDate.setHours(0, 0, 0, 0);
   const weekRangeLabel = `${rangeStartDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${rangeEndDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+  const historyHeadline = historyWeekOffset === 0
+    ? (showLast6Days ? 'Last 7 days' : 'This week')
+    : `${historyWeekOffset} week${historyWeekOffset === 1 ? '' : 's'} ago`;
+  const goalCreatedAt = dateFromFirestoreValue(goal?.createdAt);
+  const maxHistoryWeekOffset = (() => {
+    if (!goalCreatedAt) return 52;
+    const created = new Date(goalCreatedAt);
+    created.setHours(0, 0, 0, 0);
+    const daysSinceCreation = Math.max(0, Math.floor((anchor.getTime() - created.getTime()) / 86400000));
+    return Math.max(0, Math.floor(daysSinceCreation / 7));
+  })();
+  const canGoToOlderWeek = historyWeekOffset < maxHistoryWeekOffset;
+  const canGoToNewerWeek = historyWeekOffset > 0;
+  const showBackToToday = historyWeekOffset > 0 || selectedDateKey !== todayKey;
+  const goBackToToday = () => {
+    setHistoryWeekOffset(0);
+    setSelectedDateKey(todayKey);
+  };
   const historyHeadline = historyWeekOffset === 0
     ? (showLast6Days ? 'Last 7 days' : 'This week')
     : `${historyWeekOffset} week${historyWeekOffset === 1 ? '' : 's'} ago`;
@@ -2008,11 +2369,13 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
       ? isGoalDoneForDate(goal, dateKey)
       : isGoalDoneForDate(goalForDerivedState, dateKey, currentUserId);
     const doneForDate = scheduled && doneFromState;
+    const doneForDate = scheduled && doneFromState;
 
     let healthLevel;
     if (isFrozenDay) {
       healthLevel = Number(goal?.frozenHealthLevel) || 5;
     } else {
+      healthLevel = getPlantHealthState(goalForDerivedState, date, currentUserId).healthLevel;
       healthLevel = getPlantHealthState(goalForDerivedState, date, currentUserId).healthLevel;
     }
 
@@ -2033,6 +2396,9 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   if (goal?.name === "Grumble") {
     console.log("[DEBUG][GoalScreen][Grumble] recentHistory:", recentHistory);
   }
+  const weeklyDisplayStreak = (isTrophy || isFrozenTrophy)
+    ? (goal?.frozenCurrentStreak ?? goal.currentStreak ?? 0)
+    : (calculateGoalStreak(goalForDerivedState, goalForDerivedState?.logs || {}, todayKey).currentStreak ?? 0);
   const weeklyDisplayStreak = (isTrophy || isFrozenTrophy)
     ? (goal?.frozenCurrentStreak ?? goal.currentStreak ?? 0)
     : (calculateGoalStreak(goalForDerivedState, goalForDerivedState?.logs || {}, todayKey).currentStreak ?? 0);
@@ -2237,11 +2603,25 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
             ) : goalDescription ? (
               <Text style={styles.heroDescription}>{goalDescription}</Text>
             ) : null}
+            {!isTrophy ? (
+              <HapticPressable onPress={openEditModal} haptic={HapticType.LIGHT} hitSlop={6}>
+                {goalDescription ? (
+                  <Text style={styles.heroDescription}>{goalDescription}</Text>
+                ) : (
+                  <Text style={styles.heroDescriptionPlaceholder}>Add description</Text>
+                )}
+              </HapticPressable>
+            ) : goalDescription ? (
+              <Text style={styles.heroDescription}>{goalDescription}</Text>
+            ) : null}
             <Text style={styles.heroSub}>{topSummary}</Text>
           </View>
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            {selectedDateKey === todayKey ? 'Today' : selectedDateLabel}
+          </Text>
           <Text style={styles.sectionTitle}>
             {selectedDateKey === todayKey ? 'Today' : selectedDateLabel}
           </Text>
@@ -2406,14 +2786,48 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                 >
                   <Ionicons name="chevron-forward" size={18} color={canGoToNewerWeek ? theme.accent : '#c5cdd6'} />
                 </HapticPressable>
+              <View style={styles.historyWeekHeader}>
+                <HapticPressable
+                  onPress={() => setHistoryWeekOffset((offset) => offset + 1)}
+                  disabled={!canGoToOlderWeek}
+                  haptic={canGoToOlderWeek ? HapticType.LIGHT : false}
+                  hitSlop={8}
+                  style={[styles.historyWeekNavBtn, !canGoToOlderWeek && styles.historyWeekNavBtnDisabled]}
+                >
+                  <Ionicons name="chevron-back" size={18} color={canGoToOlderWeek ? theme.accent : '#c5cdd6'} />
+                </HapticPressable>
+                <View style={styles.historyWeekLabels}>
+                  <Text style={styles.historyHeadline}>{historyHeadline}</Text>
+                  <Text style={styles.historySubhead}>{weekRangeLabel}</Text>
+                </View>
+                <HapticPressable
+                  onPress={() => setHistoryWeekOffset((offset) => Math.max(0, offset - 1))}
+                  disabled={!canGoToNewerWeek}
+                  haptic={canGoToNewerWeek ? HapticType.LIGHT : false}
+                  hitSlop={8}
+                  style={[styles.historyWeekNavBtn, !canGoToNewerWeek && styles.historyWeekNavBtnDisabled]}
+                >
+                  <Ionicons name="chevron-forward" size={18} color={canGoToNewerWeek ? theme.accent : '#c5cdd6'} />
+                </HapticPressable>
               </View>
               <View style={styles.historyStreakBadge}>
                 <Image source={FIRE_STREAK_ICON} style={styles.historyStreakIcon} resizeMode="contain" />
                 <Text style={styles.historyStreakValue}>
                   {weeklyDisplayStreak} day streak
+                  {weeklyDisplayStreak} day streak
                 </Text>
               </View>
             </View>
+            {showBackToToday ? (
+              <HapticPressable
+                onPress={goBackToToday}
+                haptic={HapticType.LIGHT}
+                style={styles.historyTodayBtn}
+              >
+                <Ionicons name="today-outline" size={14} color={theme.accent} />
+                <Text style={styles.historyTodayBtnText}>Back to today</Text>
+              </HapticPressable>
+            ) : null}
             {showBackToToday ? (
               <HapticPressable
                 onPress={goBackToToday}
@@ -2479,11 +2893,66 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                       </HapticPressable>
                     ) : (
                       bubbleContent
+                const isSelectedDay = entry.dateKey === selectedDateKey;
+                const bubbleContent = entry.isFrozenDay ? (
+                  <Image
+                    source={getBadgeImageForTrophyKey(trophyPreview.key)}
+                    style={styles.duolingoBadgeImage}
+                    resizeMode="contain"
+                  />
+                ) : entry.done ? (
+                  <View
+                    style={[
+                      styles.duolingoBubble,
+                      styles.duolingoBubbleDone,
+                      entry.isToday && styles.duolingoBubbleToday,
+                      isSelectedDay && styles.duolingoBubbleSelected,
+                    ]}
+                  >
+                    <FontAwesomeIcon icon={FONT_AWESOME_ICONS["check"]} size={20} color="#ffffff" />
+                  </View>
+                ) : (
+                  <View
+                    style={[
+                      styles.duolingoBubble,
+                      entry.missed
+                        ? styles.duolingoBubbleMissed
+                        : styles.duolingoBubbleIdle,
+                      entry.isToday && styles.duolingoBubbleToday,
+                      isSelectedDay && styles.duolingoBubbleSelected,
+                    ]}
+                  />
+                );
+
+                return (
+                  <View key={entry.dateKey} style={styles.duolingoDayWrap}>
+                    <Text style={[
+                      styles.duolingoDayLabel,
+                      entry.isToday && styles.duolingoDayLabelToday,
+                      entry.isFrozenDay && { color: trophyPreview.color },
+                    ]}>{entry.dayLabel}</Text>
+                    {canEditHistoryDay(entry) && !isTrophy ? (
+                      <HapticPressable
+                        onPress={() => handleHistoryDayPress(entry)}
+                        haptic={HapticType.LIGHT}
+                        hitSlop={4}
+                        style={({ pressed }) => [
+                          styles.duolingoBubblePressable,
+                          pressed && styles.duolingoBubblePressed,
+                        ]}
+                      >
+                        {bubbleContent}
+                      </HapticPressable>
+                    ) : (
+                      bubbleContent
                     )}
                   </View>
                 );
               })}
             </View>
+            {!isTrophy ? (
+              <Text style={styles.historyHint}>Tap a day to mark complete or undo.</Text>
+            ) : null}
             {!isTrophy ? (
               <Text style={styles.historyHint}>Tap a day to mark complete or undo.</Text>
             ) : null}
@@ -2626,6 +3095,16 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                           elevation: 2,
                         }),
                       },
+                      {
+                        backgroundColor: theme.accent,
+                        ...cpShadow({
+                          color: getDarkerAccentColor(theme.accent),
+                          offset: { width: 0, height: 4 },
+                          opacity: 1,
+                          radius: 0,
+                          elevation: 2,
+                        }),
+                      },
                       pressed && !formError && !isSaving && styles.modalHeaderButtonPressed,
                       (!!formError || isSaving) && styles.modalHeaderButtonDisabled,
                     ]}
@@ -2645,6 +3124,8 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                 <View style={styles.editCard}>
                   <Text style={styles.editLabel}>Goal name</Text>
                   <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Goal name" placeholderTextColor={theme.muted2} />
+<<<<<<< HEAD
+=======
                   <Text style={[styles.editLabel, styles.topGap]}>Description</Text>
                   <TextInput
                     value={description}
@@ -2660,8 +3141,10 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                   <View style={styles.chipWrap}>
                     {CATEGORIES.map((item) => (
                       <Chip key={item} label={item} active={category === item} onPress={() => setCategory(item)} accent={theme.accent} />
+                      <Chip key={item} label={item} active={category === item} onPress={() => setCategory(item)} accent={theme.accent} />
                     ))}
                   </View>
+>>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
                   <View style={styles.switchRow}>
                     <Text style={styles.switchLabel}>Private goal</Text>
                     <Switch value={isPrivate} onValueChange={(value) => { triggerSelectionHaptic(); setIsPrivate(value); }} trackColor={{ false: theme.outline, true: theme.accent }} />
@@ -2674,6 +3157,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                       active={selectedGardenId === "personal"}
                       onPress={() => setSelectedGardenId("personal")}
                       accent={theme.accent}
+                      accent={theme.accent}
                     />
                     {sharedGardens.map((garden) => (
                       <Chip
@@ -2681,6 +3165,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                         label={garden.name || "Shared Garden"}
                         active={selectedGardenId === garden.id}
                         onPress={() => setSelectedGardenId(garden.id)}
+                        accent={theme.accent}
                         accent={theme.accent}
                       />
                     ))}
@@ -2713,6 +3198,34 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                 </View>
 
                 <View style={styles.editCard}>
+                  <Text style={styles.editLabel}>Plant and pot</Text>
+                  <Text style={styles.editSubLabel}>Plant</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assetPickerRow}>
+                    {plantOptions.map((option) => (
+                      <HapticPressable
+                        key={option.species}
+                        onPress={() => setSelectedPlantSpecies(option.species)}
+                        style={[styles.assetPickerItem, selectedPlantSpecies === option.species && styles.assetPickerItemActive]}
+                      >
+                        <Image source={option.preview} style={styles.assetPickerPlant} resizeMode="contain" />
+                      </HapticPressable>
+                    ))}
+                  </ScrollView>
+                  <Text style={[styles.editSubLabel, styles.topGap]}>Pot</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assetPickerRow}>
+                    {potOptions.map((option) => (
+                      <HapticPressable
+                        key={option.key}
+                        onPress={() => setSelectedPotType(option.key)}
+                        style={[styles.assetPickerItem, selectedPotType === option.key && styles.assetPickerItemActive]}
+                      >
+                        <Image source={option.preview} style={styles.assetPickerPot} resizeMode="contain" />
+                      </HapticPressable>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                <View style={styles.editCard}>
                   <Text style={styles.editLabel}>Icon</Text>
                   <HapticPressable style={styles.iconPickerButton} onPress={openIconModal}>
                     <View style={styles.iconPickerButtonLeft}>
@@ -2731,6 +3244,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                 <View style={styles.editCard}>
                   <Text style={styles.editLabel}>Tracking</Text>
                   <Segmented left={{ label: "Checkmark", value: "completion" }} right={{ label: "Quantity", value: "quantity" }} value={type} onChange={setType} accent={theme.accent} />
+                  <Segmented left={{ label: "Checkmark", value: "completion" }} right={{ label: "Quantity", value: "quantity" }} value={type} onChange={setType} accent={theme.accent} />
                   {type === "quantity" && (
                     <View style={styles.row}>
                       <TextInput value={target} onChangeText={(value) => setTarget(normalizeQuantityTargetInput(value))} keyboardType="numeric" style={[styles.input, styles.rowInput]} placeholder="Target (max 6)" placeholderTextColor={theme.muted2} />
@@ -2742,6 +3256,26 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                 <View style={styles.editCard}>
                   <Text style={styles.editLabel}>Schedule</Text>
                   <View style={styles.chipWrap}>
+<<<<<<< HEAD
+                    <Chip label="Every day" active={mode === "everyday"} onPress={() => { setMode("everyday"); setDays([0, 1, 2, 3, 4, 5, 6]); }} />
+                    <Chip label="Weekdays" active={mode === "weekdays"} onPress={() => { setMode("weekdays"); setDays([1, 2, 3, 4, 5]); }} />
+                    <Chip label="Custom" active={mode === "days"} onPress={() => setMode("days")} />
+                  </View>
+                  <View style={styles.daysGrid}>
+                    {getScheduleDays().map((d) => {
+                      const isSelected = mode === "everyday" ? true : mode === "weekdays" ? (d.day >= 1 && d.day <= 5) : days.includes(d.day);
+                      return (
+                        <HapticPressable
+                          key={d.day}
+                          onPress={() => handleDayPress(d.day)}
+                          style={[styles.dayPill, isSelected && [styles.dayPillActive, { backgroundColor: theme.accent, borderColor: theme.accent }]]}
+                        >
+                          <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>{DAY_LABELS[d.day]}</Text>
+                        </HapticPressable>
+                      );
+                    })}
+                  </View>
+=======
                     <Chip label="Every day" active={mode === "everyday"} onPress={() => setMode("everyday")} accent={theme.accent} />
                     <Chip label="Weekdays" active={mode === "weekdays"} onPress={() => setMode("weekdays")} accent={theme.accent} />
                     <Chip label="Custom" active={mode === "days"} onPress={() => setMode("days")} accent={theme.accent} />
@@ -2750,29 +3284,58 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                     <View style={styles.daysGrid}>
                       {DAYS.map((item) => (
                         <Chip key={item.day} label={item.label} active={days.includes(item.day)} onPress={() => toggleDay(item.day)} accent={theme.accent} />
+                        <Chip key={item.day} label={item.label} active={days.includes(item.day)} onPress={() => toggleDay(item.day)} accent={theme.accent} />
                       ))}
                     </View>
                   )}
+>>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
                 </View>
 
                 <View style={styles.editCard}>
                   <Text style={styles.editLabel}>Completion</Text>
                   <View style={styles.chipWrap}>
+<<<<<<< HEAD
+                    <Chip label="No end" active={completionMode === "none"} onPress={() => changeCompletionMode("none")} />
+                    <Chip label="End date" active={completionMode === "date"} onPress={() => changeCompletionMode("date")} />
+                    <Chip label="End amount" active={completionMode === "amount"} onPress={() => changeCompletionMode("amount")} />
+=======
                     <Chip label="No end" active={completionMode === "none"} onPress={() => setCompletionMode("none")} accent={theme.accent} />
                     <Chip label="End date" active={completionMode === "date" || completionMode === "both"} onPress={() => setCompletionMode("date")} accent={theme.accent} />
                     <Chip label="End amount" active={completionMode === "amount" || completionMode === "both"} onPress={() => setCompletionMode("amount")} accent={theme.accent} />
+>>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
                   </View>
-                  {(completionMode === "date" || completionMode === "both") && (
+                  {completionMode === "date" && (
                     <View style={styles.topGap}>
+                      <TextInput
+                        value={completionEndDisplay}
+                        onChangeText={(text) => {
+                          const digits = String(text).replace(/\D/g, "").slice(0, 8);
+                          const formatted = formatPartialFromDigits(digits);
+                          setCompletionEndDisplay(formatted);
+                          const iso = parseDisplayToISO(formatted);
+                          if (isValidISODate(iso)) setCompletionEndDate(iso);
+                        }}
+                        onBlur={() => setCompletionEndDisplay(formatISOToDisplay(completionEndDate))}
+                        placeholder={getDateFormatSync()}
+                        keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
+                        style={styles.input}
+                        placeholderTextColor={theme.muted2}
+                      />
+                      {completionDateMeta && completionDateMeta.daysLeft < 0 && (
+                        <View style={[styles.errorInline, { marginTop: 8 }]}>
+                          <Text style={styles.errorInlineText}>End date cannot be in the past.</Text>
+                        </View>
+                      )}
                       <SwipeCalendar
                         month={editCalendarMonth}
                         setMonth={setEditCalendarMonth}
                         selectedDate={completionEndDate}
                         onSelectDate={setCompletionEndDate}
                       />
+                      {!!completionDateMeta && <Text style={styles.helperText}>Ends {completionDateMeta.readable}</Text>}
                     </View>
                   )}
-                  {(completionMode === "amount" || completionMode === "both") && (
+                  {completionMode === "amount" && (
                     <View style={styles.row}>
                       <TextInput value={completionEndAmount} onChangeText={setCompletionEndAmount} keyboardType="numeric" style={[styles.input, styles.rowInput]} placeholder="Total amount" placeholderTextColor={theme.muted2} />
                       <TextInput value={completionEndUnit} onChangeText={setCompletionEndUnit} style={[styles.input, styles.rowInput]} placeholder="times" placeholderTextColor={theme.muted2} />
@@ -2780,6 +3343,8 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                   )}
                 </View>
 
+<<<<<<< HEAD
+=======
                 <View style={styles.editCard}>
                   <Text style={styles.editLabel}>Notifications</Text>
                   
@@ -2821,6 +3386,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                         <View style={styles.timeDisplay}>
                           <Text style={styles.timeText}>
                             {formatTime12(goalNotificationTime, goalNotificationTimeMinute)}
+                            {formatTime12(goalNotificationTime, goalNotificationTimeMinute)}
                           </Text>
                           <Ionicons name="chevron-forward" size={16} color={theme.accent} />
                         </View>
@@ -2836,6 +3402,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                   )}
                 </View>
 
+>>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
                 {!!formError && <View style={styles.errorInline}><Text style={styles.errorInlineText}>{formError}</Text></View>}
               </ScrollView>
             </View>
@@ -2966,6 +3533,8 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
         </View>
       </Modal>
 
+<<<<<<< HEAD
+=======
       <TimePickerSheet
         visible={showGoalTimeModal}
         title="Goal reminder time"
@@ -2983,6 +3552,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
       />
 
 
+>>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
     </Page>
   );
 }
@@ -3079,6 +3649,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroTitle: { fontSize: 22, fontWeight: "900", color: theme.text, textAlign: 'left', fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1 },
+  heroDescription: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: theme.text2,
+    marginTop: 6,
+    lineHeight: 20,
+    textAlign: 'left',
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
+  },
+  heroDescriptionPlaceholder: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: '#9aa8b5',
+    marginTop: 6,
+    lineHeight: 20,
+    textAlign: 'left',
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
+  },
   heroDescription: {
     fontSize: 14,
     fontWeight: "700",
@@ -3341,10 +3931,64 @@ const styles = StyleSheet.create({
   historyTopRowSimple: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: 12,
     gap: 10,
+    gap: 10,
   },
+  historyWeekHeader: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+    gap: 4,
+  },
+  historyWeekLabels: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+  },
+  historyWeekNavBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f3f6f9',
+  },
+  historyWeekNavBtnDisabled: {
+    backgroundColor: '#f8f9fb',
+  },
+  historyTodayBtn: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#f3f6f9',
+  },
+  historyTodayBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: theme.accent,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
+  },
+  historyHint: {
+    marginTop: 10,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#7d8a97',
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
+    textAlign: 'center',
+  },
+  historyHeadline: { fontSize: 15, fontWeight: '900', color: theme.text, fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1, textAlign: 'center' },
+  historySubhead: { fontSize: 12, color: '#7d8a97', marginTop: 2, fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1, textAlign: 'center' },
   historyWeekHeader: {
     flex: 1,
     flexDirection: 'row',
@@ -3491,6 +4135,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#e9e9e9',
   },
   duolingoBubbleToday: {},
+  duolingoBubblePressable: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  duolingoBubbleSelected: {
+    borderWidth: 2,
+    borderColor: theme.accent,
+  },
+  duolingoBubblePressed: {
+    opacity: 0.85,
+  },
   duolingoBubblePressable: {
     width: 42,
     height: 42,
@@ -3693,6 +4350,21 @@ const styles = StyleSheet.create({
     ...cpShadow({ color: '#c9d9ea', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   editLabel: { fontSize: 13, fontWeight: "900", color: theme.text, marginBottom: 8 },
+  editSubLabel: { fontSize: 12, fontWeight: "800", color: theme.muted, marginBottom: 6 },
+  assetPickerRow: { flexDirection: "row", gap: 10, paddingVertical: 4 },
+  assetPickerItem: {
+    width: 72,
+    height: 72,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: theme.outline,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  assetPickerItemActive: { borderColor: theme.accent, backgroundColor: "#f0f7ff" },
+  assetPickerPlant: { width: 44, height: 52 },
+  assetPickerPot: { width: 48, height: 32 },
   switchRow: { marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   switchLabel: { fontSize: 13, fontWeight: "700", color: theme.text },
   input: { backgroundColor: '#f9fbfd', borderRadius: 16, paddingHorizontal: 14, height: 46, fontSize: 14, color: theme.text, borderWidth: 1, borderColor: '#d9e6f4' },
@@ -3711,7 +4383,26 @@ const styles = StyleSheet.create({
   segmentActive: { backgroundColor: '#28b900' },
   segmentText: { fontSize: 12, fontWeight: "800", color: '#4c5f75', fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1 },
   segmentTextActive: { color: "#FFF" },
-  daysGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
+  daysGrid: {
+    flexDirection: "row",
+    marginTop: 10,
+    gap: 6,
+    width: "100%",
+  },
+  dayPill: {
+    flex: 1,
+    minWidth: 0,
+    height: 36,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: theme.outline,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  dayPillActive: {},
+  dayText: { fontSize: 12, fontWeight: "800", color: theme.text },
+  dayTextActive: { color: "#fff" },
   iconPickerButton: { height: 64, borderRadius: 18, backgroundColor: '#f7fbff', borderWidth: 1, borderColor: '#d6e4f2', flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14 },
   iconPickerButtonLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
   iconPickerPreview: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#eaf4ff', borderWidth: 1, borderColor: '#d2e3f5', alignItems: "center", justifyContent: "center" },
