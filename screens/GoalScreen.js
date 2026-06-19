@@ -39,8 +39,12 @@ import { subscribePersonalCustomizations, subscribeSharedCustomizations } from "
 import { collection, doc, onSnapshot, deleteDoc, updateDoc, getDoc, getDocs, setDoc, arrayUnion, increment, deleteField, query, where, runTransaction } from "firebase/firestore";
 import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
 import { auth, db } from "../firebaseConfig";
-import { useShopInventory } from "../components/ShopInventoryProvider";
 import { updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
+import {
+  getNotificationSettings,
+  getGoalNotificationSettings,
+  saveGoalNotificationSettings,
+} from "../utils/notifications";
 import {
   calculateGoalStreak,
   countCompletedDates,
@@ -53,13 +57,9 @@ import {
   dateFromFirestoreValue,
 } from "../utils/goalState";
 import { getBadgeImageForTrophyKey } from "./badgeImages";
-<<<<<<< HEAD
-import { formatISOToDisplay, parseDisplayToISO, getWeekStartSync, getShowLast6DaysSync, getDateFormatSync, formatPartialFromDigits } from '../utils/dateFormat';
-=======
 import { formatISOToDisplay, getWeekStartSync, getShowLast6DaysSync } from '../utils/dateFormat';
 import { formatTime12 } from '../utils/timeFormat';
 import TimePickerSheet from '../components/settings/TimePickerSheet';
->>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
 
 // Consistent frozen day blue color for streak and health bar
 const FROZEN_DAY_BLUE = '#a6e6ff';
@@ -380,20 +380,7 @@ const DAYS = [
   { label: "Fri", day: 5 },
   { label: "Sat", day: 6 },
 ];
-const DAY_LABELS = ["S", "M", "T", "W", "Th", "F", "Sa"];
-
-const getScheduleDays = () => {
-  const weekStart = getWeekStartSync();
-  return [...DAYS.slice(weekStart), ...DAYS.slice(0, weekStart)];
-};
-
-const isValidISODate = (value) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return false;
-  const [y, m, d] = value.split("-").map(Number);
-  const date = new Date(y, m - 1, d);
-  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
-};
-
+const CATEGORIES = ["Body", "Mind", "Spirit", "Work", "Custom"];
 const STORAGE_PAGE_ID = "storage";
 const STORAGE_SHELF_COUNT = 10;
 const STORAGE_SHELF_SLOTS = 4;
@@ -643,7 +630,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const { selectedDateKey, setSelectedDateKey, goals } = useGoals();
   const { isPro, openDefaultPaywall } = useSubscription();
   const { theme } = useTheme();
-  const { isPlantOwned, isPotOwned } = useShopInventory();
 
   const [goal, setGoal] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -673,15 +659,10 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const tapCooldownTimerRef = useRef(null);
 
   const [name, setName] = useState("");
-<<<<<<< HEAD
-=======
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("Custom");
->>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
   const [isPrivate, setIsPrivate] = useState(false);
   const [selectedIcon, setSelectedIcon] = useState("target");
-  const [selectedPlantSpecies, setSelectedPlantSpecies] = useState("fern");
-  const [selectedPotType, setSelectedPotType] = useState("default");
   const [type, setType] = useState("completion");
   const [target, setTarget] = useState("1");
   const [unit, setUnit] = useState("times");
@@ -692,14 +673,11 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const [whyStr, setWhyStr] = useState("");
   const [completionMode, setCompletionMode] = useState("none");
   const [completionEndDate, setCompletionEndDate] = useState("");
-  const [completionEndDisplay, setCompletionEndDisplay] = useState("");
   const [completionEndAmount, setCompletionEndAmount] = useState("");
   const [completionEndUnit, setCompletionEndUnit] = useState("times");
   const [multiUserWateringEnabled, setMultiUserWateringEnabled] = useState(false);
   const [requiredContributors, setRequiredContributors] = useState("2");
   const [editCalendarMonth, setEditCalendarMonth] = useState(toStartOfDay(new Date()));
-<<<<<<< HEAD
-=======
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [goalNotificationEnabled, setGoalNotificationEnabled] = useState(false);
   const [originalGoalNotificationEnabled, setOriginalGoalNotificationEnabled] = useState(false);
@@ -709,7 +687,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const [goalNotificationTimeMinute, setGoalNotificationTimeMinute] = useState(0);
   const [showGoalTimeModal, setShowGoalTimeModal] = useState(false);
   const [hasUnsavedNotificationChanges, setHasUnsavedNotificationChanges] = useState(false);
->>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
   const uid = auth.currentUser?.uid;
 
   const setLocalOptimisticProgress = (nextStateOrUpdater) => {
@@ -765,8 +742,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     };
   }, []);
 
-<<<<<<< HEAD
-=======
   // Load notification settings when edit modal opens
   useEffect(() => {
     if (!showEditModal) return;
@@ -818,7 +793,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     showEditModal,
   ]);
 
->>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
   useEffect(() => {
     if (!goalId) {
       setGoal(null);
@@ -1009,43 +983,9 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
 
   useEffect(() => {
     if (!goal) return;
-<<<<<<< HEAD
-    setName(goal.name || "");
-    setIsPrivate(!!goal.isPrivate);
-    setSelectedIcon(goal.icon || "target");
-    setSelectedPlantSpecies(goal.plantSpecies || goal.species || "fern");
-    setSelectedPotType(goal.potType || goal.potStyle || "default");
-    setType(goal.type || "completion");
-    setTarget(String(clampNum(goal?.measurable?.target ?? 1, 1, MAX_QUANTITY_TARGET)));
-    setUnit(goal?.measurable?.unit || "times");
-    setMode(goal?.schedule?.type || "days");
-    setDays(goal?.schedule?.days?.length ? goal.schedule.days : []);
-    setWhenStr(goal?.plan?.when || "");
-    setWhereStr(goal?.plan?.where || "");
-    setWhyStr(goal?.why || "");
-    const completionType = goal?.completionCondition?.type || "none";
-    setCompletionMode(completionType === "both" ? (goal?.completionCondition?.endDate ? "date" : "amount") : completionType);
-    const endDate = goal?.completionCondition?.endDate || "";
-    setCompletionEndDate(endDate);
-    setCompletionEndDisplay(formatISOToDisplay(endDate));
-    setCompletionEndAmount(goal?.completionCondition?.targetAmount ? String(goal.completionCondition.targetAmount) : "");
-    setCompletionEndUnit(goal?.completionCondition?.unit || "times");
-    setSelectedGardenId(goal?.sharedGardenId || goal?.gardenId || "personal");
-    setMultiUserWateringEnabled(!!goal?.multiUserWateringEnabled);
-    setRequiredContributors(String(Math.max(2, Math.floor(Number(goal?.requiredContributors) || 2))));
-    setEditCalendarMonth(monthFromISOOrToday(endDate));
-  }, [goal]);
-=======
     if (showEditModal || showIconModal) return;
     applyGoalToEditForm(goal);
   }, [goal, showEditModal, showIconModal]);
->>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
-
-  useEffect(() => {
-    if (isValidISODate(completionEndDate.trim())) {
-      setCompletionEndDisplay(formatISOToDisplay(completionEndDate));
-    }
-  }, [completionEndDate]);
 
   const handleBack = () => {
     if (tutorialLocked) {
@@ -1123,90 +1063,10 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const scheduleDays = useMemo(() => {
     if (mode === "everyday") return [0, 1, 2, 3, 4, 5, 6];
     if (mode === "weekdays") return [1, 2, 3, 4, 5];
-    return days.length ? days : [];
+    return days;
   }, [days, mode]);
 
-  const frequencyLabel = useMemo(() => {
-    if (mode === "everyday") return "Everyday";
-    if (mode === "weekdays") return "Weekdays";
-    return [...scheduleDays].sort((a, b) => a - b).map((d) => DAY_LABELS[d]).join("");
-  }, [mode, scheduleDays]);
-
-  const plantOptions = useMemo(() => {
-    return Object.keys(PLANT_ASSETS || {})
-      .filter((species) => {
-        const stages = PLANT_ASSETS?.[species];
-        return stages?.stage4?.alive || stages?.stage3?.alive || stages?.stage2?.alive || stages?.stage1?.alive;
-      })
-      .filter((species) => isPlantOwned(species))
-      .map((species) => ({
-        species,
-        preview:
-          PLANT_ASSETS?.[species]?.stage4?.alive ||
-          PLANT_ASSETS?.[species]?.stage3?.alive ||
-          PLANT_ASSETS?.[species]?.stage2?.alive ||
-          PLANT_ASSETS?.[species]?.stage1?.alive,
-      }));
-  }, [isPlantOwned]);
-
-  const potOptions = useMemo(() => {
-    return Object.entries(POT_ASSETS || {})
-      .filter(([key]) => isPotOwned(key))
-      .map(([key, preview]) => ({ key, preview }))
-      .filter((option) => !!option.preview);
-  }, [isPotOwned]);
-
-  const completionDateMeta = useMemo(() => {
-    if (!isValidISODate(completionEndDate.trim())) return null;
-    const [year, month, day] = completionEndDate.trim().split("-").map(Number);
-    const endDate = new Date(year, month - 1, day);
-    const today = toStartOfDay(new Date());
-    const endStart = toStartOfDay(endDate);
-    const daysLeft = Math.round((endStart.getTime() - today.getTime()) / 86400000);
-    return {
-      readable: endDate.toLocaleDateString(undefined, {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
-      daysLeft,
-    };
-  }, [completionEndDate]);
-
-  const getScheduleModeFromDays = (dayList) => {
-    const uniqueDays = [...new Set(dayList)].sort((a, b) => a - b);
-    if (uniqueDays.length === 7) return "everyday";
-    const weekdays = [1, 2, 3, 4, 5];
-    if (uniqueDays.length === 5 && weekdays.every((day, idx) => day === uniqueDays[idx])) return "weekdays";
-    return "days";
-  };
-
-  const handleDayPress = (d) => {
-    if (mode === "everyday") {
-      const all = [0, 1, 2, 3, 4, 5, 6];
-      const newDays = all.filter((x) => x !== d);
-      setDays(newDays);
-      setMode(getScheduleModeFromDays(newDays));
-      return;
-    }
-    if (mode === "weekdays") {
-      const weekdays = [1, 2, 3, 4, 5];
-      const newDays = d >= 1 && d <= 5 ? weekdays.filter((x) => x !== d) : [...weekdays, d].sort();
-      setDays(newDays);
-      setMode(getScheduleModeFromDays(newDays));
-      return;
-    }
-    setDays((prev) => {
-      const newDays = prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d];
-      setMode(getScheduleModeFromDays(newDays));
-      return newDays;
-    });
-  };
-
-  const changeCompletionMode = (nextMode) => {
-    setCompletionMode(nextMode);
-  };
+  const frequencyLabel = useMemo(() => formatScheduleLabel({ type: mode, days: scheduleDays }), [mode, scheduleDays]);
 
   const selectedGardenName = useMemo(() => {
     if (selectedGardenId === "personal") return "Personal Garden";
@@ -1219,27 +1079,38 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   }, [target, type, unit]);
 
   const completionCondition = useMemo(() => {
-    if (completionMode === "date" && isValidISODate(completionEndDate.trim())) {
+    if (completionMode === "date" && completionEndDate.trim()) {
       return { type: "date", endDate: completionEndDate.trim() };
     }
     if (completionMode === "amount" && Number(completionEndAmount) > 0) {
       return { type: "amount", targetAmount: clampNum(completionEndAmount, 1, 999999), unit: completionEndUnit.trim() || "times" };
     }
+    if (completionMode === "both" && completionEndDate.trim() && Number(completionEndAmount) > 0) {
+      return {
+        type: "both",
+        endDate: completionEndDate.trim(),
+        targetAmount: clampNum(completionEndAmount, 1, 999999),
+        unit: completionEndUnit.trim() || "times",
+      };
+    }
     return { type: "none" };
   }, [completionEndAmount, completionEndDate, completionEndUnit, completionMode]);
+
+
 
   const formError = useMemo(() => {
     if (name.trim().length < 3) return "Give it a short name (at least 3 characters).";
     if (!selectedIcon) return "Please select an icon.";
     if (type === "quantity" && (!(Number(target) > 0) || unit.trim().length < 1)) return "Quantity needs a number and unit.";
     if (type === "quantity" && Number(target) > MAX_QUANTITY_TARGET) return `Quantity max is ${MAX_QUANTITY_TARGET}.`;
-    if ((mode === "days" && !days.length) || !scheduleDays.length) return "Pick at least one day.";
-    if (completionMode === "date" && !isValidISODate(completionEndDate.trim())) return "Enter a valid end date.";
-    if (completionMode === "date" && completionDateMeta && completionDateMeta.daysLeft < 0) return "End date cannot be in the past.";
-    if (completionMode === "amount" && !(Number(completionEndAmount) > 0)) return "End amount must be greater than 0.";
+    if (!scheduleDays.length) return "Pick at least one day.";
+    if ((completionMode === "date" || completionMode === "both") && !completionEndDate.trim()) return "Enter an end date.";
+    if ((completionMode === "amount" || completionMode === "both") && !(Number(completionEndAmount) > 0)) return "End amount must be greater than 0.";
     if (selectedGardenId !== "personal" && multiUserWateringEnabled && !(Number(requiredContributors) >= 2)) return "Required contributors must be at least 2.";
     return "";
-  }, [completionDateMeta, completionEndAmount, completionEndDate, completionMode, days.length, mode, multiUserWateringEnabled, name, requiredContributors, scheduleDays.length, selectedGardenId, selectedIcon, target, type, unit]);
+  }, [completionEndAmount, completionEndDate, completionMode, multiUserWateringEnabled, name, requiredContributors, scheduleDays.length, selectedGardenId, selectedIcon, target, type, unit]);
+
+  const toggleDay = (day) => setDays((prev) => (prev.includes(day) ? prev.filter((item) => item !== day) : [...prev, day]));
 
   useEffect(() => {
     return () => {
@@ -1267,11 +1138,8 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     setShowIconModal(false);
     setEditView("form");
     setIconSearch("");
-<<<<<<< HEAD
-=======
     setHasUnsavedNotificationChanges(false);
     if (goal) applyGoalToEditForm(goal);
->>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
     setShowEditModal(true);
   };
 
@@ -1282,12 +1150,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   };
 
   const handleCancelEdit = () => {
-<<<<<<< HEAD
-    setShowIconModal(false);
-    setShowEditModal(false);
-    setEditView("form");
-    setIconSearch("");
-=======
     if (hasUnsavedNotificationChanges) {
       Alert.alert(
         "Unsaved Changes",
@@ -1315,7 +1177,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
       setEditView("form");
       setIconSearch("");
     }
->>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
   };
 
   const closeIconModal = () => {
@@ -1350,12 +1211,8 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
       // Unfreeze trophy state if moving out of storage
       let updatedGoalData = {
         name: name.trim(),
-<<<<<<< HEAD
-        category: "Other",
-=======
         description: description.trim(),
         category,
->>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
         isPrivate,
         icon: selectedIcon,
         type,
@@ -1364,15 +1221,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
         frequencyLabel,
         completionCondition,
         plan: { when: whenStr.trim(), where: whereStr.trim() },
-<<<<<<< HEAD
-        why: whyStr.trim(),
-        species: selectedPlantSpecies,
-        plantSpecies: selectedPlantSpecies,
-        potType: selectedPotType,
-        potStyle: selectedPotType,
-=======
         why: description.trim() ? "" : whyStr.trim(),
->>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
         ...nextGardenPayload,
       };
 
@@ -1448,8 +1297,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
         await deleteDoc(doc(db, "sharedGardens", wasSharedGardenId, "layout", goal.id));
       }
 
-<<<<<<< HEAD
-=======
       // Save notification settings for this goal
       if (goalNotificationEnabled) {
         await saveGoalNotificationSettings(goal.id, {
@@ -1464,8 +1311,8 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
         });
       }
 
->>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
       setShowEditModal(false);
+      setHasUnsavedNotificationChanges(false);
     } catch (error) {
       Alert.alert("Error", "Could not update goal.");
     } finally {
@@ -1755,6 +1602,14 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     } finally {
       setIsCompletingToTrophy(false);
     }
+  };
+
+  const isValidISODate = (value) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
+    if (Number.isNaN(date.getTime())) return false;
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
   };
 
   const monthFromISOOrToday = (value) => {
@@ -2790,8 +2645,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                 <View style={styles.editCard}>
                   <Text style={styles.editLabel}>Goal name</Text>
                   <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Goal name" placeholderTextColor={theme.muted2} />
-<<<<<<< HEAD
-=======
                   <Text style={[styles.editLabel, styles.topGap]}>Description</Text>
                   <TextInput
                     value={description}
@@ -2809,7 +2662,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                       <Chip key={item} label={item} active={category === item} onPress={() => setCategory(item)} accent={theme.accent} />
                     ))}
                   </View>
->>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
                   <View style={styles.switchRow}>
                     <Text style={styles.switchLabel}>Private goal</Text>
                     <Switch value={isPrivate} onValueChange={(value) => { triggerSelectionHaptic(); setIsPrivate(value); }} trackColor={{ false: theme.outline, true: theme.accent }} />
@@ -2861,34 +2713,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                 </View>
 
                 <View style={styles.editCard}>
-                  <Text style={styles.editLabel}>Plant and pot</Text>
-                  <Text style={styles.editSubLabel}>Plant</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assetPickerRow}>
-                    {plantOptions.map((option) => (
-                      <HapticPressable
-                        key={option.species}
-                        onPress={() => setSelectedPlantSpecies(option.species)}
-                        style={[styles.assetPickerItem, selectedPlantSpecies === option.species && styles.assetPickerItemActive]}
-                      >
-                        <Image source={option.preview} style={styles.assetPickerPlant} resizeMode="contain" />
-                      </HapticPressable>
-                    ))}
-                  </ScrollView>
-                  <Text style={[styles.editSubLabel, styles.topGap]}>Pot</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assetPickerRow}>
-                    {potOptions.map((option) => (
-                      <HapticPressable
-                        key={option.key}
-                        onPress={() => setSelectedPotType(option.key)}
-                        style={[styles.assetPickerItem, selectedPotType === option.key && styles.assetPickerItemActive]}
-                      >
-                        <Image source={option.preview} style={styles.assetPickerPot} resizeMode="contain" />
-                      </HapticPressable>
-                    ))}
-                  </ScrollView>
-                </View>
-
-                <View style={styles.editCard}>
                   <Text style={styles.editLabel}>Icon</Text>
                   <HapticPressable style={styles.iconPickerButton} onPress={openIconModal}>
                     <View style={styles.iconPickerButtonLeft}>
@@ -2918,26 +2742,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                 <View style={styles.editCard}>
                   <Text style={styles.editLabel}>Schedule</Text>
                   <View style={styles.chipWrap}>
-<<<<<<< HEAD
-                    <Chip label="Every day" active={mode === "everyday"} onPress={() => { setMode("everyday"); setDays([0, 1, 2, 3, 4, 5, 6]); }} />
-                    <Chip label="Weekdays" active={mode === "weekdays"} onPress={() => { setMode("weekdays"); setDays([1, 2, 3, 4, 5]); }} />
-                    <Chip label="Custom" active={mode === "days"} onPress={() => setMode("days")} />
-                  </View>
-                  <View style={styles.daysGrid}>
-                    {getScheduleDays().map((d) => {
-                      const isSelected = mode === "everyday" ? true : mode === "weekdays" ? (d.day >= 1 && d.day <= 5) : days.includes(d.day);
-                      return (
-                        <HapticPressable
-                          key={d.day}
-                          onPress={() => handleDayPress(d.day)}
-                          style={[styles.dayPill, isSelected && [styles.dayPillActive, { backgroundColor: theme.accent, borderColor: theme.accent }]]}
-                        >
-                          <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>{DAY_LABELS[d.day]}</Text>
-                        </HapticPressable>
-                      );
-                    })}
-                  </View>
-=======
                     <Chip label="Every day" active={mode === "everyday"} onPress={() => setMode("everyday")} accent={theme.accent} />
                     <Chip label="Weekdays" active={mode === "weekdays"} onPress={() => setMode("weekdays")} accent={theme.accent} />
                     <Chip label="Custom" active={mode === "days"} onPress={() => setMode("days")} accent={theme.accent} />
@@ -2949,54 +2753,26 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                       ))}
                     </View>
                   )}
->>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
                 </View>
 
                 <View style={styles.editCard}>
                   <Text style={styles.editLabel}>Completion</Text>
                   <View style={styles.chipWrap}>
-<<<<<<< HEAD
-                    <Chip label="No end" active={completionMode === "none"} onPress={() => changeCompletionMode("none")} />
-                    <Chip label="End date" active={completionMode === "date"} onPress={() => changeCompletionMode("date")} />
-                    <Chip label="End amount" active={completionMode === "amount"} onPress={() => changeCompletionMode("amount")} />
-=======
                     <Chip label="No end" active={completionMode === "none"} onPress={() => setCompletionMode("none")} accent={theme.accent} />
                     <Chip label="End date" active={completionMode === "date" || completionMode === "both"} onPress={() => setCompletionMode("date")} accent={theme.accent} />
                     <Chip label="End amount" active={completionMode === "amount" || completionMode === "both"} onPress={() => setCompletionMode("amount")} accent={theme.accent} />
->>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
                   </View>
-                  {completionMode === "date" && (
+                  {(completionMode === "date" || completionMode === "both") && (
                     <View style={styles.topGap}>
-                      <TextInput
-                        value={completionEndDisplay}
-                        onChangeText={(text) => {
-                          const digits = String(text).replace(/\D/g, "").slice(0, 8);
-                          const formatted = formatPartialFromDigits(digits);
-                          setCompletionEndDisplay(formatted);
-                          const iso = parseDisplayToISO(formatted);
-                          if (isValidISODate(iso)) setCompletionEndDate(iso);
-                        }}
-                        onBlur={() => setCompletionEndDisplay(formatISOToDisplay(completionEndDate))}
-                        placeholder={getDateFormatSync()}
-                        keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
-                        style={styles.input}
-                        placeholderTextColor={theme.muted2}
-                      />
-                      {completionDateMeta && completionDateMeta.daysLeft < 0 && (
-                        <View style={[styles.errorInline, { marginTop: 8 }]}>
-                          <Text style={styles.errorInlineText}>End date cannot be in the past.</Text>
-                        </View>
-                      )}
                       <SwipeCalendar
                         month={editCalendarMonth}
                         setMonth={setEditCalendarMonth}
                         selectedDate={completionEndDate}
                         onSelectDate={setCompletionEndDate}
                       />
-                      {!!completionDateMeta && <Text style={styles.helperText}>Ends {completionDateMeta.readable}</Text>}
                     </View>
                   )}
-                  {completionMode === "amount" && (
+                  {(completionMode === "amount" || completionMode === "both") && (
                     <View style={styles.row}>
                       <TextInput value={completionEndAmount} onChangeText={setCompletionEndAmount} keyboardType="numeric" style={[styles.input, styles.rowInput]} placeholder="Total amount" placeholderTextColor={theme.muted2} />
                       <TextInput value={completionEndUnit} onChangeText={setCompletionEndUnit} style={[styles.input, styles.rowInput]} placeholder="times" placeholderTextColor={theme.muted2} />
@@ -3004,8 +2780,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                   )}
                 </View>
 
-<<<<<<< HEAD
-=======
                 <View style={styles.editCard}>
                   <Text style={styles.editLabel}>Notifications</Text>
                   
@@ -3062,7 +2836,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                   )}
                 </View>
 
->>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
                 {!!formError && <View style={styles.errorInline}><Text style={styles.errorInlineText}>{formError}</Text></View>}
               </ScrollView>
             </View>
@@ -3193,8 +2966,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
         </View>
       </Modal>
 
-<<<<<<< HEAD
-=======
       <TimePickerSheet
         visible={showGoalTimeModal}
         title="Goal reminder time"
@@ -3212,7 +2983,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
       />
 
 
->>>>>>> b3d538c99fd3a67660deba6afc99df40dcd75999
     </Page>
   );
 }
@@ -3923,21 +3693,6 @@ const styles = StyleSheet.create({
     ...cpShadow({ color: '#c9d9ea', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   editLabel: { fontSize: 13, fontWeight: "900", color: theme.text, marginBottom: 8 },
-  editSubLabel: { fontSize: 12, fontWeight: "800", color: theme.muted, marginBottom: 6 },
-  assetPickerRow: { flexDirection: "row", gap: 10, paddingVertical: 4 },
-  assetPickerItem: {
-    width: 72,
-    height: 72,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: theme.outline,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#fff",
-  },
-  assetPickerItemActive: { borderColor: theme.accent, backgroundColor: "#f0f7ff" },
-  assetPickerPlant: { width: 44, height: 52 },
-  assetPickerPot: { width: 48, height: 32 },
   switchRow: { marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   switchLabel: { fontSize: 13, fontWeight: "700", color: theme.text },
   input: { backgroundColor: '#f9fbfd', borderRadius: 16, paddingHorizontal: 14, height: 46, fontSize: 14, color: theme.text, borderWidth: 1, borderColor: '#d9e6f4' },
@@ -3956,26 +3711,7 @@ const styles = StyleSheet.create({
   segmentActive: { backgroundColor: '#28b900' },
   segmentText: { fontSize: 12, fontWeight: "800", color: '#4c5f75', fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1 },
   segmentTextActive: { color: "#FFF" },
-  daysGrid: {
-    flexDirection: "row",
-    marginTop: 10,
-    gap: 6,
-    width: "100%",
-  },
-  dayPill: {
-    flex: 1,
-    minWidth: 0,
-    height: 36,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: theme.outline,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#fff",
-  },
-  dayPillActive: {},
-  dayText: { fontSize: 12, fontWeight: "800", color: theme.text },
-  dayTextActive: { color: "#fff" },
+  daysGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
   iconPickerButton: { height: 64, borderRadius: 18, backgroundColor: '#f7fbff', borderWidth: 1, borderColor: '#d6e4f2', flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 14 },
   iconPickerButtonLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
   iconPickerPreview: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#eaf4ff', borderWidth: 1, borderColor: '#d2e3f5', alignItems: "center", justifyContent: "center" },
