@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 /**
  * RevenueCat configuration for Goal Grower.
  *
@@ -11,6 +13,7 @@
  * 4. Create an Offering (e.g. "default") and mark it Current.
  * 5. Design a Paywall for that Offering in the RevenueCat dashboard.
  * 6. Configure Customer Center paths in the dashboard (Settings > Customer Center).
+ * 7. Copy the App Store / Play Store public API keys into EAS env vars (not the test key).
  */
 
 /** Display name in RevenueCat: "Goal Grower - Habit Tracker Pro" */
@@ -38,5 +41,23 @@ export const OFFERING_IDS = {
   COINS: "CoinOfferings",
 };
 
-/** Public test API key — replace with platform-specific production keys before release. */
-export const REVENUECAT_API_KEY = "test_QqxGrZYjqcGGCrEshrRxtVyGpcY";
+/** Sandbox/test key — local development only. Never ship in TestFlight/App Store builds. */
+export const REVENUECAT_TEST_API_KEY = "test_QqxGrZYjqcGGCrEshrRxtVyGpcY";
+
+export function getRevenueCatApiKey() {
+  const productionKey = Platform.select({
+    ios: process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY,
+    android: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY,
+    default: null,
+  });
+
+  if (productionKey) {
+    return productionKey;
+  }
+
+  if (__DEV__) {
+    return REVENUECAT_TEST_API_KEY;
+  }
+
+  return null;
+}

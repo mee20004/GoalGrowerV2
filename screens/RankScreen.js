@@ -141,7 +141,18 @@ export default function RankScreen({ navigation }) {
 
     return (
       <HapticTouchableOpacity
-        style={[styles.userCard, isCurrentUser && styles.currentUserCard]}
+        style={[
+          styles.userCard,
+          isCurrentUser && styles.currentUserCard,
+          isCurrentUser && { borderColor: theme.accent },
+          cpShadow({
+            color: isCurrentUser ? theme.accent : '#cdcdcd',
+            offset: { width: 0, height: 6 },
+            opacity: 1,
+            radius: 0,
+            elevation: isCurrentUser ? 3 : 2,
+          }),
+        ]}
         onPress={() => {
           if (isCurrentUser) {
             navigation.navigate("ProfileTab", {
@@ -303,12 +314,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 0,
     borderColor: "#cdcdcd",
-    ...cpShadow({ color: '#cdcdcd', offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   currentUserCard: {
-    borderColor: theme.accent,
     backgroundColor: '#ffffff',
-    ...cpShadow({ color: theme.accent, offset: { width: 0, height: 6 }, opacity: 0.9, radius: 0, elevation: 3 }),
   },
 
   rankContainer: { width: 40, alignItems: "center", justifyContent: "center", marginRight: 8 },

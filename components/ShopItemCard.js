@@ -17,7 +17,7 @@ import {
   resolveDecorPreviewLayout,
   SHOP_PREVIEW_FRAME_HEIGHT,
 } from "../constants/ShopDecorPreviewLayout";
-import { hardDropShadowSm } from "../utils/shadows";
+import { hardDropShadowSm, cpShadow } from "../utils/shadows";
 import { getDarkerAccentColor } from "../theme";
 
 function DecorShopPreview({ preview, layout }) {
@@ -102,7 +102,7 @@ function ShopItemCard({ item, owned, canAfford, loading, accent, onPress }) {
           </View>
         ) : null}
         {owned ? (
-          <View style={styles.ownedCheck}>
+          <View style={[styles.ownedCheck, { backgroundColor: accent }]}>
             <Ionicons name="checkmark" size={11} color="#fff" />
           </View>
         ) : null}
@@ -119,6 +119,15 @@ function ShopItemCard({ item, owned, canAfford, loading, accent, onPress }) {
         style={({ pressed }) => [
           styles.button,
           { backgroundColor: buttonColor },
+          canAfford && !owned && {
+            ...cpShadow({
+              color: getDarkerAccentColor(accent),
+              offset: { width: 0, height: 4 },
+              opacity: 1,
+              radius: 0,
+              elevation: 2,
+            }),
+          },
           pressed && !disabled && styles.buttonPressed,
         ]}
       >
@@ -184,7 +193,6 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: "#22c55e",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -202,11 +210,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   buttonPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.98 }],
+    transform: [{ translateY: 2 }],
   },
   buttonText: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: "CeraRoundProDEMO-Black",
   },
   priceRow: {

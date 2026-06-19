@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import GoalActionButton from "./GoalActionButton";
 import { HapticType } from "../utils/haptics";
-import { QUEST_ORANGE, QUEST_ORANGE_SHADOW } from "../constants/QuestTheme";
+import { QUEST_ORANGE, QUEST_ORANGE_SHADOW, CLAIMED_BUTTON_FACE, CLAIMED_BUTTON_SHADOW, CLAIMED_BUTTON_TEXT, CLAIMED_CONTENT_TEXT, CLAIMED_TRACK_BG, CLAIMED_TRACK_FILL } from "../constants/QuestTheme";
 import { theme } from "../theme";
 import { hardDropShadow } from "../utils/shadows";
 
@@ -27,25 +27,25 @@ export default function QuestRow({
   const buttonLabel = isClaimed ? "Claimed" : isClaiming ? "..." : "Claim";
 
   return (
-    <View style={[styles.cardWrap, isClaimed && styles.cardWrapDone]}>
+    <View style={styles.cardWrap}>
       <View style={styles.row}>
         <View style={styles.content}>
           <View style={styles.titleRow}>
             <Text style={[styles.title, isClaimed && styles.titleDone]} numberOfLines={2}>
               {quest.title}
             </Text>
-            <Text style={styles.value}>
+            <Text style={[styles.value, isClaimed && styles.valueDone]}>
               {quest.progress}/{quest.target}
             </Text>
           </View>
 
           {quest.description ? (
-            <Text style={styles.desc}>{quest.description}</Text>
+            <Text style={[styles.desc, isClaimed && styles.descDone]}>{quest.description}</Text>
           ) : null}
 
           <View style={styles.miniTrackOuter}>
-            <View style={styles.miniTrack}>
-              <View style={[styles.miniFill, { width: `${progressPct}%` }]} />
+            <View style={[styles.miniTrack, isClaimed && styles.miniTrackDone]}>
+              <View style={[styles.miniFill, isClaimed && styles.miniFillDone, { width: `${progressPct}%` }]} />
             </View>
           </View>
         </View>
@@ -67,15 +67,18 @@ export default function QuestRow({
             <GoalActionButton
               onPress={() => onClaim?.(quest)}
               disabled={!canClaim || isClaiming}
+              locked={isClaimed}
               haptic={canClaim ? HapticType.MEDIUM : false}
-              backgroundColor={canClaim ? QUEST_ORANGE : "#b7c0c9"}
-              shadowColor={canClaim ? QUEST_ORANGE_SHADOW : "#9aa3ad"}
+              backgroundColor={canClaim ? QUEST_ORANGE : CLAIMED_BUTTON_FACE}
+              shadowColor={canClaim ? QUEST_ORANGE_SHADOW : CLAIMED_BUTTON_SHADOW}
               borderRadius={14}
               size={compact ? 36 : 40}
               style={styles.claimButtonWrap}
               faceStyle={styles.claimButton}
             >
-              <Text style={styles.claimButtonText}>{buttonLabel}</Text>
+              <Text style={[styles.claimButtonText, isClaimed && styles.claimButtonTextClaimed]}>
+                {buttonLabel}
+              </Text>
             </GoalActionButton>
           </View>
         )}
@@ -92,9 +95,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     ...hardDropShadow,
-  },
-  cardWrapDone: {
-    opacity: 0.55,
   },
   row: {
     flexDirection: "row",
@@ -128,7 +128,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
   titleDone: {
-    color: theme.text2,
+    color: CLAIMED_CONTENT_TEXT,
+  },
+  valueDone: {
+    color: CLAIMED_CONTENT_TEXT,
+  },
+  descDone: {
+    color: CLAIMED_CONTENT_TEXT,
   },
   value: {
     fontSize: 10,
@@ -154,6 +160,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 0,
     marginRight: 10,
+  },
+  miniTrackDone: {
+    backgroundColor: CLAIMED_TRACK_BG,
+  },
+  miniFillDone: {
+    backgroundColor: CLAIMED_TRACK_FILL,
   },
   miniTrack: {
     width: "100%",
@@ -189,12 +201,17 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 0,
   },
+  claimButtonTextClaimed: {
+    color: CLAIMED_BUTTON_TEXT,
+  },
   claimButtonText: {
     color: "#FFF",
     fontSize: 15,
     fontWeight: "900",
     fontFamily: "CeraRoundProDEMO-Black",
     letterSpacing: 0.1,
+    includeFontPadding: false,
+    textAlign: "center",
   },
   readOnlyStatusIcon: {
     alignSelf: "center",

@@ -630,6 +630,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
 
   // Form State
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
   const [selectedIcon, setSelectedIcon] = useState("target");
   const [selectedPlantSpecies, setSelectedPlantSpecies] = useState("fern");
@@ -721,15 +722,13 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
 
-
   // Reset form state on screen focus
-        isLeavingAfterSaveRef.current = false;
-
-        
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
+      isLeavingAfterSaveRef.current = false;
       setStep(0);
       setName("");
+      setDescription("");
       setIsPrivate(false);
       setSelectedIcon("target");
       setSelectedPlantSpecies("fern");
@@ -760,6 +759,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
   const isFormDirty = () => {
     if (isLeavingAfterSaveRef.current) return false;
     if (name.trim()) return true;
+    if (description.trim()) return true;
     if (isPrivate) return true;
     if (selectedIcon !== 'target') return true;
     if (selectedPlantSpecies !== 'fern') return true;
@@ -791,6 +791,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
   }, [
     isFocused,
     name,
+    description,
     isPrivate,
     selectedIcon,
     selectedPlantSpecies,
@@ -887,6 +888,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     navigation,
     promptDiscard,
     name,
+    description,
     isPrivate,
     selectedIcon,
     selectedPlantSpecies,
@@ -1229,6 +1231,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     completionMode,
     multiUserWateringEnabled,
     name,
+    description,
     requiredContributors,
     scheduleDays,
     selectedGardenId,
@@ -1255,6 +1258,17 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
               style={[styles.input, styles.nameInlineInput]}
             />
           </View>
+          <Text style={[styles.sectionLabel, styles.descriptionLabel]}>Description</Text>
+          <TextInput
+            value={description}
+            onChangeText={setDescription}
+            placeholder="What is this goal about?"
+            placeholderTextColor={theme.muted2}
+            style={[styles.input, styles.textArea]}
+            multiline
+            numberOfLines={3}
+            textAlignVertical="top"
+          />
           </View>
 
           <View style={styles.sectionGap} />
@@ -1497,11 +1511,11 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
               const isSelected = mode === 'everyday' ? true : mode === 'weekdays' ? (d.day >= 1 && d.day <= 5) : days.includes(d.day);
               return (
                 <HapticPressable
-                  key={d.label}
+                  key={d.day}
                   onPress={() => handleDayPress(d.day)}
                   style={[styles.dayPill, isSelected && [styles.dayPillActive, { backgroundColor: theme.accent, borderColor: theme.accent }]]}
                 >
-                  <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>{d.label}</Text>
+                  <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>{DAY_LABELS[d.day]}</Text>
                 </HapticPressable>
               );
             })}
@@ -1603,6 +1617,9 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
       <View style={styles.card}>
         <Text style={styles.sectionLabel}>Review</Text>
         <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Name</Text><Text style={styles.reviewValue}>{name || "—"}</Text></View>
+        {description.trim() ? (
+          <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Description</Text><Text style={styles.reviewValue}>{description.trim()}</Text></View>
+        ) : null}
         <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Schedule</Text><Text style={styles.reviewValue}>{frequencyLabel}</Text></View>
         <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Garden</Text><Text style={styles.reviewValue}>{selectedGardenName}</Text></View>
       </View>
@@ -1636,6 +1653,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     try {
       const goalData = {
         name: name.trim(),
+        description: description.trim(),
         category: "Other",
         isPrivate,
         icon: selectedIcon,
@@ -2012,6 +2030,10 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     fontFamily: 'CeraRoundProDEMO-Black',
   },
+  descriptionLabel: {
+    marginTop: 12,
+    marginBottom: 6,
+  },
   nameHeaderCard: {
     backgroundColor: 'rgba(255,255,255,0.98)',
     borderRadius: 22,
@@ -2151,11 +2173,18 @@ const styles = StyleSheet.create({
   segmentText: { fontSize: 14, fontWeight: '900', color: '#ffffff', fontFamily: 'CeraRoundProDEMO-Black' },
   segmentTextActive: { color: '#ffffff', fontFamily: 'CeraRoundProDEMO-Black' },
   row: { flexDirection: "row", marginTop: 10, gap: 10 },
-  daysGrid: { flexDirection: "row", flexWrap: "wrap", marginTop: 10, gap: 8 },
+  daysGrid: {
+    flexDirection: "row",
+    flexWrap: "nowrap",
+    alignSelf: "stretch",
+    marginTop: 10,
+    gap: 4,
+  },
   dayPill: {
-    minWidth: 92,
+    flex: 1,
+    minWidth: 0,
     height: 40,
-    borderRadius: 14,
+    borderRadius: 12,
     backgroundColor: '#c9c9c9',
     borderWidth: 1,
     borderColor: 'transparent',

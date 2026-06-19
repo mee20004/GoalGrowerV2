@@ -4,7 +4,7 @@ import RevenueCatUI, { PAYWALL_RESULT } from "react-native-purchases-ui";
 import {
   PRO_ENTITLEMENT_ID,
   OFFERING_IDS,
-  REVENUECAT_API_KEY,
+  getRevenueCatApiKey,
 } from "../constants/revenueCat";
 import { logAnalyticsEvent } from "./analytics";
 
@@ -104,13 +104,33 @@ export async function configureRevenueCat() {
       return true;
     }
 
-    if (__DEV__) {
-      Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+    const apiKey = getRevenueCatApiKey();
+    if (!apiKey) {
+      console.warn(
+        "[RevenueCat] No production API key for this build. Subscriptions are disabled."
+      );
+      return false;
     }
 
-    Purchases.configure({ apiKey: REVENUECAT_API_KEY });
-    configured = true;
-    return true;
+    if (apiKey.startsWith("test_") && !__DEV__) {
+      console.warn(
+        "[RevenueCat] Test API keys cannot be used in release builds. Add EXPO_PUBLIC_REVENUECAT_IOS_API_KEY to EAS."
+      );
+      return false;
+    }
+
+    try {
+      if (__DEV__) {
+        Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+      }
+
+      Purchases.configure({ apiKey });
+      configured = true;
+      return true;
+    } catch (error) {
+      console.error("[RevenueCat] configure failed:", error);
+      return false;
+    }
   });
 }
 
