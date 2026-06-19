@@ -922,18 +922,34 @@ export default function App() {
   const getOnboardingKey = (uid) => `onboardingStep_${uid}`;
   const getOnboardingGoalKey = (uid) => `onboardingGoalId_${uid}`;
 
-  const loadOnboardingStep = useCallback(async (uid) => {
+  const loadOnboardingStep = useCallback(async (uid, options = {}) => {
     if (!uid) return;
+    const { defaultIfMissing = ONBOARDING_STEP.WELCOME } = options;
     const key = getOnboardingKey(uid);
     const goalKey = getOnboardingGoalKey(uid);
     const saved = await AsyncStorage.getItem(key);
     const savedGoalId = await AsyncStorage.getItem(goalKey);
     setOnboardingGoalId(savedGoalId || null);
+
+    let nextStep = defaultIfMissing;
     if (saved && Object.values(ONBOARDING_STEP).includes(saved)) {
-      setOnboardingStep(saved);
-    } else {
-      setOnboardingStep(ONBOARDING_STEP.WELCOME);
-      await AsyncStorage.setItem(key, ONBOARDING_STEP.WELCOME);
+      nextStep = saved;
+    }
+
+    // Returning email users should never restart guest onboarding at Welcome.
+    const currentUser = auth.currentUser;
+    if (
+      currentUser &&
+      !currentUser.isAnonymous &&
+      nextStep === ONBOARDING_STEP.WELCOME &&
+      defaultIfMissing === ONBOARDING_STEP.DONE
+    ) {
+      nextStep = ONBOARDING_STEP.DONE;
+    }
+
+    setOnboardingStep(nextStep);
+    if (!saved || saved !== nextStep) {
+      await AsyncStorage.setItem(key, nextStep);
     }
     setOnboardingLoaded(true);
   }, []);
@@ -1016,10 +1032,16 @@ export default function App() {
           return;
         }
 
+        // Hold the UI in a loading state until Firestore confirms profile/onboarding.
+        // Without this, a restored session briefly renders the logged-out Welcome screen.
+        setInitializing(true);
+        setHasUsername(false);
+        setOnboardingLoaded(false);
+
         initializeNotifications(null);
         unsubFirestoreRef.current = onSnapshot(
           doc(db, "users", firebaseUser.uid),
-          (docSnap) => {
+          async (docSnap) => {
             if (docSnap.exists()) {
               const data = docSnap.data();
 
@@ -1027,7 +1049,9 @@ export default function App() {
               setAccentColor(data.accentColor || theme.accent);
 
               if (data.username) {
-                loadOnboardingStep(firebaseUser.uid);
+                await loadOnboardingStep(firebaseUser.uid, {
+                  defaultIfMissing: ONBOARDING_STEP.DONE,
+                });
               } else {
                 setOnboardingLoaded(false);
               }
@@ -1152,10 +1176,30 @@ export default function App() {
     }
   }, [onboardingStep, hasUsername, updateOnboardingStep, user?.emailVerified]);
 
-  if (initializing || restoringOnboardingSession) return null;
-  if (user && hasUsername && !onboardingLoaded) return null;
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    if (
+      !onboardingLoaded ||
+      !hasUsername ||
+      !currentUser ||
+      currentUser.isAnonymous ||
+      onboardingStep !== ONBOARDING_STEP.WELCOME
+    ) {
+      return;
+    }
+    updateOnboardingStep(ONBOARDING_STEP.DONE);
+  }, [onboardingLoaded, hasUsername, onboardingStep, updateOnboardingStep, user?.uid]);
 
   const activeAuthUser = auth.currentUser ?? user;
+  const sessionPendingProfile =
+    activeAuthUser &&
+    !activeAuthUser.isAnonymous &&
+    (initializing ||
+      !user ||
+      (hasUsername && !onboardingLoaded));
+
+  if (sessionPendingProfile || restoringOnboardingSession) return null;
+  if (activeAuthUser && hasUsername && !onboardingLoaded) return null;
   void authUserVersion;
   const userNeedsEmailVerification =
     activeAuthUser && hasUsername && needsEmailVerification(activeAuthUser);
@@ -1186,7 +1230,7 @@ export default function App() {
             >
               <StatusBar style="dark" />
               <RootStack.Navigator screenOptions={{ headerShown: false }}>
-                {user && hasUsername ? (
+                {activeAuthUser && hasUsername ? (
                   userNeedsEmailVerification && onboardingStep !== ONBOARDING_STEP.ACCOUNT_PROMPT ? (
                     <RootStack.Screen name="VerifyEmail" options={{ headerShown: false }}>
                       {() => (

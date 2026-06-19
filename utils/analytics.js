@@ -1,31 +1,47 @@
-import { Platform } from "react-native";
-import {
-  getAnalytics,
-  getAppInstanceId,
-  logEvent,
-  logScreenView as logFirebaseScreenView,
-  setAnalyticsCollectionEnabled,
-  setUserId,
-  setUserProperty,
-} from "@react-native-firebase/analytics";
+import { Platform, NativeModules } from "react-native";
 
 const isNative = Platform.OS === "ios" || Platform.OS === "android";
+const hasRnFirebaseNativeModule = isNative && !!NativeModules.RNFBAppModule;
+
 let initialized = false;
+let firebaseAnalyticsModule = null;
+
+function getFirebaseAnalyticsModule() {
+  if (!hasRnFirebaseNativeModule) return null;
+  if (!firebaseAnalyticsModule) {
+    try {
+      firebaseAnalyticsModule = require("@react-native-firebase/analytics");
+    } catch (error) {
+      if (__DEV__) {
+        console.warn(
+          "[analytics] React Native Firebase is not available in this build. Reinstall with `npx expo run:ios`.",
+          error
+        );
+      }
+      return null;
+    }
+  }
+  return firebaseAnalyticsModule;
+}
 
 function getAnalyticsInstance() {
-  return getAnalytics();
+  const mod = getFirebaseAnalyticsModule();
+  return mod ? mod.getAnalytics() : null;
 }
 
 export async function initializeAnalytics() {
-  if (!isNative || initialized) return;
+  if (!hasRnFirebaseNativeModule || initialized) return;
   initialized = true;
 
+  const mod = getFirebaseAnalyticsModule();
+  const analytics = getAnalyticsInstance();
+  if (!mod || !analytics) return;
+
   try {
-    const analytics = getAnalyticsInstance();
-    await setAnalyticsCollectionEnabled(analytics, true);
+    await mod.setAnalyticsCollectionEnabled(analytics, true);
 
     if (__DEV__) {
-      const instanceId = await getAppInstanceId(analytics);
+      const instanceId = await mod.getAppInstanceId(analytics);
       console.log("[analytics] collection enabled, app instance:", instanceId);
     }
   } catch (error) {
@@ -34,9 +50,12 @@ export async function initializeAnalytics() {
 }
 
 export async function logAnalyticsEvent(name, params = {}) {
-  if (!isNative) return;
+  const mod = getFirebaseAnalyticsModule();
+  const analytics = getAnalyticsInstance();
+  if (!mod || !analytics) return;
+
   try {
-    await logEvent(getAnalyticsInstance(), name, params);
+    await mod.logEvent(analytics, name, params);
     if (__DEV__) console.log("[analytics] event", name, params);
   } catch (error) {
     if (__DEV__) console.warn("[analytics]", name, error);
@@ -44,27 +63,36 @@ export async function logAnalyticsEvent(name, params = {}) {
 }
 
 export async function setAnalyticsUserId(uid) {
-  if (!isNative) return;
+  const mod = getFirebaseAnalyticsModule();
+  const analytics = getAnalyticsInstance();
+  if (!mod || !analytics) return;
+
   try {
-    await setUserId(getAnalyticsInstance(), uid || null);
+    await mod.setUserId(analytics, uid || null);
   } catch (error) {
     if (__DEV__) console.warn("[analytics] setUserId", error);
   }
 }
 
 export async function setAnalyticsUserProperty(name, value) {
-  if (!isNative) return;
+  const mod = getFirebaseAnalyticsModule();
+  const analytics = getAnalyticsInstance();
+  if (!mod || !analytics) return;
+
   try {
-    await setUserProperty(getAnalyticsInstance(), name, value ?? null);
+    await mod.setUserProperty(analytics, name, value ?? null);
   } catch (error) {
     if (__DEV__) console.warn("[analytics] setUserProperty", name, error);
   }
 }
 
 export async function logScreenView(screenName) {
-  if (!isNative || !screenName) return;
+  const mod = getFirebaseAnalyticsModule();
+  const analytics = getAnalyticsInstance();
+  if (!mod || !analytics || !screenName) return;
+
   try {
-    await logFirebaseScreenView(getAnalyticsInstance(), {
+    await mod.logScreenView(analytics, {
       screen_name: screenName,
       screen_class: screenName,
     });

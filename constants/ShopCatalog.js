@@ -344,7 +344,7 @@ export const SHOP_ITEMS = [
 
 export const DEFAULT_OWNED_PLANTS = {
   fern: true,
-  cactus: false,
+  cactus: true,
   succulent: false,
   tulip: false,
 };
@@ -352,14 +352,14 @@ export const DEFAULT_OWNED_PLANTS = {
 export const DEFAULT_OWNED_POTS = {
   default: true,
   bronze: false,
-  silver: false,
+  silver: true,
   gold: false,
   platinum: false,
 };
 
 export const DEFAULT_OWNED_FARBG = {
   0: true,
-  1: false,
+  1: true,
   2: false,
   3: false,
   4: false,
@@ -368,17 +368,17 @@ export const DEFAULT_OWNED_FARBG = {
 
 export const DEFAULT_OWNED_WINDOW_FRAMES = {
   0: true,
-  1: false,
+  1: true,
   2: false,
   3: false,
 };
 
 export const DEFAULT_OWNED_WALL_BG = Object.fromEntries(
-  WALLPAPER_ASSETS.map((_, index) => [String(index), index === 0])
+  WALLPAPER_ASSETS.map((_, index) => [String(index), index <= 1])
 );
 
 export const DEFAULT_OWNED_SHELF_COLORS = Object.fromEntries(
-  SHELF_COLOR_SCHEMES.map((_, index) => [String(index), index === 0])
+  SHELF_COLOR_SCHEMES.map((_, index) => [String(index), index <= 1])
 );
 
 function parseDecorIndex(assetKey) {

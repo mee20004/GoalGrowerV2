@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   ImageBackground,
   useWindowDimensions,
 } from "react-native";
+import { useRoute } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import HapticPressable from "../components/HapticPressable";
 import { LinearGradient } from "expo-linear-gradient";
@@ -48,9 +49,22 @@ const DECOR_ITEM_TYPES = new Set([
 
 export default function ShopScreen() {
   const { theme } = useTheme();
+  const route = useRoute();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const [activeTab, setActiveTab] = useState(SHOP_CATEGORIES.PLANTS);
+  const initialCategory = route.params?.category;
+  const [activeTab, setActiveTab] = useState(() =>
+    SHOP_CATALOG_TABS.some((tab) => tab.key === initialCategory)
+      ? initialCategory
+      : SHOP_CATEGORIES.PLANTS
+  );
+
+  useEffect(() => {
+    const category = route.params?.category;
+    if (category && SHOP_CATALOG_TABS.some((tab) => tab.key === category)) {
+      setActiveTab(category);
+    }
+  }, [route.params?.category]);
 
   const {
     coinBalance,
