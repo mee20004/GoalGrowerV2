@@ -18,7 +18,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import theme from "../theme";
-import { cpShadow, hardDropShadow, panelShadow } from "../utils/shadows";
+import { cpShadow, hardDropShadow } from "../utils/shadows";
 import FireStreakIcon from "../assets/Icons/FireStreakIcon";
 import { getGoalTrophyRating, updateOverallScoreForUser } from "../utils/scoreUtils";
 import { getScoredGoalsForUser } from "../utils/scoreUtils";
@@ -31,23 +31,12 @@ import QuestLogSection from "../components/QuestLogSection";
 import { claimQuestReward, claimQuestTotalMilestone, getQuestViewForUserData, recordQuestActivity, syncQuestState } from "../utils/questEngine";
 import { COIN_REWARDS } from "../constants/ShopCatalog";
 
-const COSMETIC_TRACKS = [
-  { id: "cosm_pot_moss", name: "Moss Pot", metric: "createdGoals", target: 3, icon: "flower-outline" },
-  { id: "cosm_frame_amber", name: "Amber Frame", metric: "completionDays", target: 20, icon: "diamond-outline" },
-  { id: "cosm_badge_comet", name: "Comet Badge", metric: "overallScore", target: 400, icon: "sparkles-outline" },
-  { id: "cosm_title_keeper", name: "Title: Garden Keeper", metric: "bestGoalStreak", target: 14, icon: "ribbon-outline" },
-];
-
 const TREE_STAGES = [
   require("../assets/Tree/Tree_1.png"),
   require("../assets/Tree/Tree_2.png"),
   require("../assets/Tree/Tree_3.png"),
   require("../assets/Tree/Tree_4.png"),
 ];
-
-const HERO_BG_OFFSET_X = -2300;
-const HERO_BG_OFFSET_Y = -2400;
-const HERO_BG_SCALE = 0.3;
 
 const METRIC_LABELS = {
   createdGoals: "Goals created",
@@ -533,10 +522,6 @@ export default function JourneyScreen({ route, navigation }) {
     }, [loadJourney])
   );
 
-  const unlockedCosmetics = useMemo(() => {
-    return COSMETIC_TRACKS.filter((item) => safeNumber(metrics[item.metric]) >= item.target);
-  }, [metrics]);
-
   const treeStageIndex = useMemo(() => {
     let highestUnlocked = 0;
 
@@ -789,12 +774,12 @@ export default function JourneyScreen({ route, navigation }) {
               <Text style={styles.summaryLabel}>Quests Done</Text>
             </View>
             <View style={styles.summaryTile}>
-              <Text style={styles.summaryValue}>{unlockedCosmetics.length}/{COSMETIC_TRACKS.length}</Text>
-              <Text style={styles.summaryLabel}>Cosmetics</Text>
-            </View>
-            <View style={styles.summaryTile}>
               <Text style={styles.summaryValue}>{metrics.completedGoals}</Text>
               <Text style={styles.summaryLabel}>Completed Goals</Text>
+            </View>
+            <View style={styles.summaryTile}>
+              <Text style={styles.summaryValue}>{metrics.bestGoalStreak}</Text>
+              <Text style={styles.summaryLabel}>Best Streak</Text>
             </View>
             <View style={styles.summaryTile}>
               <Text style={styles.summaryValue}>{metrics.platinumGoals}</Text>
@@ -824,25 +809,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     flexShrink: 0,
   },
-  completeGoalButtonShadow: {
-    position: 'absolute',
-    top: 4,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 14,
-    backgroundColor: GROWTH_BLUE_SHADOW,
-    opacity: 0.32,
-    zIndex: 0,
-    ...cpShadow({
-      color: GROWTH_BLUE_SHADOW,
-      offset: { width: 0, height: 6 },
-      opacity: 0.18,
-      radius: 8,
-      elevation: 4,
-    }),
-  },
-  
   completeGoalButton: {
     height: 36,
     minWidth: 90,
@@ -956,9 +922,6 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 32,
     overflow: 'hidden',
   },
-  heroBgImage: {
-    ...StyleSheet.absoluteFillObject,
-  },
   content: {
     paddingBottom: 120,
   },
@@ -982,11 +945,6 @@ const styles = StyleSheet.create({
   nextGoalMiniFillDone: {
     backgroundColor: CLAIMED_TRACK_FILL,
   },
-  heroScene: {
-    position: "relative",
-    overflow: "hidden",
-    marginBottom: 10,
-  },
   treeShowcaseOuter: {
     position: 'relative',
     height: 0,
@@ -1001,7 +959,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 2,
   },
-  treeShowcase: {},
   treeImage: {
     width: 340,
     height: 340,
@@ -1187,82 +1144,6 @@ const styles = StyleSheet.create({
     padding: 14,
     ...cpShadow({ color: "#cdcdcd", offset: { width: 0, height: 6 }, opacity: 1, radius: 0, elevation: 2 }),
   },
-  helper: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#7d8a97",
-    marginBottom: 4,
-    fontFamily: 'CeraRoundProDEMO-Black',
-    letterSpacing: 0.1,
-  },
-  trackRow: {
-    flexDirection: "row",
-    gap: 10,
-    borderRadius: 18,
-    padding: 12,
-    marginBottom: 8,
-    backgroundColor: "#f5f8fb",
-    alignItems: "flex-start",
-  },
-  trackRowUnlocked: {
-    backgroundColor: "#f5fff1",
-  },
-  trackBody: {
-    flex: 1,
-  },
-  trackIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#eaf0f7",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 1,
-  },
-  trackIconWrapUnlocked: {
-    backgroundColor: "#e6f7e0",
-  },
-  trackTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  trackTitle: {
-    fontSize: 15,
-    fontWeight: "900",
-    color: theme.text,
-    flex: 1,
-    fontFamily: 'CeraRoundProDEMO-Black',
-    letterSpacing: 0.1,
-  },
-  trackStatusPill: {
-    backgroundColor: "#eaf0f7",
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  trackStatusPillUnlocked: {
-    backgroundColor: "#e6f7e0",
-  },
-  trackStatusText: {
-    fontSize: 10,
-    fontWeight: "900",
-    color: "#6b7f93",
-    fontFamily: 'CeraRoundProDEMO-Black',
-    letterSpacing: 0.1,
-  },
-  trackStatusTextUnlocked: {
-    color: "#2f8f3a",
-  },
-  trackDesc: {
-    marginTop: 2,
-    fontSize: 13,
-    fontWeight: "700",
-    color: theme.text2,
-    fontFamily: 'CeraRoundProDEMO-Black',
-    letterSpacing: 0.1,
-  },
   progressTrack: {
     marginTop: 8,
     height: 10,
@@ -1274,47 +1155,6 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 999,
     backgroundColor: GROWTH_BLUE,
-  },
-  trackMeta: {
-    marginTop: 6,
-    fontSize: 10,
-    fontWeight: "800",
-    color: theme.muted,
-    fontFamily: 'CeraRoundProDEMO-Black',
-    letterSpacing: 0.1,
-  },
-  trackMetaRow: {
-    marginTop: 6,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  trackReward: {
-    fontSize: 10,
-    fontWeight: "900",
-    color: "#3b5176",
-    flex: 1,
-    textAlign: "right",
-    fontFamily: 'CeraRoundProDEMO-Black',
-    letterSpacing: 0.1,
-  },
-  achievementClaimButtonWrap: {
-    marginTop: 10,
-    alignSelf: "flex-start",
-    minWidth: 132,
-  },
-  achievementClaimButton: {
-    height: 34,
-    minWidth: 132,
-    paddingHorizontal: 12,
-  },
-  achievementClaimButtonText: {
-    color: "#1f2937",
-    fontSize: 13,
-    fontWeight: "900",
-    fontFamily: "CeraRoundProDEMO-Black",
-    letterSpacing: 0.1,
   },
   summaryGrid: {
     flexDirection: "row",
