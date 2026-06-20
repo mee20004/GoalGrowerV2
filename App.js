@@ -218,6 +218,7 @@ function MainTabs({ onboardingStep, onboardingActions, onOnboardingAction, onGar
       screenOptions={({ route }) => ({
         headerShown: false,
         unmountOnBlur: false,
+        freezeOnBlur: true,
         tabBarShowLabel: false, // Hide text under icons
         tabBarHideOnKeyboard: false,
         tabBarActiveTintColor: theme.text,

@@ -1,5 +1,6 @@
 import { ContributorsTodaySection } from './ContributorsTodaySection';
 import { useUsernames } from '../hooks/useUsernames';
+import { useScreenActive } from '../hooks/useScreenActive';
 import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
@@ -105,6 +106,7 @@ const getPreviewTrophyRating = (longestStreak = 0, healthLevel = 1) => {
 };
 
 function GoalPlantPreview({ goal, getPlantHealthState, backdropColor = DEFAULT_PLANT_PREVIEW_COLOR, variant = "card" }) {
+  const screenActive = useScreenActive();
   const stage = getGrowthStage(goal?.totalCompletions);
 
   const { status } = getPlantHealthState(goal, new Date(), auth.currentUser?.uid);
@@ -124,6 +126,12 @@ function GoalPlantPreview({ goal, getPlantHealthState, backdropColor = DEFAULT_P
   const isHero = variant === "hero";
 
   useEffect(() => {
+    if (!screenActive) {
+      swayAnim.stopAnimation();
+      swayAnim.setValue(0);
+      return undefined;
+    }
+
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(swayAnim, { toValue: 1, duration: 600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
@@ -137,7 +145,7 @@ function GoalPlantPreview({ goal, getPlantHealthState, backdropColor = DEFAULT_P
       loop.stop();
       swayAnim.setValue(0);
     };
-  }, [swayAnim]);
+  }, [swayAnim, screenActive]);
 
   useEffect(() => {
     if (previousSourceRef.current === plantSource) return;

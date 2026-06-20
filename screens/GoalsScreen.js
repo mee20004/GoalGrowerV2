@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, Image, Animated, Easing } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
+import { useScreenActive } from "../hooks/useScreenActive";
 
 import { getFirestore, collection, onSnapshot, query, where, getDocs, doc, updateDoc, runTransaction, setDoc, increment, arrayUnion, getDoc } from "firebase/firestore";
 import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
@@ -40,6 +41,7 @@ const STORAGE_PAGE_ID = 'storage';
 const DEFAULT_PLANT_PREVIEW_COLOR = '#EEF6FF';
 
 function GoalPlantPreview({ goal, getPlantHealthState, backdropColor = DEFAULT_PLANT_PREVIEW_COLOR }) {
+  const screenActive = useScreenActive();
   const stage = getGrowthStage(goal?.totalCompletions);
 
   // DEBUG: Print health simulation details for this goal
@@ -71,6 +73,12 @@ function GoalPlantPreview({ goal, getPlantHealthState, backdropColor = DEFAULT_P
   const previousSourceRef = useRef(plantSource);
 
   useEffect(() => {
+    if (!screenActive) {
+      swayAnim.stopAnimation();
+      swayAnim.setValue(0);
+      return undefined;
+    }
+
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(swayAnim, { toValue: 1, duration: 600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
@@ -84,7 +92,7 @@ function GoalPlantPreview({ goal, getPlantHealthState, backdropColor = DEFAULT_P
       loop.stop();
       swayAnim.setValue(0);
     };
-  }, [swayAnim]);
+  }, [swayAnim, screenActive]);
 
   useEffect(() => {
     if (previousSourceRef.current === plantSource) return;

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, memo } from "react";
+import React, { useState, useCallback, useRef, useEffect, memo, useMemo } from "react";
 import {
   View, Text, StyleSheet, ActivityIndicator, ScrollView, FlatList,
   Animated, Platform, UIManager, LayoutAnimation, PanResponder, Image, ImageBackground, useWindowDimensions, Modal, TextInput, Alert, Easing,
@@ -42,6 +42,7 @@ import {
 } from "../utils/customizationFirestore";
 
 import { useFocusEffect } from "@react-navigation/native";
+import { useScreenActive } from "../hooks/useScreenActive";
 import { recordQuestActivity } from "../utils/questEngine";
 import {
   updateOverallScoreForUser,
@@ -398,9 +399,9 @@ const TrophyParticles = ({ rating }) => {
 }
 
 // --- GARDEN AMBIENT PARTICLES ---
-const AMBIENT_COUNT = 20;
+const AMBIENT_COUNT = 8;
 const buildAmbientParticle = (idx) => ({
-  key: `ambient-${idx}-${Date.now()}`,
+  key: `ambient-${idx}`,
   x: Math.random() * 90,
   startY: 15 + Math.random() * 70,
   size: 5 + Math.random() * 4,
@@ -410,12 +411,20 @@ const buildAmbientParticle = (idx) => ({
   delay: Math.random() * 3000,
 });
 
-const GardenAmbientParticles = () => {
+const GardenAmbientParticles = memo(function GardenAmbientParticles({ active = true }) {
   const particles = useRef(Array.from({ length: AMBIENT_COUNT }, (_, i) => buildAmbientParticle(i))).current;
   const anims = useRef(particles.map(() => new Animated.Value(0))).current;
 
   useEffect(() => {
-    let active = true;
+    if (!active) {
+      anims.forEach((anim) => {
+        anim.stopAnimation();
+        anim.setValue(0);
+      });
+      return undefined;
+    }
+
+    let running = true;
     const loops = anims.map((anim, i) => {
       const loop = Animated.loop(
         Animated.timing(anim, {
@@ -425,14 +434,16 @@ const GardenAmbientParticles = () => {
           useNativeDriver: true,
         })
       );
-      const t = setTimeout(() => { if (active) loop.start(); }, particles[i].delay);
+      const t = setTimeout(() => { if (running) loop.start(); }, particles[i].delay);
       return { loop, t };
     });
     return () => {
-      active = false;
+      running = false;
       loops.forEach(({ loop, t }) => { clearTimeout(t); loop.stop(); });
     };
-  }, []);
+  }, [active, anims, particles]);
+
+  if (!active) return null;
 
   return (
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 9998, elevation: 9998 }]}>
@@ -451,10 +462,6 @@ const GardenAmbientParticles = () => {
               height: p.size,
               borderRadius: p.size / 2,
               backgroundColor: 'rgba(255, 255, 255, 0.72)',
-              shadowColor: '#ffffff00',
-              shadowOpacity: 0.9,
-              shadowRadius: 4,
-              shadowOffset: { width: 0, height: 0 },
               opacity,
               transform: [{ translateX }, { translateY }],
             }}
@@ -463,23 +470,46 @@ const GardenAmbientParticles = () => {
       })}
     </View>
   );
-};
+});
 
 // --- 1. PLANT VISUAL COMPONENT ---
 
-const PlantVisual = ({ plant, isDraggingHighlight, educationDemo }) => {
+const PlantVisual = memo(function PlantVisual({ plant, isDraggingHighlight, educationDemo, animationsActive = true }) {
   const total = Number(plant.totalCompletions) || 0;
   // Only use getStoragePlantRating for badge visuals, not for health
   const isTrophy = plant?.shelfPosition?.pageId === STORAGE_PAGE_ID;
   const rating = isTrophy ? getStoragePlantRating(plant) : null;
 
-  // Always use calculated healthLevel for today for ALL plants (matches GoalScreen)
   const today = new Date();
-  const displayHealthState = getPlantHealthState(plant, today, auth.currentUser?.uid);
+  const todayKey = toKey(today);
+  const displayHealthState = useMemo(
+    () => getPlantHealthState(plant, today, auth.currentUser?.uid),
+    [
+      plant?.id,
+      plant?.healthLevel,
+      plant?.totalCompletions,
+      plant?.isFrozenTrophyState,
+      plant?.frozenHealthLevel,
+      plant?.createdAt,
+      plant?.logs,
+      plant?.schedule,
+      plant?.flex,
+      plant?.kind,
+      plant?.resumeFromTrophyDate,
+      plant?.resumeFromTrophyHealth,
+      todayKey,
+    ]
+  );
   const healthLevel = displayHealthState.healthLevel;
 
   const swayAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    if (!animationsActive) {
+      swayAnim.stopAnimation();
+      swayAnim.setValue(0);
+      return undefined;
+    }
+
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(swayAnim, { toValue: 1,  duration: 600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
@@ -489,12 +519,12 @@ const PlantVisual = ({ plant, isDraggingHighlight, educationDemo }) => {
     );
     const timer = setTimeout(() => loop.start(), Math.random() * 1500);
     return () => { clearTimeout(timer); loop.stop(); swayAnim.setValue(0); };
-  }, [swayAnim]);
+  }, [swayAnim, animationsActive]);
 
 
   // --- Use the exact same logic as GoalPlantPreview for plant image selection ---
   const stage = getGrowthStage(plant?.totalCompletions);
-  const { status } = getPlantHealthState(plant, new Date(), auth.currentUser?.uid);
+  const { status } = displayHealthState;
   const species = plant?.plantSpecies || ((plant?.type !== "completion" && plant?.type !== "quantity") ? plant?.type : "fern");
   const speciesAssets = PLANT_ASSETS[species] || PLANT_ASSETS.fern;
 
@@ -525,7 +555,6 @@ const PlantVisual = ({ plant, isDraggingHighlight, educationDemo }) => {
   let potSource = POT_ASSETS[potKey] || POT_ASSETS["default"];
   const showTrophyParticles = Boolean(rating);
   const trophyBadgeSource = getTrophyBadgeSource(rating);
-  const todayKey = toKey(today);
   const isScheduledToday = isGoalScheduledOnDate(plant, today);
   const isSharedMultiUserCompletion = !!plant?.multiUserWateringEnabled && plant?.gardenType === "shared" && (plant?.type || plant?.kind) === "completion";
   const isSharedMultiUserQuantity = !!plant?.multiUserWateringEnabled && plant?.gardenType === "shared" && (plant?.type || plant?.kind) === "quantity";
@@ -742,10 +771,8 @@ const PlantVisual = ({ plant, isDraggingHighlight, educationDemo }) => {
       )}
     </View>
   );
-};
-
-// --- 2. DRAGGABLE WRAPPER ---
-const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDragStart, onDragEnd, onDelete, onPlantTap, globalPan, globalDragRef, disabled = false, onCompletionTargetRef, instantDrag = false, educationDemo = null }) => {
+});
+const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDragStart, onDragEnd, onDelete, onPlantTap, globalPan, globalDragRef, disabled = false, onCompletionTargetRef, instantDrag = false, educationDemo = null, animationsActive = true }) => {
   const [isHidden, setIsHidden] = useState(false);
   const latestProps = useRef({ plant, onDragStart, onDragEnd, onDelete, onPlantTap, isEditing, instantDrag });
   latestProps.current = { plant, onDragStart, onDragEnd, onDelete, onPlantTap, isEditing, instantDrag };
@@ -972,7 +999,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
         { opacity: isHidden ? 0 : 1 } 
       ]}
     >
-      <PlantVisual plant={plant} isDraggingHighlight={false} educationDemo={educationDemo} />
+      <PlantVisual plant={plant} isDraggingHighlight={false} educationDemo={educationDemo} animationsActive={animationsActive} />
     </Animated.View>
   );
 });
@@ -1366,6 +1393,11 @@ function GardenTutorialHotspot({ left, top, label, taskKey, actionType }) {
 
 // --- 3. MAIN GARDEN SCREEN ---
 export default function GardenScreen({ route, navigation, onboardingStep, onboardingActions = {}, onOnboardingAction, onGardenTutorialNext }) {
+  const sharedGardenId = route?.params?.gardenId || route?.params?.sharedGardenId || null;
+  const isSharedGarden = Boolean(sharedGardenId);
+  const viewedUserId = route?.params?.userId || auth.currentUser?.uid;
+  const screenActive = useScreenActive();
+
     // Utility to update a goal and always recalculate healthLevel for today
     async function updateGoalWithHealth(goal, updatedFields) {
       const today = new Date();
@@ -1428,6 +1460,8 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     }, [showCustomization]);
   // Subscribe to shared customizations if in shared garden
   useEffect(() => {
+    if (!screenActive) return undefined;
+
     let unsub;
     if (isSharedGarden && sharedGardenId) {
       unsub = subscribeSharedCustomizations(sharedGardenId, applyCustomizationsFromServer);
@@ -1435,7 +1469,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       unsub = subscribePersonalCustomizations(auth.currentUser.uid, applyCustomizationsFromServer);
     }
     return () => unsub && unsub();
-  }, [isSharedGarden, sharedGardenId, applyCustomizationsFromServer]);
+  }, [isSharedGarden, sharedGardenId, applyCustomizationsFromServer, screenActive]);
   const insets = useSafeAreaInsets();
   const { isPro, openDefaultPaywall } = useSubscription();
   const { goals } = useGoals();
@@ -1452,9 +1486,6 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   const [educationDemoFrame, setEducationDemoFrame] = useState(0);
   const [tutorialPlantId, setTutorialPlantId] = useState(null);
 
-  const sharedGardenId = route?.params?.gardenId || route?.params?.sharedGardenId || null;
-  const isSharedGarden = Boolean(sharedGardenId);
-  const viewedUserId = route?.params?.userId || auth.currentUser?.uid;
   const [sharedGardenSettings, setSharedGardenSettings] = useState({
     restrictAddPeople: false,
     restrictCustomize: false,
@@ -1471,9 +1502,11 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   const viewedUsername = isSharedGarden ? (route?.params?.gardenName || "Shared Garden") : (route?.params?.username || "User");
   // Fetch shared garden settings (permissions)
   useEffect(() => {
+    if (!screenActive) return undefined;
+
     if (!isSharedGarden || !sharedGardenId) {
       setSharedGardenSettingsLoaded(true);
-      return;
+      return undefined;
     }
     const unsub = onSnapshot(
       doc(db, "sharedGardens", sharedGardenId),
@@ -1496,7 +1529,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       }
     );
     return () => unsub();
-  }, [isSharedGarden, sharedGardenId]);
+  }, [isSharedGarden, sharedGardenId, screenActive]);
 
   const [allPlants, setAllPlants] = useState(shouldPersistState ? (persistedGardenState.allPlants || []) : []);
   const [pages, setPages] = useState([]);
@@ -1933,6 +1966,8 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       return undefined;
     }
 
+    if (!screenActive) return undefined;
+
     const uid = currentUid;
 
     const unsubSharedGardens = onSnapshot(
@@ -1998,7 +2033,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       unsubInvites();
       unsubFollowing();
     };
-  }, [currentUid, isReadOnly]);
+  }, [currentUid, isReadOnly, screenActive]);
 
   const setCompletionTargetRef = useCallback((plantId, node) => {
     if (node) {
@@ -2265,6 +2300,8 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   };
 
   useEffect(() => {
+    if (!screenActive) return undefined;
+
     setLoading(true);
 
     if (isSharedGarden) {
@@ -2371,9 +2408,11 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       unsubGoals();
       unsubLayout();
     };
-  }, [isReadOnly, isSharedGarden, sharedGardenId, shouldPersistState, viewedUserId]);
+  }, [isReadOnly, isSharedGarden, sharedGardenId, shouldPersistState, viewedUserId, screenActive]);
 
   useEffect(() => {
+    if (!screenActive) return undefined;
+
     if (isSharedGarden) {
       const sharedPagesRef = collection(db, "sharedGardens", sharedGardenId, "pages");
       const unsubPages = onSnapshot(
@@ -2438,7 +2477,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     );
 
     return () => unsubPages();
-  }, [isReadOnly, isSharedGarden, sharedGardenId, shouldPersistState, viewedUserId]);
+  }, [isReadOnly, isSharedGarden, sharedGardenId, shouldPersistState, viewedUserId, screenActive]);
 
   useEffect(() => {
     if (!pages.length) return;
@@ -2447,13 +2486,23 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   }, [pages, currentPageId]);
 
   useEffect(() => {
+    let wiggleLoop = null;
     if (isEditing) {
-      Animated.loop(Animated.sequence([
+      wiggleLoop = Animated.loop(Animated.sequence([
         Animated.timing(wiggleAnim, { toValue: 1, duration: 130, useNativeDriver: true }),
         Animated.timing(wiggleAnim, { toValue: -1, duration: 130, useNativeDriver: true })
-      ])).start();
-    } else wiggleAnim.setValue(0);
-  }, [isEditing]);
+      ]));
+      wiggleLoop.start();
+    } else {
+      wiggleAnim.stopAnimation();
+      wiggleAnim.setValue(0);
+    }
+
+    return () => {
+      if (wiggleLoop) wiggleLoop.stop();
+      wiggleAnim.setValue(0);
+    };
+  }, [isEditing, wiggleAnim]);
 
   const canEditPlants = !isSharedGarden || isOwner || !sharedGardenSettings.restrictEditPlants;
   const canCustomize = !isSharedGarden || isOwner || !sharedGardenSettings.restrictCustomize;
@@ -3448,6 +3497,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
                     onDragStart={handleDragStart}
                     onDragEnd={handleDragEnd}
                     onDelete={() => clearPlantFromLayout(occupant.id)}
+                    animationsActive={screenActive}
                   />
                 )}
               </View>
@@ -3537,6 +3587,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                   onDragStart={handleDragStart} onDragEnd={handleDragEnd}
                   onDelete={() => clearPlantFromLayout(occupant.id)}
                   educationDemo={tutorialEducationDemo}
+                  animationsActive={screenActive}
                 />
               )}
             </View>
@@ -3664,7 +3715,6 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
               </View>
             </ImageBackground>
           </ImageBackground>
-          <GardenAmbientParticles />
         </View>
       </HapticPressable>
     );
@@ -4224,6 +4274,10 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       scrollEventThrottle={16}
       onMomentumScrollEnd={onPageScrollEnd}
       scrollEnabled={!globalDragging && !showCustomization}
+      initialNumToRender={1}
+      maxToRenderPerBatch={1}
+      windowSize={3}
+      removeClippedSubviews={Platform.OS === "android"}
       getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
       initialScrollIndex={pageIndex >= 0 ? pageIndex : 0}
       renderItem={({ item }) => (
@@ -4237,6 +4291,12 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
     <View style={styles.pageDotsContainer}>
       {dots}
     </View>
+
+    {screenActive && currentPageId !== STORAGE_PAGE_ID && (
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 9997 }]}>
+        <GardenAmbientParticles active={screenActive} />
+      </View>
+    )}
 
       <View
         ref={drawerRef}
@@ -4284,6 +4344,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
                 onPlantTap={handlePlantTap}
                 instantDrag={true}
                 onDragStart={handleDragStart} onDragEnd={handleDragEnd}
+                animationsActive={screenActive}
               />
             </View>
           ))}
@@ -4365,7 +4426,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
           },
         ]}>
           <Animated.View style={{ transform: globalPan.getTranslateTransform() }}>
-            <PlantVisual plant={draggedGhost.plant} isDraggingHighlight={true} />
+            <PlantVisual plant={draggedGhost.plant} isDraggingHighlight={true} animationsActive={false} />
           </Animated.View>
         </Animated.View>
       )}
