@@ -1451,96 +1451,6 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     }
   };
 
-  const canEditHistoryDay = (entry) => {
-    if (!entry || shelfPosition?.pageId === STORAGE_PAGE_ID || entry.isFrozenDay || isTapCoolingDown) {
-      return false;
-    }
-    if (!entry.scheduled) return false;
-    return entry.missed || entry.done;
-  };
-
-  const markHistoryDayToggle = async (dateKey, markComplete) => {
-    if (!dateKey || shelfPosition?.pageId === STORAGE_PAGE_ID || isTapCoolingDown || !goal) return;
-    setSelectedDateKey(dateKey);
-
-    const previousGoal = goal;
-    const uid = auth.currentUser?.uid;
-    const nextLogs = JSON.parse(JSON.stringify(goal.logs || {}));
-    const goalType = goal.type || goal.kind;
-
-    if (goalType === 'completion') {
-      if (!nextLogs.completion) nextLogs.completion = {};
-      nextLogs.completion[dateKey] = {
-        ...(nextLogs.completion[dateKey] || {}),
-        done: markComplete,
-        contributors: markComplete && uid ? [uid] : [],
-      };
-    } else {
-      const target = Math.max(1, Math.floor(Number(goal.measurable?.target) || 1));
-      if (!nextLogs.quantity) nextLogs.quantity = {};
-      nextLogs.quantity[dateKey] = { value: markComplete ? target : 0 };
-    }
-
-    const patchedGoal = { ...goal, logs: nextLogs };
-    const today = toKey(new Date());
-    const { currentStreak, longestStreak } = calculateGoalStreak(patchedGoal, nextLogs, today);
-    const { healthLevel } = getPlantHealthState(patchedGoal, new Date(), uid);
-    setGoal({
-      ...patchedGoal,
-      currentStreak,
-      longestStreak,
-      healthLevel,
-    });
-
-    try {
-      await performToggleComplete({
-        dateKey,
-        forceComplete: markComplete && goalType === 'quantity',
-        setDone: markComplete,
-      });
-    } catch {
-      setGoal(previousGoal);
-    }
-  };
-
-  const handleHistoryDayPress = (entry) => {
-    if (!canEditHistoryDay(entry)) return;
-    const dateLabel = fromKey(entry.dateKey).toLocaleDateString(undefined, {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    });
-    const goalName = goal?.name || 'this goal';
-
-    if (entry.done) {
-      Alert.alert(
-        'Mark as not complete?',
-        `Remove completion for "${goalName}" on ${dateLabel}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Undo',
-            style: 'destructive',
-            onPress: () => markHistoryDayToggle(entry.dateKey, false),
-          },
-        ]
-      );
-      return;
-    }
-
-    Alert.alert(
-      'Mark as complete?',
-      `Mark "${goalName}" complete for ${dateLabel}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Complete',
-          onPress: () => markHistoryDayToggle(entry.dateKey, true),
-        },
-      ]
-    );
-  };
-
   const handleToggleComplete = async () => {
     if (!goal || shelfPosition?.pageId === STORAGE_PAGE_ID) return;
 
@@ -2519,10 +2429,19 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                   onPress={() => setHistoryWeekOffset((offset) => offset + 1)}
                   disabled={!canGoToOlderWeek}
                   haptic={canGoToOlderWeek ? HapticType.LIGHT : false}
-                  hitSlop={8}
-                  style={[styles.historyWeekNavBtn, !canGoToOlderWeek && styles.historyWeekNavBtnDisabled]}
+                  hitSlop={6}
+                  style={({ pressed }) => [
+                    styles.historyWeekNavBtn,
+                    canGoToOlderWeek && styles.historyWeekNavBtnActive,
+                    !canGoToOlderWeek && styles.historyWeekNavBtnDisabled,
+                    pressed && canGoToOlderWeek && styles.historyWeekNavBtnPressed,
+                  ]}
                 >
-                  <Ionicons name="chevron-back" size={18} color={canGoToOlderWeek ? theme.accent : '#c5cdd6'} />
+                  <Ionicons
+                    name="chevron-back"
+                    size={20}
+                    color={canGoToOlderWeek ? theme.accent : '#b8c2cc'}
+                  />
                 </HapticPressable>
                 <View style={styles.historyWeekLabels}>
                   <Text style={styles.historyHeadline}>{historyHeadline}</Text>
@@ -2532,10 +2451,19 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                   onPress={() => setHistoryWeekOffset((offset) => Math.max(0, offset - 1))}
                   disabled={!canGoToNewerWeek}
                   haptic={canGoToNewerWeek ? HapticType.LIGHT : false}
-                  hitSlop={8}
-                  style={[styles.historyWeekNavBtn, !canGoToNewerWeek && styles.historyWeekNavBtnDisabled]}
+                  hitSlop={6}
+                  style={({ pressed }) => [
+                    styles.historyWeekNavBtn,
+                    canGoToNewerWeek && styles.historyWeekNavBtnActive,
+                    !canGoToNewerWeek && styles.historyWeekNavBtnDisabled,
+                    pressed && canGoToNewerWeek && styles.historyWeekNavBtnPressed,
+                  ]}
                 >
-                  <Ionicons name="chevron-forward" size={18} color={canGoToNewerWeek ? theme.accent : '#c5cdd6'} />
+                  <Ionicons
+                    name="chevron-forward"
+                    size={20}
+                    color={canGoToNewerWeek ? theme.accent : '#b8c2cc'}
+                  />
                 </HapticPressable>
               </View>
               <View style={styles.historyStreakBadge}>
@@ -2596,28 +2524,11 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                       entry.isToday && styles.duolingoDayLabelToday,
                       entry.isFrozenDay && { color: trophyPreview.color },
                     ]}>{entry.dayLabel}</Text>
-                    {canEditHistoryDay(entry) && !isTrophy ? (
-                      <HapticPressable
-                        onPress={() => handleHistoryDayPress(entry)}
-                        haptic={HapticType.LIGHT}
-                        hitSlop={4}
-                        style={({ pressed }) => [
-                          styles.duolingoBubblePressable,
-                          pressed && styles.duolingoBubblePressed,
-                        ]}
-                      >
-                        {bubbleContent}
-                      </HapticPressable>
-                    ) : (
-                      bubbleContent
-                    )}
+                    {bubbleContent}
                   </View>
                 );
               })}
             </View>
-            {!isTrophy ? (
-              <Text style={styles.historyHint}>Tap a day to mark complete or undo.</Text>
-            ) : null}
 
             <View style={styles.healthTrendWrap}>
               <Text style={styles.healthTrendLabel}>Plant health</Text>
@@ -3516,7 +3427,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minWidth: 0,
-    gap: 4,
+    gap: 8,
   },
   historyWeekLabels: {
     flex: 1,
@@ -3524,15 +3435,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   historyWeekNavBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f3f6f9',
+  },
+  historyWeekNavBtnActive: {
+    backgroundColor: '#ffffff',
+    ...cpShadow({ color: '#cdd7e3', offset: { width: 0, height: 3 }, opacity: 1, radius: 0, elevation: 2 }),
   },
   historyWeekNavBtnDisabled: {
-    backgroundColor: '#f8f9fb',
+    backgroundColor: '#f3f6f9',
+  },
+  historyWeekNavBtnPressed: {
+    transform: [{ translateY: 2 }],
   },
   historyTodayBtn: {
     alignSelf: 'flex-start',
@@ -3552,69 +3469,22 @@ const styles = StyleSheet.create({
     fontFamily: 'CeraRoundProDEMO-Black',
     letterSpacing: 0.1,
   },
-  historyHint: {
-    marginTop: 10,
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#7d8a97',
+  historyHeadline: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: theme.text,
     fontFamily: 'CeraRoundProDEMO-Black',
     letterSpacing: 0.1,
     textAlign: 'center',
   },
-  historyHeadline: { fontSize: 15, fontWeight: '900', color: theme.text, fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1, textAlign: 'center' },
-  historySubhead: { fontSize: 12, color: '#7d8a97', marginTop: 2, fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1, textAlign: 'center' },
-  historyWeekHeader: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    minWidth: 0,
-    gap: 4,
-  },
-  historyWeekLabels: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: 'center',
-  },
-  historyWeekNavBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f3f6f9',
-  },
-  historyWeekNavBtnDisabled: {
-    backgroundColor: '#f8f9fb',
-  },
-  historyTodayBtn: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#f3f6f9',
-  },
-  historyTodayBtnText: {
+  historySubhead: {
     fontSize: 12,
-    fontWeight: '800',
-    color: theme.accent,
-    fontFamily: 'CeraRoundProDEMO-Black',
-    letterSpacing: 0.1,
-  },
-  historyHint: {
-    marginTop: 10,
-    fontSize: 11,
-    fontWeight: '700',
     color: '#7d8a97',
+    marginTop: 2,
     fontFamily: 'CeraRoundProDEMO-Black',
     letterSpacing: 0.1,
     textAlign: 'center',
   },
-  historyHeadline: { fontSize: 15, fontWeight: '900', color: theme.text, fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1, textAlign: 'center' },
-  historySubhead: { fontSize: 12, color: '#7d8a97', marginTop: 2, fontFamily: 'CeraRoundProDEMO-Black', letterSpacing: 0.1, textAlign: 'center' },
   historyStreakBadge: {
     backgroundColor: '#fcae49',
     paddingHorizontal: 14,
@@ -3709,31 +3579,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#e9e9e9',
   },
   duolingoBubbleToday: {},
-  duolingoBubblePressable: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   duolingoBubbleSelected: {
     borderWidth: 2,
     borderColor: theme.accent,
-  },
-  duolingoBubblePressed: {
-    opacity: 0.85,
-  },
-  duolingoBubblePressable: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  duolingoBubbleSelected: {
-    borderWidth: 2,
-    borderColor: theme.accent,
-  },
-  duolingoBubblePressed: {
-    opacity: 0.85,
   },
 
   duolingoBubbleFrozen: {

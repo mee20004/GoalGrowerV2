@@ -849,6 +849,19 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
   const dragStartShelfPositionRef = useRef(null);
   const dragOriginRef = useRef({ x: 0, y: 0 });
   const lastTouchRef = useRef({ x: 0, y: 0, lx: 0, ly: 0 });
+  const touchStartRef = useRef({ x: 0, y: 0 });
+  const touchMovedRef = useRef(false);
+
+  const TAP_MOVE_THRESHOLD = 10;
+  const isTapGesture = (startX, startY, endX, endY) => {
+    const dx = endX - startX;
+    const dy = endY - startY;
+    // Horizontal swipes are usually page changes, not plant taps.
+    if (Math.abs(dx) > TAP_MOVE_THRESHOLD && Math.abs(dx) >= Math.abs(dy)) {
+      return false;
+    }
+    return Math.abs(dx) <= TAP_MOVE_THRESHOLD && Math.abs(dy) <= TAP_MOVE_THRESHOLD;
+  };
 
   const clearLongPressTimeout = () => {
     if (longPressTimeoutRef.current) {
@@ -968,9 +981,10 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
         if (dragStartedRef.current) {
           finalizeDrag(gesture.moveX ?? lastTouchRef.current.x, gesture.moveY ?? lastTouchRef.current.y);
         } else if (!longPressTriggeredRef.current && !latestProps.current.isEditing) {
-          // If the gesture moved significantly, treat it as a swipe/drag cancel
-          const moved = Math.abs(gesture.dx || 0) > 10 || Math.abs(gesture.dy || 0) > 10;
-          if (!moved) {
+          const start = touchStartRef.current;
+          const endX = start.x + (gesture.dx || 0);
+          const endY = start.y + (gesture.dy || 0);
+          if (isTapGesture(start.x, start.y, endX, endY)) {
             triggerLightHaptic();
             latestProps.current.onPlantTap?.(latestProps.current.plant);
           }
@@ -1004,6 +1018,8 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
       {...panHandlers}
       onTouchStart={(e) => {
         const { pageX, pageY, locationX, locationY } = e.nativeEvent;
+        touchStartRef.current = { x: pageX, y: pageY };
+        touchMovedRef.current = false;
         lastTouchRef.current = { x: pageX, y: pageY, lx: locationX, ly: locationY };
         if (disabled || globalDragRef.current || latestProps.current.instantDrag || latestProps.current.isEditing) return;
 
@@ -1017,9 +1033,13 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
       }}
       onTouchMove={(e) => {
         const { pageX, pageY, locationX, locationY } = e.nativeEvent;
-        const prev = lastTouchRef.current;
-        const TAP_THRESHOLD = 8;
-        const moved = Math.abs(pageX - prev.x) > TAP_THRESHOLD || Math.abs(pageY - prev.y) > TAP_THRESHOLD;
+        const start = touchStartRef.current;
+        if (
+          Math.abs(pageX - start.x) > TAP_MOVE_THRESHOLD
+          || Math.abs(pageY - start.y) > TAP_MOVE_THRESHOLD
+        ) {
+          touchMovedRef.current = true;
+        }
         lastTouchRef.current = { x: pageX, y: pageY, lx: locationX, ly: locationY };
 
         if (dragStartedRef.current) {
@@ -1029,7 +1049,7 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
         }
 
         if (disabled || globalDragRef.current || latestProps.current.instantDrag || latestProps.current.isEditing) return;
-        if (moved && !dragStartedRef.current) {
+        if (touchMovedRef.current && !dragStartedRef.current) {
           clearLongPressTimeout();
         }
       }}
@@ -1048,13 +1068,13 @@ const DraggablePlant = memo(({ plant, isEditing, wiggleAnim, onLongPress, onDrag
         }
         if (latestProps.current.isEditing || globalDragRef.current) return;
         const { pageX, pageY } = e.nativeEvent;
-        const TAP_THRESHOLD = 10; // px
-        const moved = Math.abs(pageX - (lastTouchRef.current.x || 0)) > TAP_THRESHOLD || Math.abs(pageY - (lastTouchRef.current.y || 0)) > TAP_THRESHOLD;
-        if (!moved) {
+        const start = touchStartRef.current;
+        if (!touchMovedRef.current && isTapGesture(start.x, start.y, pageX, pageY)) {
           triggerLightHaptic();
           latestProps.current.onPlantTap?.(latestProps.current.plant);
         }
         longPressTriggeredRef.current = false;
+        touchMovedRef.current = false;
       }}
       style={[
         styles.plantContainer,
