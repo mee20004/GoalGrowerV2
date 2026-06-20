@@ -22,6 +22,7 @@ import {
   getRevenueCatUnavailableReason,
   hasProEntitlement,
   identifyRevenueCatUser,
+  isRevenueCatConfigured,
   isRevenueCatSupported,
   isRevenueCatUISupported,
   logOutRevenueCatUser,
@@ -169,7 +170,7 @@ export function SubscriptionProvider({ children }) {
   }, []);
 
   const openPaywall = useCallback(async (offeringId = OFFERING_IDS.DEFAULT) => {
-    if (!ready || !isUISupported) {
+    if (!ready || !isUISupported || !isRevenueCatConfigured()) {
       Alert.alert("Unavailable", unavailableReason || "Subscriptions are not available in this environment.");
       return PAYWALL_RESULT.ERROR;
     }

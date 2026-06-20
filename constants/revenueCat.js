@@ -61,3 +61,61 @@ export function getRevenueCatApiKey() {
 
   return null;
 }
+
+/** Validates the platform-specific public RevenueCat key baked into the build. */
+export function validateRevenueCatApiKey(apiKey) {
+  if (!apiKey || typeof apiKey !== "string") {
+    return {
+      valid: false,
+      reason:
+        "RevenueCat is not configured for this build. Add EXPO_PUBLIC_REVENUECAT_IOS_API_KEY in EAS (production environment) and rebuild.",
+    };
+  }
+
+  const trimmed = apiKey.trim();
+  if (!trimmed || trimmed.startsWith("@")) {
+    return {
+      valid: false,
+      reason:
+        "RevenueCat API key was not resolved at build time. Set EXPO_PUBLIC_REVENUECAT_IOS_API_KEY in EAS and rebuild.",
+    };
+  }
+
+  if (trimmed.startsWith("sk_")) {
+    return {
+      valid: false,
+      reason:
+        "Use RevenueCat's public iOS API key (appl_...) in the app, not the secret server key (sk_...).",
+    };
+  }
+
+  if (trimmed.startsWith("test_") && !__DEV__) {
+    return {
+      valid: false,
+      reason:
+        "Test RevenueCat keys cannot be used in release builds. Add EXPO_PUBLIC_REVENUECAT_IOS_API_KEY in EAS and rebuild.",
+    };
+  }
+
+  if (Platform.OS === "ios" && !trimmed.startsWith("appl_") && !(__DEV__ && trimmed.startsWith("test_"))) {
+    return {
+      valid: false,
+      reason:
+        "Invalid iOS RevenueCat key. Copy the public App Store key (starts with appl_) from RevenueCat → Project Settings → API keys.",
+    };
+  }
+
+  if (
+    Platform.OS === "android"
+    && !trimmed.startsWith("goog_")
+    && !(__DEV__ && trimmed.startsWith("test_"))
+  ) {
+    return {
+      valid: false,
+      reason:
+        "Invalid Android RevenueCat key. Copy the public Play Store key (starts with goog_) from RevenueCat → Project Settings → API keys.",
+    };
+  }
+
+  return { valid: true, reason: null };
+}

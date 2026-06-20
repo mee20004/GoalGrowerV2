@@ -6,10 +6,12 @@ import {
   OFFERING_IDS,
   PRODUCT_IDS,
   getRevenueCatApiKey,
+  validateRevenueCatApiKey,
 } from "../constants/revenueCat";
 import { logAnalyticsEvent } from "./analytics";
 
 let configured = false;
+let configurationError = null;
 let operationChain = Promise.resolve();
 
 const NATIVE_PLATFORMS = Platform.OS === "ios" || Platform.OS === "android";
@@ -67,11 +69,19 @@ export function getRevenueCatUnavailableReason() {
     return "Subscriptions are only available in the iOS and Android app.";
   }
 
+  if (configurationError) {
+    return configurationError;
+  }
+
   if (!isRevenueCatUISupported()) {
     return "RevenueCat native UI is not linked in this build. Rebuild with a development build (not Expo Go), then try again:\n\nnpx expo run:ios\nor\neas build --profile development";
   }
 
   return null;
+}
+
+export function isRevenueCatConfigured() {
+  return configured;
 }
 
 export function hasProEntitlement(customerInfo) {
@@ -127,17 +137,10 @@ export async function configureRevenueCat() {
     }
 
     const apiKey = getRevenueCatApiKey();
-    if (!apiKey) {
-      console.warn(
-        "[RevenueCat] No production API key for this build. Subscriptions are disabled."
-      );
-      return false;
-    }
-
-    if (apiKey.startsWith("test_") && !__DEV__) {
-      console.warn(
-        "[RevenueCat] Test API keys cannot be used in release builds. Add EXPO_PUBLIC_REVENUECAT_IOS_API_KEY to EAS."
-      );
+    const validation = validateRevenueCatApiKey(apiKey);
+    if (!validation.valid) {
+      configurationError = validation.reason;
+      console.warn(`[RevenueCat] ${validation.reason}`);
       return false;
     }
 
@@ -146,10 +149,12 @@ export async function configureRevenueCat() {
         Purchases.setLogLevel(LOG_LEVEL.DEBUG);
       }
 
-      Purchases.configure({ apiKey });
+      Purchases.configure({ apiKey: apiKey.trim() });
       configured = true;
+      configurationError = null;
       return true;
     } catch (error) {
+      configurationError = "RevenueCat failed to initialize. Rebuild after setting EXPO_PUBLIC_REVENUECAT_IOS_API_KEY in EAS.";
       console.error("[RevenueCat] configure failed:", error);
       return false;
     }
@@ -451,6 +456,14 @@ export function getReadablePurchaseError(error) {
 
   if (isConcurrentRequestError(error)) {
     return "RevenueCat is busy syncing. Please try again in a moment.";
+  }
+
+  const lowerMessage = message.toLowerCase();
+  if (lowerMessage.includes("invalid api key") || lowerMessage.includes("credentials issue")) {
+    return (
+      configurationError
+      || "RevenueCat API key is invalid for this build. In EAS, set EXPO_PUBLIC_REVENUECAT_IOS_API_KEY to your public iOS key (appl_...) and rebuild."
+    );
   }
 
   return error.message || "Something went wrong. Please try again.";

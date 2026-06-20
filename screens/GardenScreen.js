@@ -2459,6 +2459,13 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   const canCustomize = !isSharedGarden || isOwner || !sharedGardenSettings.restrictCustomize;
   const canAddPeople = !isSharedGarden || isOwner || !sharedGardenSettings.restrictAddPeople;
   const canEnterEditMode = canEditPlants || canCustomize;
+  const customizationAlertShownRef = useRef(false);
+
+  useEffect(() => {
+    if (showCustomization && isSharedGarden && sharedGardenSettingsLoaded && !canCustomize) {
+      setShowCustomization(false);
+    }
+  }, [showCustomization, isSharedGarden, sharedGardenSettingsLoaded, canCustomize]);
 
   const releaseSharedEditLock = useCallback(async () => {
     if (!isSharedGarden || !sharedGardenId) return;
@@ -2639,19 +2646,33 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       return false;
     }
 
-    const editModeReady = await activateEditMode();
-    if (!editModeReady || globalDragRef.current) return false;
+    if (isReadOnly || !canEnterEditMode) return false;
+    if (globalDragRef.current || globalDragging) return false;
 
+    // Show the draggable ghost and enter edit mode synchronously so shared gardens
+    // feel instant like personal ones. The shared edit lock is acquired in the
+    // background by the isEditing effect below (no awaited Firestore transaction
+    // blocking the ghost), and handleDragEnd re-checks the lock at drop time.
     globalDragRef.current = true;
     setGlobalDragging(true);
     globalPan.setValue({ x: 0, y: 0 });
 
     // Center plant directly under finger
     setDraggedGhost({
-  plant,
-  x: touchX - 44,
-  y: touchY  + 44,
-});
+      plant,
+      x: touchX - 44,
+      y: touchY + 44,
+    });
+
+    if (!isEditing) {
+      triggerMediumHaptic();
+      setIsEditing(true);
+      if (shouldPersistState) persistedGardenState.isEditing = true;
+      if (onboardingStep === 'garden_tutorial' && onboardingActions?.completedGoal) {
+        onOnboardingAction?.('reenteredEditMode');
+      }
+    }
+
     return true;
   };
 
@@ -2903,12 +2924,24 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       Alert.alert("Can't customize trophies", "Switch to a garden page to customize its look.");
       return;
     }
+    if (isSharedGarden && sharedGardenSettingsLoaded && !canCustomize) {
+      Alert.alert("Restricted", "Only the owner can customize this shared garden.");
+      return;
+    }
     setCustomizerType(type || 'wall');
     setShowCustomization(true);
     if (onboardingStep === 'garden_tutorial' && !onboardingActions?.customizedGarden) {
       onOnboardingAction?.('customizedGarden');
     }
-  }, [currentPageId, onboardingStep, onboardingActions, onOnboardingAction]);
+  }, [
+    currentPageId,
+    isSharedGarden,
+    sharedGardenSettingsLoaded,
+    canCustomize,
+    onboardingStep,
+    onboardingActions,
+    onOnboardingAction,
+  ]);
 
   const handleResetPositions = async () => {
     if (isReadOnly || !auth.currentUser) return;
@@ -4100,23 +4133,34 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         visible={showCustomization}
         onClose={() => setShowCustomization(false)}
         onSave={async (pageId, values) => {
-          if (isSharedGarden && !canCustomize) return;
+          if (isSharedGarden && (!canCustomize || !sharedGardenSettingsLoaded)) {
+            const error = new Error("permission-denied");
+            error.code = "permission-denied";
+            throw error;
+          }
           pendingCustomizationSaveRef.current = { pageId, values };
-          setCustomizations((prev) => ({ ...prev, [pageId]: values }));
           try {
             if (isSharedGarden && sharedGardenId) {
               await saveSharedCustomizations(sharedGardenId, pageId, values);
             } else if (!isSharedGarden && auth.currentUser?.uid) {
               await savePersonalCustomizations(auth.currentUser.uid, pageId, values);
             }
+            setCustomizations((prev) => ({ ...prev, [pageId]: values }));
           } catch (error) {
             console.error("Failed to save garden customization", error);
-            Alert.alert(
-              "Could not save",
-              error?.code === "permission-denied"
-                ? "You do not have permission to customize this shared garden."
-                : "Your customization could not be saved. Try again."
-            );
+            if (!customizationAlertShownRef.current) {
+              customizationAlertShownRef.current = true;
+              Alert.alert(
+                "Could not save",
+                error?.code === "permission-denied"
+                  ? "You do not have permission to customize this shared garden."
+                  : "Your customization could not be saved. Try again.",
+                [{ text: "OK", onPress: () => { customizationAlertShownRef.current = false; } }]
+              );
+            }
+            if (error?.code === "permission-denied") {
+              setShowCustomization(false);
+            }
             throw error;
           } finally {
             pendingCustomizationSaveRef.current = null;

@@ -15,11 +15,10 @@
       }
     },
     "preview": {
+      "environment": "preview",
       "distribution": "internal",
       "env": {
-        "GOOGLE_SERVICES_PLIST": "@GOOGLE_SERVICES_PLIST",
-        "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY": "@REVENUECAT_IOS_API_KEY",
-        "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY": "@REVENUECAT_ANDROID_API_KEY"
+        "GOOGLE_SERVICES_PLIST": "@GOOGLE_SERVICES_PLIST"
       },
       "ios": {
         "scheme": "GoalGrower"
@@ -29,11 +28,10 @@
       }
     },
     "production": {
+      "environment": "production",
       "autoIncrement": true,
       "env": {
-        "GOOGLE_SERVICES_PLIST": "@GOOGLE_SERVICES_PLIST",
-        "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY": "@REVENUECAT_IOS_API_KEY",
-        "EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY": "@REVENUECAT_ANDROID_API_KEY"
+        "GOOGLE_SERVICES_PLIST": "@GOOGLE_SERVICES_PLIST"
       },
       "ios": {
         "scheme": "GoalGrower"

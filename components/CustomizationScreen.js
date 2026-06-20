@@ -176,6 +176,8 @@ export default function CustomizationScreen({
 
   const activeSection = customizerType || "wall";
   const userEditedRef = useRef(false);
+  const saveInFlightRef = useRef(false);
+  const autoSaveBlockedRef = useRef(false);
   const isClosingRef = useRef(false);
   const sheetTranslate = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
@@ -191,31 +193,40 @@ export default function CustomizationScreen({
   useEffect(() => {
     if (!visible) {
       userEditedRef.current = false;
+      autoSaveBlockedRef.current = false;
+      saveInFlightRef.current = false;
       return;
     }
     if (userEditedRef.current) return;
     applyCustomizationValues(customizations?.[selectedPageId] || {});
   }, [visible, selectedPageId, customizations, applyCustomizationValues]);
 
-  const setFarBgFromUser = useCallback((value) => {
+  const markUserEdited = useCallback(() => {
+    autoSaveBlockedRef.current = false;
     userEditedRef.current = true;
-    setFarBg(value);
-  }, []);
-  const setWindowFrameFromUser = useCallback((value) => {
-    userEditedRef.current = true;
-    setWindowFrame(value);
-  }, []);
-  const setWallBgFromUser = useCallback((value) => {
-    userEditedRef.current = true;
-    setWallBg(value);
-  }, []);
-  const setShelfColorFromUser = useCallback((value) => {
-    userEditedRef.current = true;
-    setShelfColor(value);
   }, []);
 
+  const setFarBgFromUser = useCallback((value) => {
+    markUserEdited();
+    setFarBg(value);
+  }, [markUserEdited]);
+  const setWindowFrameFromUser = useCallback((value) => {
+    markUserEdited();
+    setWindowFrame(value);
+  }, [markUserEdited]);
+  const setWallBgFromUser = useCallback((value) => {
+    markUserEdited();
+    setWallBg(value);
+  }, [markUserEdited]);
+  const setShelfColorFromUser = useCallback((value) => {
+    markUserEdited();
+    setShelfColor(value);
+  }, [markUserEdited]);
+
   useEffect(() => {
-    if (!visible || !canSave || !userEditedRef.current) return undefined;
+    if (!visible || !canSave || !userEditedRef.current || saveInFlightRef.current || autoSaveBlockedRef.current) {
+      return undefined;
+    }
 
     const saved = customizations?.[selectedPageId] || {};
     const values = { farBg, windowFrame, wallBg, shelfColor };
@@ -227,13 +238,36 @@ export default function CustomizationScreen({
 
     if (!hasChange) return undefined;
 
-    const timer = setTimeout(() => {
-      onSave(selectedPageId, values);
-      onCustomizationChange?.(values);
+    const timer = setTimeout(async () => {
+      if (saveInFlightRef.current || autoSaveBlockedRef.current) return;
+      saveInFlightRef.current = true;
+      try {
+        await Promise.resolve(onSave(selectedPageId, values));
+        userEditedRef.current = false;
+        onCustomizationChange?.(values);
+      } catch (error) {
+        autoSaveBlockedRef.current = true;
+        userEditedRef.current = false;
+        applyCustomizationValues(customizations?.[selectedPageId] || {});
+      } finally {
+        saveInFlightRef.current = false;
+      }
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [farBg, windowFrame, wallBg, shelfColor, visible, canSave, selectedPageId, customizations, onSave, onCustomizationChange]);
+  }, [
+    farBg,
+    windowFrame,
+    wallBg,
+    shelfColor,
+    visible,
+    canSave,
+    selectedPageId,
+    customizations,
+    onSave,
+    onCustomizationChange,
+    applyCustomizationValues,
+  ]);
 
   useEffect(() => {
     if (!visible) {

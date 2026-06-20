@@ -1,6 +1,12 @@
+import { doc, onSnapshot, setDoc, getDoc } from "firebase/firestore";
+import { auth, db } from "../firebaseConfig";
 
-// Personal garden customization sync
-import { auth } from "../firebaseConfig";
+function logCustomizationListenerError(context, error) {
+  if (error?.code === "permission-denied" && !auth.currentUser?.uid) {
+    return;
+  }
+  console.error(context, error);
+}
 
 export function subscribePersonalCustomizations(userId, setCustomizations) {
   if (!userId) return () => {};
@@ -11,9 +17,7 @@ export function subscribePersonalCustomizations(userId, setCustomizations) {
       setCustomizations(snap.exists() ? snap.data() : {});
     },
     (error) => {
-      if (error?.code !== 'permission-denied' || auth.currentUser?.uid === userId) {
-        console.error('Error loading personal customizations', error);
-      }
+      logCustomizationListenerError("Error loading personal customizations", error);
     }
   );
   return unsub;
@@ -24,9 +28,6 @@ export async function savePersonalCustomizations(userId, pageId, pageCustomizati
   const ref = doc(db, "users", userId, "meta", "customizations");
   await setDoc(ref, { [pageId]: pageCustomization }, { merge: true });
 }
-// Utility functions for shared garden customization sync
-import { doc, onSnapshot, setDoc, getDoc } from "firebase/firestore";
-import { db } from "../firebaseConfig";
 
 export function subscribeSharedCustomizations(sharedGardenId, setCustomizations) {
   if (!sharedGardenId) return () => {};
@@ -37,15 +38,12 @@ export function subscribeSharedCustomizations(sharedGardenId, setCustomizations)
       setCustomizations(snap.exists() ? snap.data() : {});
     },
     (error) => {
-      if (error?.code !== 'permission-denied' || auth.currentUser?.uid) {
-        console.error('Error loading shared customizations', error);
-      }
+      logCustomizationListenerError("Error loading shared customizations", error);
     }
   );
   return unsub;
 }
 
-// Only update the changed page's customization, not the whole object
 export async function saveSharedCustomizations(sharedGardenId, pageId, pageCustomization) {
   if (!sharedGardenId || !pageId) return;
   const ref = doc(db, "sharedGardens", sharedGardenId, "meta", "customizations");
