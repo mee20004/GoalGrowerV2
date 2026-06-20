@@ -104,6 +104,18 @@ service cloud.firestore {
       ]);
     }
 
+    // Members may sync their own goals into a shared garden even when
+    // restrictEditPlants blocks general plant add/move/edit.
+    function isOwnSharedGoalLayoutWrite(layoutGoalId) {
+      return request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.sourceGoalId == layoutGoalId;
+    }
+
+    function isOwnSharedGoalLayoutDelete(layoutGoalId) {
+      return resource.data.ownerId == request.auth.uid
+        && resource.data.sourceGoalId == layoutGoalId;
+    }
+
     function isProfileFieldUpdate() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
         'username', 'searchKey', 'email', 'privateAccount', 'accentColor',
@@ -223,10 +235,17 @@ service cloud.firestore {
 
       match /layout/{goalId} {
         allow read: if isMemberOfGardenId(gardenId);
-        allow create, delete: if isMemberOfGardenId(gardenId) && canEditPlantsInGarden(gardenId);
+        allow create: if isMemberOfGardenId(gardenId) && (
+          canEditPlantsInGarden(gardenId) || isOwnSharedGoalLayoutWrite(goalId)
+        );
+        allow delete: if isMemberOfGardenId(gardenId) && (
+          canEditPlantsInGarden(gardenId) || isOwnSharedGoalLayoutDelete(goalId)
+        );
         // Members can always log completions; restrictEditPlants blocks add/move/edit only.
         allow update: if isMemberOfGardenId(gardenId) && (
-          canEditPlantsInGarden(gardenId) || isSharedGoalProgressFieldUpdate()
+          canEditPlantsInGarden(gardenId)
+          || isSharedGoalProgressFieldUpdate()
+          || isOwnSharedGoalLayoutWrite(goalId)
         );
       }
 

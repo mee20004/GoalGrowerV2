@@ -1,6 +1,6 @@
 // Shared goal toggle/update transaction logic for all screens
 import { doc, updateDoc, runTransaction, setDoc, increment, arrayUnion, getDoc, deleteField } from "firebase/firestore";
-import { getPlantHealthState, calculateGoalStreak, isGoalDoneForDate } from "../utils/goalState";
+import { getPlantHealthState, calculateGoalStreak, isGoalDoneForDate, isGoalDoneForPeriod, countActiveDays, getPeriodTarget, getPeriodProgress } from "../utils/goalState";
 import { fromKey, toKey } from "../components/GoalsStore";
 import { reconcileGoalHealthLogsFromDate } from "./backfillGoalHealthLogs";
 import { updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
@@ -65,7 +65,9 @@ export async function toggleGoalTransaction({
     // --- Shared Multi-User Logic ---
     const isSharedMultiUserCompletion = isSharedGoalView && (goal?.type === "completion" || goal?.kind === "completion") && !!goal?.multiUserWateringEnabled && goal?.gardenType === "shared";
     const isSharedMultiUserQuantity = isSharedGoalView && (goal?.type === "quantity" || goal?.kind === "quantity") && !!goal?.multiUserWateringEnabled && goal?.gardenType === "shared";
-    const isSharedMultiUser = isSharedMultiUserCompletion || isSharedMultiUserQuantity;
+    const isSharedMultiUserFrequency = isSharedGoalView && (goal?.type === "frequency" || goal?.kind === "frequency") && !!goal?.multiUserWateringEnabled && goal?.gardenType === "shared";
+    const isSharedMultiUserPeriodQuantity = isSharedGoalView && (goal?.type === "periodQuantity" || goal?.kind === "periodQuantity") && !!goal?.multiUserWateringEnabled && goal?.gardenType === "shared";
+    const isSharedMultiUser = isSharedMultiUserCompletion || isSharedMultiUserQuantity || isSharedMultiUserFrequency || isSharedMultiUserPeriodQuantity;
     const goalRef = isSharedGoalView
       ? doc(db, "sharedGardens", routeSharedGardenId, "layout", goal.id)
       : doc(db, "users", currentUserId, "goals", goal.id);
@@ -250,6 +252,82 @@ export async function toggleGoalTransaction({
           if (isNowDone !== wasDone) growthChange = isNowDone ? 1 : -1;
           if (growthChange !== 0) updateData.totalCompletions = increment(growthChange);
           shouldAwardCompletion = isNowDone && !latestWasDone;
+      } else if (isSharedMultiUserFrequency) {
+        console.log('[toggleGoalTransaction] Entered SHARED MULTI-USER FREQUENCY branch');
+        if (!updatedLogs.completion) updatedLogs.completion = {};
+        const existingEntry = updatedLogs.completion[selectedDateKey] || {};
+        const existingUsers = existingEntry.users || {};
+        let nextUsers;
+        if (typeof setDone === 'boolean') {
+          nextUsers = { ...existingUsers, [currentUserId]: setDone };
+        } else if (existingUsers[currentUserId]) {
+          nextUsers = { ...existingUsers, [currentUserId]: false };
+        } else {
+          nextUsers = { ...existingUsers, [currentUserId]: true };
+        }
+        const nextContributors = Object.keys(nextUsers).filter((uid) => nextUsers[uid]);
+        const dayDone = nextContributors.length > 0;
+        if (nextContributors.length === 0) {
+          const nextEntry = { ...existingEntry, users: nextUsers, done: dayDone };
+          delete nextEntry.contributors;
+          updatedLogs.completion[selectedDateKey] = nextEntry;
+          updateData[`logs.completion.${selectedDateKey}.contributors`] = deleteField();
+          updateData[`logs.completion.${selectedDateKey}.users`] = nextUsers;
+          updateData[`logs.completion.${selectedDateKey}.done`] = dayDone;
+        } else {
+          const nextEntry = { ...existingEntry, users: nextUsers, done: dayDone, contributors: nextContributors };
+          updatedLogs.completion[selectedDateKey] = nextEntry;
+          updateData[`logs.completion.${selectedDateKey}`] = nextEntry;
+        }
+        isNowDone = isGoalDoneForPeriod({ ...latestGoal, logs: updatedLogs }, selectedDateKey);
+        shouldAwardCompletion = isNowDone && !latestWasDone;
+      } else if (isSharedMultiUserPeriodQuantity) {
+        console.log('[toggleGoalTransaction] Entered SHARED MULTI-USER PERIOD QUANTITY branch');
+        if (!updatedLogs.quantity) updatedLogs.quantity = {};
+        if (!updatedLogs.completion) updatedLogs.completion = {};
+        const periodTarget = getPeriodTarget(latestGoal);
+        const todayQuantityLog = updatedLogs.quantity[selectedDateKey] || {};
+        const existingUsers = todayQuantityLog.users || {};
+        // Current user's period progress before this tap (includes today's existing value).
+        const userPeriodProgress = getPeriodProgress({ ...latestGoal, logs: updatedLogs }, selectedDateKey, currentUserId);
+        const prevDayValue = Number(existingUsers[currentUserId]) || 0;
+        let nextDayValue;
+        if (typeof setDone === 'boolean') {
+          nextDayValue = setDone ? prevDayValue + 1 : 0;
+        } else if (userPeriodProgress >= periodTarget) {
+          nextDayValue = 0;
+        } else {
+          nextDayValue = prevDayValue + 1;
+        }
+        const nextUsers = { ...existingUsers, [currentUserId]: nextDayValue };
+        const dayContributors = Object.keys(nextUsers).filter((uid) => Number(nextUsers[uid]) > 0);
+        const nextQuantityEntry = { ...todayQuantityLog, users: nextUsers };
+        if (dayContributors.length > 0) {
+          nextQuantityEntry.contributors = dayContributors;
+        } else {
+          delete nextQuantityEntry.contributors;
+        }
+        updatedLogs.quantity[selectedDateKey] = nextQuantityEntry;
+        updateData[`logs.quantity.${selectedDateKey}`] = nextQuantityEntry;
+
+        // Mirror today's contributors into the completion log so badges / ContributorsTodaySection work.
+        isNowDone = isGoalDoneForPeriod({ ...latestGoal, logs: updatedLogs }, selectedDateKey);
+        if (dayContributors.length > 0) {
+          const completionEntry = {
+            ...(updatedLogs.completion[selectedDateKey] || {}),
+            contributors: dayContributors,
+            done: isNowDone,
+          };
+          updatedLogs.completion[selectedDateKey] = completionEntry;
+          updateData[`logs.completion.${selectedDateKey}`] = completionEntry;
+        } else {
+          const completionEntry = { ...(updatedLogs.completion[selectedDateKey] || {}), done: isNowDone };
+          delete completionEntry.contributors;
+          updatedLogs.completion[selectedDateKey] = completionEntry;
+          updateData[`logs.completion.${selectedDateKey}.contributors`] = deleteField();
+          updateData[`logs.completion.${selectedDateKey}.done`] = isNowDone;
+        }
+        shouldAwardCompletion = isNowDone && !latestWasDone;
       } else if ((latestGoal.type || latestGoal.kind) === "completion") {
         console.log('[toggleGoalTransaction] Entered SINGLE-USER COMPLETION branch');
         if (!updatedLogs.completion) updatedLogs.completion = {};
@@ -270,6 +348,41 @@ export async function toggleGoalTransaction({
           updatedLogs.completion[selectedDateKey] = { done: isNowDone, contributors: isNowDone ? [currentUserId] : [] };
           updateData[`logs.completion.${selectedDateKey}`] = updatedLogs.completion[selectedDateKey];
         }
+        shouldAwardCompletion = isNowDone && !latestWasDone;
+      } else if ((latestGoal.type || latestGoal.kind) === "frequency") {
+        console.log('[toggleGoalTransaction] Entered SINGLE-USER FREQUENCY branch');
+        if (!updatedLogs.completion) updatedLogs.completion = {};
+        const wasDoneToday = !!updatedLogs.completion[selectedDateKey]?.done;
+        const nextDoneToday = typeof setDone === 'boolean' ? setDone : !wasDoneToday;
+        updatedLogs.completion[selectedDateKey] = {
+          ...(updatedLogs.completion[selectedDateKey] || {}),
+          done: nextDoneToday,
+        };
+        updateData[`logs.completion.${selectedDateKey}.done`] = nextDoneToday;
+        isNowDone = isGoalDoneForPeriod({ ...latestGoal, logs: updatedLogs }, selectedDateKey);
+        shouldAwardCompletion = isNowDone && !latestWasDone;
+      } else if ((latestGoal.type || latestGoal.kind) === "periodQuantity") {
+        console.log('[toggleGoalTransaction] Entered SINGLE-USER PERIOD QUANTITY branch');
+        if (!updatedLogs.quantity) updatedLogs.quantity = {};
+        const periodAlreadyDone = isGoalDoneForPeriod(latestGoal, selectedDateKey);
+        const currentDayValue = Math.max(0, Number(updatedLogs.quantity[selectedDateKey]?.value) || 0);
+        let nextValue;
+        if (typeof setDone === 'boolean') {
+          nextValue = setDone ? currentDayValue + 1 : 0;
+        } else if (periodAlreadyDone) {
+          // Period quota already met: tapping clears today's contribution.
+          nextValue = 0;
+        } else if (forceComplete) {
+          nextValue = currentDayValue + Math.max(1, getPeriodTarget(latestGoal));
+        } else {
+          nextValue = currentDayValue + 1;
+        }
+        updatedLogs.quantity[selectedDateKey] = {
+          ...(updatedLogs.quantity[selectedDateKey] || {}),
+          value: nextValue,
+        };
+        updateData[`logs.quantity.${selectedDateKey}`] = updatedLogs.quantity[selectedDateKey];
+        isNowDone = isGoalDoneForPeriod({ ...latestGoal, logs: updatedLogs }, selectedDateKey);
         shouldAwardCompletion = isNowDone && !latestWasDone;
       } else {
          console.log('[toggleGoalTransaction] Entered SINGLE-USER QUANTITY branch');
@@ -341,6 +454,7 @@ export async function toggleGoalTransaction({
       const safeDayHealthLevel = Number.isFinite(dayHealthLevel) ? dayHealthLevel : 1;
       updatedLogs.healthHistory[selectedDateKey] = safeDayHealthLevel;
       updateData[`logs.healthHistory.${selectedDateKey}`] = safeDayHealthLevel;
+      const isPeriodicType = (latestGoal.type || latestGoal.kind) === "frequency" || (latestGoal.type || latestGoal.kind) === "periodQuantity";
       const growthChange = isNowDone === latestWasDone ? 0 : isNowDone ? 1 : -1;
       const { currentStreak, longestStreak } = calculateGoalStreak(latestGoal, updatedLogs, streakHealthRefKey);
       const healthGoalObj2 = { ...latestGoal, logs: updatedLogs };
@@ -351,7 +465,9 @@ export async function toggleGoalTransaction({
       const safeHealthLevel2 = Number.isFinite(recalculatedHealth2) ? recalculatedHealth2 : 1;
       updateData.currentStreak = currentStreak;
       updateData.longestStreak = longestStreak;
-      if (growthChange !== 0) {
+      if (isPeriodicType) {
+        updateData.totalCompletions = countActiveDays(latestGoal, updatedLogs);
+      } else if (growthChange !== 0) {
         updateData.totalCompletions = increment(growthChange);
       }
       updateData.healthLevel = safeHealthLevel2;

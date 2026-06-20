@@ -6,14 +6,17 @@ import { theme } from "../theme";
 import { getWeekdayLabelsSync, getWeekStartSync } from '../utils/dateFormat';
 import { useGoals, fromKey, toKey } from "../components/GoalsStore";
 import { isScheduledOn, isWithinActiveRange } from "../components/GoalsStore";
+import { isGoalDoneForDate as isGoalDoneForDateShared, isPeriodicGoal } from "../utils/goalState";
 
 const getWeekdayLabels = () => getWeekdayLabelsSync();
 
 function isGoalDoneForDate(goal, dateKey) {
   if (!goal) return false;
+  // Periodic goals (frequency / periodQuantity) resolve "done" over their week/month.
+  if (isPeriodicGoal(goal)) return isGoalDoneForDateShared(goal, dateKey);
   const completionLogs = goal?.logs?.completion?.[dateKey];
   if (goal?.type === "completion") return !!completionLogs?.done;
-  if (goal?.type === "numeric") {
+  if (goal?.type === "numeric" || goal?.type === "quantity") {
     const target = Number(goal?.measurable?.target || 1);
     const value = Number(goal?.logs?.quantity?.[dateKey]?.value || 0);
     return value >= target;

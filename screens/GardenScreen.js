@@ -59,6 +59,10 @@ import {
   getRequiredContributors,
   isGoalDoneForDate,
   isGoalScheduledOnDate,
+  getGoalPeriod,
+  getPeriodTarget,
+  getPeriodProgress,
+  getPeriodContributorCount,
 } from "../utils/goalState";
 
 import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
@@ -556,10 +560,22 @@ const PlantVisual = memo(function PlantVisual({ plant, isDraggingHighlight, educ
   const showTrophyParticles = Boolean(rating);
   const trophyBadgeSource = getTrophyBadgeSource(rating);
   const isScheduledToday = isGoalScheduledOnDate(plant, today);
-  const isSharedMultiUserCompletion = !!plant?.multiUserWateringEnabled && plant?.gardenType === "shared" && (plant?.type || plant?.kind) === "completion";
-  const isSharedMultiUserQuantity = !!plant?.multiUserWateringEnabled && plant?.gardenType === "shared" && (plant?.type || plant?.kind) === "quantity";
   const isQuantityGoal = (plant?.type || plant?.kind) === "quantity";
+  const isFrequencyGoal = (plant?.type || plant?.kind) === "frequency";
+  const isPeriodQuantityGoal = (plant?.type || plant?.kind) === "periodQuantity";
+  const isPeriodicGoalType = isFrequencyGoal || isPeriodQuantityGoal;
+  const isInSharedGarden = plant?.gardenType === "shared" || !!plant?.sharedGardenId;
+  const isSharedMultiUserCompletion = !!plant?.multiUserWateringEnabled && isInSharedGarden && (plant?.type || plant?.kind) === "completion";
+  const isSharedMultiUserQuantity = !!plant?.multiUserWateringEnabled && isInSharedGarden && (plant?.type || plant?.kind) === "quantity";
+  const isSharedMultiUserPeriodic = !!plant?.multiUserWateringEnabled && isInSharedGarden && isPeriodicGoalType;
+  const isSharedMultiUserFrequency = isSharedMultiUserPeriodic && isFrequencyGoal;
+  const isSharedMultiUserPeriodQuantity = isSharedMultiUserPeriodic && isPeriodQuantityGoal;
   const currentUserId = auth.currentUser?.uid;
+  const periodTargetForBadge = isPeriodicGoalType ? getPeriodTarget(plant) : 0;
+  const periodProgressValue = isPeriodicGoalType
+    ? getPeriodProgress(plant, todayKey, isSharedMultiUserPeriodic ? currentUserId : null)
+    : 0;
+  const periodGroupCountBadge = isSharedMultiUserPeriodic ? getPeriodContributorCount(plant, todayKey) : 0;
   const todayQuantityLog = plant?.logs?.quantity?.[todayKey] || {};
   let quantityLogs = {};
   if (isSharedMultiUserQuantity && typeof todayQuantityLog.users === 'object' && todayQuantityLog.users !== null) {
@@ -575,7 +591,7 @@ const PlantVisual = memo(function PlantVisual({ plant, isDraggingHighlight, educ
       : Object.keys(quantityLogs);
     contributorQuantityCount = allContributors.filter((userId) => Number(quantityLogs[userId]) >= quantityTargetForBadge).length;
   }
-  const requiredContributorsForBadge = (isSharedMultiUserCompletion || isSharedMultiUserQuantity)
+  const requiredContributorsForBadge = (isSharedMultiUserCompletion || isSharedMultiUserQuantity || isSharedMultiUserPeriodic)
     ? Math.max(2, Math.floor(Number(plant.requiredContributors) || 2))
     : 1;
   const contributorUsersMap = isSharedMultiUserCompletion ? (plant?.logs?.completion?.[todayKey]?.users || {}) : {};
@@ -605,14 +621,20 @@ const PlantVisual = memo(function PlantVisual({ plant, isDraggingHighlight, educ
     ? Math.min(currentContributors, requiredContributorsForBadge)
     : isSharedMultiUserQuantity
       ? Math.min(contributorQuantityCount, requiredContributorsForBadge)
-      : isQuantityGoal
-        ? Math.max(0, Math.min(Number(plant?.logs?.quantity?.[todayKey]?.value) || 0, quantityTargetForBadge))
-        : (isGoalDoneToday ? 1 : 0);
-  const progressTargetValue = (isSharedMultiUserCompletion || isSharedMultiUserQuantity)
+      : isSharedMultiUserPeriodic
+        ? Math.min(periodGroupCountBadge, requiredContributorsForBadge)
+        : isPeriodicGoalType
+          ? Math.max(0, Math.min(periodProgressValue, periodTargetForBadge))
+          : isQuantityGoal
+            ? Math.max(0, Math.min(Number(plant?.logs?.quantity?.[todayKey]?.value) || 0, quantityTargetForBadge))
+            : (isGoalDoneToday ? 1 : 0);
+  const progressTargetValue = (isSharedMultiUserCompletion || isSharedMultiUserQuantity || isSharedMultiUserPeriodic)
     ? requiredContributorsForBadge
-    : isQuantityGoal
-      ? quantityTargetForBadge
-      : 1;
+    : isPeriodicGoalType
+      ? periodTargetForBadge
+      : isQuantityGoal
+        ? quantityTargetForBadge
+        : 1;
   const progressFillRatio = progressTargetValue > 0
     ? Math.max(0, Math.min(progressCurrentValue / progressTargetValue, 1))
     : 0;
@@ -620,7 +642,9 @@ const PlantVisual = memo(function PlantVisual({ plant, isDraggingHighlight, educ
     ? `${Math.min(currentContributors, requiredContributorsForBadge)}/${requiredContributorsForBadge}`
     : isSharedMultiUserQuantity
       ? `${Math.min(contributorQuantityCount, requiredContributorsForBadge)}/${requiredContributorsForBadge}`
-      : null;
+      : isSharedMultiUserPeriodic
+        ? `${Math.min(periodGroupCountBadge, requiredContributorsForBadge)}/${requiredContributorsForBadge}`
+        : null;
   const completionBadgeIcon = isGoalDoneToday ? 'checkmark' : 'remove';
   const [displayedPlantSource, setDisplayedPlantSource] = useState(plantSource);
   const swapScaleAnim = useRef(new Animated.Value(1)).current;
@@ -670,10 +694,18 @@ const PlantVisual = memo(function PlantVisual({ plant, isDraggingHighlight, educ
     return plant.type === 'coding' ? 'code' : 'target';
   };
 
-  // --- UI: Two bars for shared multi-user quantity ---
-  const showDualBars = isSharedMultiUserQuantity;
-  const userBarRatio = quantityTargetForBadge > 0 ? Math.max(0, Math.min(firestoreUserValue / quantityTargetForBadge, 1)) : 0;
-  const groupBarRatio = requiredContributorsForBadge > 0 ? Math.max(0, Math.min(contributorQuantityCount / requiredContributorsForBadge, 1)) : 0;
+  // --- UI: Two bars for shared multi-user quantity / periodic goals ---
+  const isSharedMultiUserPeriodicDualBar = isSharedMultiUserPeriodQuantity || isSharedMultiUserFrequency;
+  const showDualBars = isSharedMultiUserQuantity || isSharedMultiUserPeriodicDualBar;
+  const userBarRatio = isSharedMultiUserPeriodicDualBar
+    ? (periodTargetForBadge > 0 ? Math.max(0, Math.min(periodProgressValue / periodTargetForBadge, 1)) : 0)
+    : (quantityTargetForBadge > 0 ? Math.max(0, Math.min(firestoreUserValue / quantityTargetForBadge, 1)) : 0);
+  const groupBarRatio = isSharedMultiUserPeriodicDualBar
+    ? (requiredContributorsForBadge > 0 ? Math.max(0, Math.min(periodGroupCountBadge / requiredContributorsForBadge, 1)) : 0)
+    : (requiredContributorsForBadge > 0 ? Math.max(0, Math.min(contributorQuantityCount / requiredContributorsForBadge, 1)) : 0);
+  const userMetForBadge = isSharedMultiUserPeriodicDualBar
+    ? periodProgressValue >= periodTargetForBadge
+    : firestoreUserValue >= quantityTargetForBadge;
   // --- Use healthLevel for any visuals here if needed ---
   // Example: <Text>Health: {healthLevel}</Text>
   return (
@@ -724,7 +756,7 @@ const PlantVisual = memo(function PlantVisual({ plant, isDraggingHighlight, educ
                   style={[
                     styles.plantProgressFill,
                     { width: `${Math.max(0, Math.min(userBarRatio * 100, 100))}%` },
-                    firestoreUserValue >= quantityTargetForBadge
+                    userMetForBadge
                       ? styles.plantProgressFillSharedSelf
                       : styles.plantProgressFillQuantity,
                   ]}
@@ -756,13 +788,15 @@ const PlantVisual = memo(function PlantVisual({ plant, isDraggingHighlight, educ
                       ? styles.plantProgressFillDone
                       : isSharedMultiUserCompletion
                         ? (currentUserContributedToday ? styles.plantProgressFillSharedSelf : styles.plantProgressFillShared)
-                      : isQuantityGoal && progressCurrentValue > 0
+                      : isSharedMultiUserPeriodic
+                        ? styles.plantProgressFillShared
+                      : (isQuantityGoal || isPeriodicGoalType) && progressCurrentValue > 0
                         ? styles.plantProgressFillQuantity
                         : styles.plantProgressFillPending,
                   ]}
                 />
               </View>
-              {(isSharedMultiUserCompletion || isSharedMultiUserQuantity) ? (
+              {(isSharedMultiUserCompletion || isSharedMultiUserQuantity || isSharedMultiUserPeriodic) ? (
                 <Text style={styles.sharedProgressLabel}>{completionBadgeLabel}</Text>
               ) : null}
             </>

@@ -640,6 +640,8 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
   const [type, setType] = useState("completion");
   const [target, setTarget] = useState("1");
   const [unit, setUnit] = useState("times");
+  const [period, setPeriod] = useState("week");
+  const [periodTarget, setPeriodTarget] = useState("3");
   const [mode, setMode] = useState("days");
   const [days, setDays] = useState([selectedDay]);
   const [whenStr, setWhenStr] = useState("");
@@ -738,6 +740,8 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
       setType("completion");
       setTarget("1");
       setUnit("times");
+      setPeriod("week");
+      setPeriodTarget("3");
       setMode("days");
       setDays([selectedDay]);
       setWhenStr("");
@@ -767,6 +771,8 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     if (type !== 'completion') return true;
     if (target && target !== '1') return true;
     if (unit && unit !== 'times') return true;
+    if (period && period !== 'week') return true;
+    if (periodTarget && periodTarget !== '3') return true;
     if (mode !== 'days' && !(mode === 'days' && days.length === 1 && days[0] === selectedDay)) return mode !== 'days';
     if (whenStr.trim()) return true;
     if (whereStr.trim()) return true;
@@ -799,6 +805,8 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     type,
     target,
     unit,
+    period,
+    periodTarget,
     mode,
     days,
     whenStr,
@@ -896,6 +904,8 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     type,
     target,
     unit,
+    period,
+    periodTarget,
     mode,
     days,
     whenStr,
@@ -1028,20 +1038,34 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     navigation.navigate("Shop");
   };
 
+  const isPeriodicType = type === "frequency" || type === "periodQuantity";
+
   const measurableForType = useMemo(() => {
     if (type === "quantity") {
       return { target: clampNum(target, 1, MAX_QUANTITY_TARGET), unit: unit.trim() || "times" };
+    }
+    if (type === "periodQuantity") {
+      // periodTarget is the real quota; measurable.unit keeps the label rendering.
+      return { target: 1, unit: unit.trim() || "times" };
     }
     return { target: 1, unit: "times" };
   }, [type, target, unit]);
 
   const frequencyLabel = useMemo(() => {
+    if (isPeriodicType) {
+      const periodWord = period === "month" ? "month" : "week";
+      const target = Math.max(1, Math.floor(Number(periodTarget) || 1));
+      if (type === "periodQuantity") {
+        return `${target} ${unit.trim() || "times"} / ${periodWord}`;
+      }
+      return `${target}x / ${periodWord}`;
+    }
     if (type === "flex") return "By deadline";
     if (mode === "everyday") return "Everyday";
     if (mode === "weekdays") return "Weekdays";
     const map = { 0: "S", 1: "M", 2: "T", 3: "W", 4: "Th", 5: "F", 6: "Sa" };
     return [...days].sort((a, b) => a - b).map((d) => map[d]).join("");
-  }, [type, mode, days]);
+  }, [type, mode, days, isPeriodicType, period, periodTarget, unit]);
 
   const typeTitle = useMemo(() => {
     if (type === "quantity") return "Quantity Goal";
@@ -1206,7 +1230,9 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     if (!selectedIcon) return "Please select an icon.";
     if (type === "quantity" && (!(Number(target) > 0) || unit.trim().length < 1)) return "Quantity needs a number + unit.";
     if (type === "quantity" && Number(target) > MAX_QUANTITY_TARGET) return `Quantity max is ${MAX_QUANTITY_TARGET}.`;
-    if ((mode === "days" && !days.length) || !scheduleDays.length) return "Pick at least one day.";
+    if (isPeriodicType && !(Number(periodTarget) >= 1)) return "Set how many times per period (at least 1).";
+    if (type === "periodQuantity" && unit.trim().length < 1) return "Add a unit (e.g. pages, minutes).";
+    if (!isPeriodicType && ((mode === "days" && !days.length) || !scheduleDays.length)) return "Pick at least one day.";
     if ((completionMode === "date" || completionMode === "both") && !isValidISODate(completionEndDate.trim())) {
       return "Enter a valid end date (YYYY-MM-DD).";
     }
@@ -1239,6 +1265,9 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     target,
     type,
     unit,
+    isPeriodicType,
+    period,
+    periodTarget,
   ]);
 
   const canSave = !formError;
@@ -1466,20 +1495,82 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
       );
     }
     if (step === 3) {
+      const trackingTypes = [
+        { value: "completion", label: "Checkmark" },
+        { value: "quantity", label: "Quantity" },
+        { value: "frequency", label: "Frequency" },
+        { value: "periodQuantity", label: "Period total" },
+      ];
+      const trackingHint = {
+        completion: "Check it off on each scheduled day.",
+        quantity: "Reach a target amount each scheduled day.",
+        frequency: "Complete it on a number of days each week or month.",
+        periodQuantity: "Accumulate a total amount each week or month.",
+      }[type];
       return (
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Tracking</Text>
-          <Segmented left={{ label: "Checkmark", value: "completion" }} right={{ label: "Quantity", value: "quantity" }} value={type} onChange={setType} accent={theme.accent} />
+          <View style={styles.chipWrap}>
+            {trackingTypes.map((option) => (
+              <Chip
+                key={option.value}
+                label={option.label}
+                variant="filter"
+                active={type === option.value}
+                accent={theme.accent}
+                onPress={() => setType(option.value)}
+              />
+            ))}
+          </View>
+          {!!trackingHint && <Text style={[styles.helperText, { marginTop: 10 }]}>{trackingHint}</Text>}
           {type === "quantity" && (
             <View style={styles.row}>
               <TextInput value={target} onChangeText={(value) => setTarget(normalizeQuantityTargetInput(value))} keyboardType="numeric" style={[styles.input, { flex: 1, marginRight: 10 }]} placeholder="Target (max 6)" placeholderTextColor={theme.muted2} />
               <TextInput value={unit} onChangeText={setUnit} placeholder="minutes" style={[styles.input, { flex: 1 }]} />
             </View>
           )}
+          {isPeriodicType && (
+            <>
+              <Text style={[styles.sectionLabel, { marginTop: 14 }]}>Per</Text>
+              <Segmented
+                left={{ label: "Week", value: "week" }}
+                right={{ label: "Month", value: "month" }}
+                value={period}
+                onChange={setPeriod}
+                accent={theme.accent}
+              />
+              <View style={styles.row}>
+                <TextInput
+                  value={periodTarget}
+                  onChangeText={(value) => setPeriodTarget(String(value).replace(/\D/g, "").slice(0, 3))}
+                  keyboardType="number-pad"
+                  style={[styles.input, { flex: 1, marginRight: type === "periodQuantity" ? 10 : 0 }]}
+                  placeholder={type === "periodQuantity" ? "Total per " + period : "Times per " + period}
+                  placeholderTextColor={theme.muted2}
+                />
+                {type === "periodQuantity" && (
+                  <TextInput value={unit} onChangeText={setUnit} placeholder="pages" style={[styles.input, { flex: 1 }]} />
+                )}
+              </View>
+            </>
+          )}
         </View>
       );
     }
     if (step === 4) {
+      if (isPeriodicType) {
+        const periodWord = period === "month" ? "month" : "week";
+        return (
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>Schedule</Text>
+            <Text style={styles.helperText}>
+              {type === "periodQuantity"
+                ? `This goal floats — log progress any day, and it counts toward your ${periodWord}ly total.`
+                : `This goal floats — complete it on any ${Math.max(1, Math.floor(Number(periodTarget) || 1))} days each ${periodWord}.`}
+            </Text>
+          </View>
+        );
+      }
       return (
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Schedule</Text>
@@ -1667,7 +1758,10 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
             : 1,
         type,
         measurable: measurableForType,
-        schedule: { type: mode, days: scheduleDays },
+        schedule: isPeriodicType ? { type: "floating" } : { type: mode, days: scheduleDays },
+        ...(isPeriodicType
+          ? { period: period === "month" ? "month" : "week", periodTarget: Math.max(1, Math.floor(Number(periodTarget) || 1)) }
+          : {}),
         frequencyLabel,
         completionCondition,
         plan: { when: whenStr.trim(), where: whereStr.trim() },

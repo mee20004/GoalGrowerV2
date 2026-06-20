@@ -45,14 +45,21 @@ import { updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
 import {
   calculateGoalStreak,
   countCompletedDates,
+  countActiveDays,
   getGrowthStage,
   getPlantHealthState,
   isGoalDoneForDate,
   isGoalScheduledOnDate,
+  isPeriodicGoal,
+  getGoalPeriod,
+  getPeriodTarget,
+  getPeriodProgress,
+  getPeriodContributorCount,
   migrateLogsForTrackingType,
   updateTrophyFreezeState,
   dateFromFirestoreValue,
 } from "../utils/goalState";
+import { getPeriodLabel } from "../utils/periodUtils";
 import { getBadgeImageForTrophyKey } from "./badgeImages";
 import { formatISOToDisplay, parseDisplayToISO, getWeekStartSync, getShowLast6DaysSync, getDateFormatSync, formatPartialFromDigits } from '../utils/dateFormat';
 
@@ -683,6 +690,8 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const [type, setType] = useState("completion");
   const [target, setTarget] = useState("1");
   const [unit, setUnit] = useState("times");
+  const [period, setPeriod] = useState("week");
+  const [periodTarget, setPeriodTarget] = useState("3");
   const [mode, setMode] = useState("days");
   const [days, setDays] = useState([]);
   const [whenStr, setWhenStr] = useState("");
@@ -925,6 +934,8 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     setType(goalData.type || "completion");
     setTarget(String(clampNum(goalData?.measurable?.target ?? 1, 1, MAX_QUANTITY_TARGET)));
     setUnit(goalData?.measurable?.unit || "times");
+    setPeriod(goalData?.period === "month" ? "month" : "week");
+    setPeriodTarget(String(Math.max(1, Math.floor(Number(goalData?.periodTarget) || 3))));
     setMode(goalData?.schedule?.type || "days");
     setDays(goalData?.schedule?.days?.length ? goalData.schedule.days : []);
     setWhenStr(goalData?.plan?.when || "");
@@ -1035,10 +1046,15 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   }, [days, mode]);
 
   const frequencyLabel = useMemo(() => {
+    if (type === "frequency" || type === "periodQuantity") {
+      const periodWord = period === "month" ? "month" : "week";
+      const t = Math.max(1, Math.floor(Number(periodTarget) || 1));
+      return type === "periodQuantity" ? `${t} ${unit.trim() || "times"} / ${periodWord}` : `${t}x / ${periodWord}`;
+    }
     if (mode === "everyday") return "Everyday";
     if (mode === "weekdays") return "Weekdays";
     return [...scheduleDays].sort((a, b) => a - b).map((d) => DAY_LABELS[d]).join("");
-  }, [mode, scheduleDays]);
+  }, [mode, scheduleDays, type, period, periodTarget, unit]);
 
   const plantOptions = useMemo(() => {
     return Object.keys(PLANT_ASSETS || {})
@@ -1122,7 +1138,8 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   }, [selectedGardenId, sharedGardens]);
 
   const measurableForType = useMemo(() => {
-    if (type === "completion") return { target: 1, unit: "times" };
+    if (type === "completion" || type === "frequency") return { target: 1, unit: "times" };
+    if (type === "periodQuantity") return { target: 1, unit: unit.trim() || "units" };
     return { target: clampNum(target, 1, MAX_QUANTITY_TARGET), unit: unit.trim() || "units" };
   }, [target, type, unit]);
 
@@ -1141,13 +1158,15 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     if (!selectedIcon) return "Please select an icon.";
     if (type === "quantity" && (!(Number(target) > 0) || unit.trim().length < 1)) return "Quantity needs a number and unit.";
     if (type === "quantity" && Number(target) > MAX_QUANTITY_TARGET) return `Quantity max is ${MAX_QUANTITY_TARGET}.`;
-    if ((mode === "days" && !days.length) || !scheduleDays.length) return "Pick at least one day.";
+    if ((type === "frequency" || type === "periodQuantity") && !(Number(periodTarget) >= 1)) return "Set how many times per period (at least 1).";
+    if (type === "periodQuantity" && unit.trim().length < 1) return "Add a unit (e.g. pages, minutes).";
+    if (type !== "frequency" && type !== "periodQuantity" && ((mode === "days" && !days.length) || !scheduleDays.length)) return "Pick at least one day.";
     if (completionMode === "date" && !isValidISODate(completionEndDate.trim())) return "Enter a valid end date.";
     if (completionMode === "date" && completionDateMeta && completionDateMeta.daysLeft < 0) return "End date cannot be in the past.";
     if (completionMode === "amount" && !(Number(completionEndAmount) > 0)) return "End amount must be greater than 0.";
     if (selectedGardenId !== "personal" && multiUserWateringEnabled && !(Number(requiredContributors) >= 2)) return "Required contributors must be at least 2.";
     return "";
-  }, [completionDateMeta, completionEndAmount, completionEndDate, completionMode, days.length, mode, multiUserWateringEnabled, name, requiredContributors, scheduleDays.length, selectedGardenId, selectedIcon, target, type, unit]);
+  }, [completionDateMeta, completionEndAmount, completionEndDate, completionMode, days.length, mode, multiUserWateringEnabled, name, requiredContributors, scheduleDays.length, selectedGardenId, selectedIcon, target, type, unit, period, periodTarget]);
 
   useEffect(() => {
     return () => {
@@ -1222,6 +1241,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
             : 1,
       };
 
+      const isPeriodicEdit = type === "frequency" || type === "periodQuantity";
       // Unfreeze trophy state if moving out of storage
       let updatedGoalData = {
         name: name.trim(),
@@ -1231,7 +1251,9 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
         icon: selectedIcon,
         type,
         measurable: measurableForType,
-        schedule: { type: mode, days: scheduleDays },
+        schedule: isPeriodicEdit ? { type: "floating" } : { type: mode, days: scheduleDays },
+        period: isPeriodicEdit ? (period === "month" ? "month" : "week") : deleteField(),
+        periodTarget: isPeriodicEdit ? Math.max(1, Math.floor(Number(periodTarget) || 1)) : deleteField(),
         frequencyLabel,
         completionCondition,
         plan: { when: whenStr.trim(), where: whereStr.trim() },
@@ -1274,13 +1296,27 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
         updatedGoalData.logs = migratedLogs;
         updatedGoalData.currentStreak = currentStreak;
         updatedGoalData.longestStreak = longestStreak;
-        updatedGoalData.totalCompletions = countCompletedDates(derivedGoalData, migratedLogs);
+        updatedGoalData.totalCompletions = isPeriodicEdit
+          ? countActiveDays(derivedGoalData, migratedLogs)
+          : countCompletedDates(derivedGoalData, migratedLogs);
         updatedGoalData.healthLevel = getPlantHealthState(derivedGoalData, fromKey(selectedDateKey)).healthLevel;
       }
 
 
 
+      // Firestore rejects any top-level `undefined` value with an
+      // "Unsupported field value: undefined" error. Strip them defensively so a
+      // single missing field can't fail the whole save.
+      Object.keys(updatedGoalData).forEach((key) => {
+        if (updatedGoalData[key] === undefined) {
+          console.warn("[GoalScreen] dropping undefined field from goal save:", key);
+          delete updatedGoalData[key];
+        }
+      });
+
+      console.log("[GoalScreen] saveEdits writing personal goal doc", { goalId: goal.id, uid: auth.currentUser.uid });
       await setDoc(doc(db, "users", auth.currentUser.uid, "goals", goal.id), updatedGoalData, { merge: true });
+      console.log("[GoalScreen] saveEdits personal goal doc OK");
 
       if (nextSharedGardenId) {
         const sharedLayoutRef = doc(db, "sharedGardens", nextSharedGardenId, "layout", goal.id);
@@ -1291,6 +1327,17 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
           sourceGoalId: goal.id,
         };
 
+        // The shared layout doc may be created fresh by this write. deleteField()
+        // sentinels are meaningless on a brand-new doc, so resolve period fields
+        // to concrete values (or drop them) instead of leaking sentinels through.
+        if (isPeriodicEdit) {
+          sharedPayload.period = period === "month" ? "month" : "week";
+          sharedPayload.periodTarget = Math.max(1, Math.floor(Number(periodTarget) || 1));
+        } else {
+          delete sharedPayload.period;
+          delete sharedPayload.periodTarget;
+        }
+
         if (isGardenChanged) {
           sharedPayload.shelfPosition = null;
           sharedPayload.pageId = null;
@@ -1298,7 +1345,21 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
           sharedPayload.slotIndex = null;
         }
 
+        Object.keys(sharedPayload).forEach((key) => {
+          if (sharedPayload[key] === undefined) {
+            console.warn("[GoalScreen] dropping undefined field from shared layout save:", key);
+            delete sharedPayload[key];
+          }
+        });
+
+        console.log("[GoalScreen] saveEdits writing shared layout doc", {
+          gardenId: nextSharedGardenId,
+          goalId: goal.id,
+          uid: auth.currentUser.uid,
+          ownerId: sharedPayload.ownerId,
+        });
         await setDoc(sharedLayoutRef, sharedPayload, { merge: true });
+        console.log("[GoalScreen] saveEdits shared layout doc OK");
       }
 
       if (isGardenChanged && !nextSharedGardenId) {
@@ -1315,7 +1376,8 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
 
       setShowEditModal(false);
     } catch (error) {
-      Alert.alert("Error", "Could not update goal.");
+      console.error("[GoalScreen] saveEdits failed:", error?.code, error?.message, error);
+      Alert.alert("Error", `Could not update goal.${error?.code ? `\n(${error.code})` : ""}`);
     } finally {
       setIsSaving(false);
     }
@@ -1777,12 +1839,29 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   // --- Robust shared multi-user quantity goal logic ---
   const isCompletion = goal.type === "completion";
   const isQuantity = goal.type === "quantity";
+  const isFrequency = goal.type === "frequency";
+  const isPeriodQuantity = goal.type === "periodQuantity";
+  const isPeriodic = isFrequency || isPeriodQuantity;
   const isSharedMultiUserCompletion = isSharedGoalView && isCompletion && !!goal?.multiUserWateringEnabled;
   const isSharedMultiUserQuantity = isSharedGoalView && isQuantity && !!goal?.multiUserWateringEnabled;
+  const isSharedMultiUserFrequency = isSharedGoalView && isFrequency && !!goal?.multiUserWateringEnabled;
+  const isSharedMultiUserPeriodQuantity = isSharedGoalView && isPeriodQuantity && !!goal?.multiUserWateringEnabled;
+  const isSharedMultiUserPeriodic = isSharedMultiUserFrequency || isSharedMultiUserPeriodQuantity;
   const currentUserId = auth.currentUser?.uid;
-  const requiredSharedContributors = (isSharedMultiUserCompletion || isSharedMultiUserQuantity)
+  const requiredSharedContributors = (isSharedMultiUserCompletion || isSharedMultiUserQuantity || isSharedMultiUserPeriodic)
     ? Math.max(2, Math.floor(Number(goal?.requiredContributors) || 2))
     : 1;
+
+  // --- Periodic (frequency / periodQuantity) progress ---
+  const periodTargetValue = isPeriodic ? getPeriodTarget(goal) : 0;
+  const periodScopedUserId = isSharedMultiUserPeriodic ? currentUserId : null;
+  const periodUserProgress = isPeriodic ? getPeriodProgress(goal, selectedDateKey, periodScopedUserId) : 0;
+  const periodGroupCount = isSharedMultiUserPeriodic ? getPeriodContributorCount(goal, selectedDateKey) : 0;
+  const periodLabelText = isPeriodic ? getPeriodLabel(getGoalPeriod(goal)) : "";
+  const periodUserDone = isPeriodic ? periodUserProgress >= periodTargetValue : false;
+  const periodGroupDone = isSharedMultiUserPeriodic
+    ? periodGroupCount >= requiredSharedContributors
+    : periodUserDone;
 
   // --- Contributor count for shared multi-user quantity ---
   // Always use Firestore logs, only count users who reached the target for the day
@@ -1830,7 +1909,9 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const baseCurrentValue = isCompletion
     ? (isSharedMultiUserCompletion ? currentWaterUsers : (goal.logs?.completion?.[selectedDateKey]?.done ? 1 : 0))
     : (goal.logs?.quantity?.[selectedDateKey]?.value ?? 0);
-  const targetValue = isCompletion ? (isSharedMultiUserCompletion ? requiredSharedContributors : 1) : (goal.measurable?.target ?? 0);
+  const targetValue = isPeriodic
+    ? periodTargetValue
+    : isCompletion ? (isSharedMultiUserCompletion ? requiredSharedContributors : 1) : (goal.measurable?.target ?? 0);
   // For shared multi-user quantity, show current user's optimistic progress if available
   // For shared multi-user quantity, always use the current user's value (optimistic if available, else Firestore)
   const currentUserQuantityValue = isSharedMultiUserQuantity
@@ -1838,7 +1919,9 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
         ? optimisticProgress.currentValue
         : firestoreUserValue)
     : null;
-  const currentValue = isSharedMultiUserQuantity
+  const currentValue = isPeriodic
+    ? periodUserProgress
+    : isSharedMultiUserQuantity
     ? currentUserQuantityValue
     : (!isSharedMultiUserCompletion && optimisticProgress)
       ? optimisticProgress.currentValue
@@ -1846,7 +1929,9 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
 
   // --- Group-level completion, health, streak, trophy logic ---
   // Always use isGoalDoneForDate in group mode (no currentUserId) for shared multi-user quantity
-  const isDone = isSharedMultiUserQuantity
+  const isDone = isPeriodic
+    ? periodGroupDone
+    : isSharedMultiUserQuantity
     ? isGoalDoneForDate(goal, selectedDateKey)
     : (!isSharedMultiUserCompletion && optimisticProgress)
       ? optimisticProgress.isDone
@@ -1935,7 +2020,13 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const trophyDate = goal?.trophyDate || null;
   const showReviveHeart = isDone && displayHealthState.healthLevel === 3;
   const selectedDateLabel = fromKey(selectedDateKey).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  const progressUnitLabel = isSharedMultiUserCompletion ? "users" : (goal.measurable?.unit || "");
+  const progressUnitLabel = isSharedMultiUserCompletion
+    ? "users"
+    : isPeriodQuantity
+      ? `${goal.measurable?.unit || ""} ${periodLabelText}`.trim()
+      : isFrequency
+        ? periodLabelText
+        : (goal.measurable?.unit || "");
   const topSummary = [
     goal.frequencyLabel || formatScheduleLabel(goal.schedule),
     goal.category || "Custom",
@@ -1997,9 +2088,25 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
       isFrozenDay = true;
     }
 
-    const doneFromState = isSharedMultiUserQuantity
-      ? isGoalDoneForDate(goal, dateKey)
-      : isGoalDoneForDate(goalForDerivedState, dateKey, currentUserId);
+    let doneFromState;
+    if (isPeriodic) {
+      // Show per-day engagement on the history dots rather than the period-wide done state.
+      if (isFrequency) {
+        const entry = goal?.logs?.completion?.[dateKey];
+        doneFromState = isSharedMultiUserPeriodic
+          ? !!entry?.users?.[currentUserId]
+          : !!entry?.done;
+      } else {
+        const entry = goal?.logs?.quantity?.[dateKey];
+        doneFromState = isSharedMultiUserPeriodic
+          ? (Number(entry?.users?.[currentUserId]) || 0) > 0
+          : (Number(entry?.value) || 0) > 0;
+      }
+    } else if (isSharedMultiUserQuantity) {
+      doneFromState = isGoalDoneForDate(goal, dateKey);
+    } else {
+      doneFromState = isGoalDoneForDate(goalForDerivedState, dateKey, currentUserId);
+    }
     const doneForDate = scheduled && doneFromState;
 
     let healthLevel;
@@ -2015,8 +2122,9 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
       dayNumber: date.getDate(),
       scheduled,
       done: doneForDate,
-      missed: scheduled && !doneForDate && isPastDay,
-      pending: scheduled && !doneForDate && isTodayDate,
+      // Periodic goals float, so an inactive day isn't a "missed" day.
+      missed: !isPeriodic && scheduled && !doneForDate && isPastDay,
+      pending: !isPeriodic && scheduled && !doneForDate && isTodayDate,
       isToday: isTodayDate,
       healthLevel,
       isFrozenDay,
@@ -2031,8 +2139,10 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     : (calculateGoalStreak(goalForDerivedState, goalForDerivedState?.logs || {}, todayKey).currentStreak ?? 0);
   const progressStatusText = isSharedMultiUserCompletion
     ? `${contributorProgressLabel} contributors`
-    : (isTrophy ? "Stored in trophy collection" : null);
-  const showQuantitySegments = isQuantity && Number(targetValue) > 0;
+    : isSharedMultiUserPeriodic
+      ? `${Math.min(periodGroupCount, requiredSharedContributors)}/${requiredSharedContributors} contributors`
+      : (isTrophy ? "Stored in trophy collection" : null);
+  const showQuantitySegments = (isQuantity || isPeriodic) && Number(targetValue) > 0;
   const quantitySegmentCount = showQuantitySegments ? Math.max(1, Math.min(Math.floor(Number(targetValue) || 1), 6)) : 0;
   const safeQuantityCurrent = showQuantitySegments
     ? Math.max(0, Math.min(Number(currentValue) || 0, Number(targetValue) || 1))
@@ -2145,7 +2255,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     statusButtonBgColor = "#d9dde3";
     statusButtonShadowColor = "#b7c0c9";
     statusButtonIconColor = "#7b8794";
-  } else if (isSharedMultiUserCompletion || isSharedMultiUserQuantity) {
+  } else if (isSharedMultiUserCompletion || isSharedMultiUserQuantity || isSharedMultiUserPeriodic) {
     if (isDone) {
       statusButtonBgColor = theme.accent;
       statusButtonShadowColor = accentShadowColor;
@@ -2155,6 +2265,10 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
       statusButtonShadowColor = accentShadowColor;
       statusButtonIconColor = "#ffffff";
     } else if (isSharedMultiUserQuantity && Number(currentValue) >= (quantityTargetValue || 1)) {
+      statusButtonBgColor = getLighterAccentColor(theme.accent);
+      statusButtonShadowColor = accentShadowColor;
+      statusButtonIconColor = "#ffffff";
+    } else if (isSharedMultiUserPeriodic && periodUserDone) {
       statusButtonBgColor = getLighterAccentColor(theme.accent);
       statusButtonShadowColor = accentShadowColor;
       statusButtonIconColor = "#ffffff";
@@ -2306,7 +2420,31 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                       })}
                     </View>
                   </View>
-                ) : isQuantity ? (
+                ) : isSharedMultiUserPeriodic ? (
+                  <View style={styles.quantityButtonContent}>
+                    <Text
+                      style={[
+                        styles.sharedQuantityProgressLabel,
+                        { color: (isDone || periodUserDone) ? '#fff' : theme.accent },
+                      ]}
+                    >
+                      {`${Math.min(periodGroupCount, requiredSharedContributors)}/${requiredSharedContributors}`}
+                    </Text>
+                    <View style={styles.quantitySegmentRow}>
+                      {Array.from({ length: quantitySegmentCount }).map((_, index) => (
+                        <View
+                          key={`goal-quantity-segment-${index}`}
+                          style={[
+                            styles.quantitySegment,
+                            index < filledQuantitySegments
+                              ? (periodUserDone ? styles.quantitySegmentDone : styles.quantitySegmentFilled)
+                              : styles.quantitySegmentEmpty,
+                          ]}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                ) : (isQuantity || isPeriodic) ? (
                   <View style={styles.quantityButtonContent}>
                     <View style={styles.quantitySegmentRow}>
                       {Array.from({ length: quantitySegmentCount }).map((_, index) => (
@@ -2550,7 +2688,18 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
             {goal?.gardenType === "shared" && goal?.multiUserWateringEnabled && (
               <DetailRow label="Required users" value={String(Math.max(2, Math.floor(Number(goal?.requiredContributors) || 2)))} />
             )}
-            <DetailRow label="Tracking" value={goal.type === "completion" ? "Checkmark" : `${goal.measurable?.target || 0} ${goal.measurable?.unit || "units"}`} />
+            <DetailRow
+              label="Tracking"
+              value={
+                isFrequency
+                  ? `${getPeriodTarget(goal)}x per ${getGoalPeriod(goal)}`
+                  : isPeriodQuantity
+                    ? `${getPeriodTarget(goal)} ${goal.measurable?.unit || "units"} per ${getGoalPeriod(goal)}`
+                    : goal.type === "completion"
+                      ? "Checkmark"
+                      : `${goal.measurable?.target || 0} ${goal.measurable?.unit || "units"}`
+              }
+            />
             <DetailRow label="Schedule" value={goal.frequencyLabel || formatScheduleLabel(goal.schedule)} />
             <DetailRow label="Completion" value={formatCompletionLabel(goal.completionCondition)} />
           </View>
@@ -2755,36 +2904,73 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
 
                 <View style={styles.editCard}>
                   <Text style={styles.editLabel}>Tracking</Text>
-                  <Segmented left={{ label: "Checkmark", value: "completion" }} right={{ label: "Quantity", value: "quantity" }} value={type} onChange={setType} accent={theme.accent} />
+                  <View style={styles.chipWrap}>
+                    <Chip label="Checkmark" active={type === "completion"} onPress={() => setType("completion")} />
+                    <Chip label="Quantity" active={type === "quantity"} onPress={() => setType("quantity")} />
+                    <Chip label="Frequency" active={type === "frequency"} onPress={() => setType("frequency")} />
+                    <Chip label="Period total" active={type === "periodQuantity"} onPress={() => setType("periodQuantity")} />
+                  </View>
                   {type === "quantity" && (
                     <View style={styles.row}>
                       <TextInput value={target} onChangeText={(value) => setTarget(normalizeQuantityTargetInput(value))} keyboardType="numeric" style={[styles.input, styles.rowInput]} placeholder="Target (max 6)" placeholderTextColor={theme.muted2} />
                       <TextInput value={unit} onChangeText={setUnit} style={[styles.input, styles.rowInput]} placeholder="minutes" placeholderTextColor={theme.muted2} />
                     </View>
                   )}
+                  {(type === "frequency" || type === "periodQuantity") && (
+                    <>
+                      <Text style={[styles.editSubLabel, styles.topGap]}>Per</Text>
+                      <View style={styles.chipWrap}>
+                        <Chip label="Week" active={period === "week"} onPress={() => setPeriod("week")} />
+                        <Chip label="Month" active={period === "month"} onPress={() => setPeriod("month")} />
+                      </View>
+                      <View style={styles.row}>
+                        <TextInput
+                          value={periodTarget}
+                          onChangeText={(value) => setPeriodTarget(String(value).replace(/\D/g, "").slice(0, 3))}
+                          keyboardType="number-pad"
+                          style={[styles.input, styles.rowInput]}
+                          placeholder={type === "periodQuantity" ? "Total per " + period : "Times per " + period}
+                          placeholderTextColor={theme.muted2}
+                        />
+                        {type === "periodQuantity" && (
+                          <TextInput value={unit} onChangeText={setUnit} style={[styles.input, styles.rowInput]} placeholder="pages" placeholderTextColor={theme.muted2} />
+                        )}
+                      </View>
+                    </>
+                  )}
                 </View>
 
                 <View style={styles.editCard}>
                   <Text style={styles.editLabel}>Schedule</Text>
-                  <View style={styles.chipWrap}>
-                    <Chip label="Every day" active={mode === "everyday"} onPress={() => { setMode("everyday"); setDays([0, 1, 2, 3, 4, 5, 6]); }} />
-                    <Chip label="Weekdays" active={mode === "weekdays"} onPress={() => { setMode("weekdays"); setDays([1, 2, 3, 4, 5]); }} />
-                    <Chip label="Custom" active={mode === "days"} onPress={() => setMode("days")} />
-                  </View>
-                  <View style={styles.daysGrid}>
-                    {getScheduleDays().map((d) => {
-                      const isSelected = mode === "everyday" ? true : mode === "weekdays" ? (d.day >= 1 && d.day <= 5) : days.includes(d.day);
-                      return (
-                        <HapticPressable
-                          key={d.day}
-                          onPress={() => handleDayPress(d.day)}
-                          style={[styles.dayPill, isSelected && [styles.dayPillActive, { backgroundColor: theme.accent, borderColor: theme.accent }]]}
-                        >
-                          <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>{DAY_LABELS[d.day]}</Text>
-                        </HapticPressable>
-                      );
-                    })}
-                  </View>
+                  {(type === "frequency" || type === "periodQuantity") ? (
+                    <Text style={styles.editSubLabel}>
+                      {type === "periodQuantity"
+                        ? `This goal floats — log progress any day; it counts toward your ${period === "month" ? "month" : "week"}ly total.`
+                        : `This goal floats — complete it on any ${Math.max(1, Math.floor(Number(periodTarget) || 1))} days each ${period === "month" ? "month" : "week"}.`}
+                    </Text>
+                  ) : (
+                    <>
+                      <View style={styles.chipWrap}>
+                        <Chip label="Every day" active={mode === "everyday"} onPress={() => { setMode("everyday"); setDays([0, 1, 2, 3, 4, 5, 6]); }} />
+                        <Chip label="Weekdays" active={mode === "weekdays"} onPress={() => { setMode("weekdays"); setDays([1, 2, 3, 4, 5]); }} />
+                        <Chip label="Custom" active={mode === "days"} onPress={() => setMode("days")} />
+                      </View>
+                      <View style={styles.daysGrid}>
+                        {getScheduleDays().map((d) => {
+                          const isSelected = mode === "everyday" ? true : mode === "weekdays" ? (d.day >= 1 && d.day <= 5) : days.includes(d.day);
+                          return (
+                            <HapticPressable
+                              key={d.day}
+                              onPress={() => handleDayPress(d.day)}
+                              style={[styles.dayPill, isSelected && [styles.dayPillActive, { backgroundColor: theme.accent, borderColor: theme.accent }]]}
+                            >
+                              <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>{DAY_LABELS[d.day]}</Text>
+                            </HapticPressable>
+                          );
+                        })}
+                      </View>
+                    </>
+                  )}
                 </View>
 
                 <View style={styles.editCard}>

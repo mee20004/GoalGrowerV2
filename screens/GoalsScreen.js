@@ -35,6 +35,10 @@ import {
   getPlantHealthState,
   isGoalDoneForDate,
   isGoalScheduledOnDate,
+  getGoalPeriod,
+  getPeriodTarget,
+  getPeriodProgress,
+  getPeriodContributorCount,
 } from "../utils/goalState";
 // import { fromKey } from "../components/GoalsStore";
 const STORAGE_PAGE_ID = 'storage';
@@ -520,8 +524,14 @@ export default function GoalsScreen({ navigation }) {
     const goalType = item.kind || item.type;
     const isCompletion = goalType === "completion";
     const isQuantity = goalType === "quantity";
+    const isFrequency = goalType === "frequency";
+    const isPeriodQuantity = goalType === "periodQuantity";
+    const isPeriodic = isFrequency || isPeriodQuantity;
     const isSharedMultiUserCompletion = !!item.sharedGardenId && isCompletion && !!item.multiUserWateringEnabled;
     const isSharedMultiUserQuantity = !!item.sharedGardenId && isQuantity && !!item.multiUserWateringEnabled;
+    const isSharedMultiUserFrequency = !!item.sharedGardenId && isFrequency && !!item.multiUserWateringEnabled;
+    const isSharedMultiUserPeriodQuantity = !!item.sharedGardenId && isPeriodQuantity && !!item.multiUserWateringEnabled;
+    const isSharedMultiUserPeriodic = isSharedMultiUserFrequency || isSharedMultiUserPeriodQuantity;
     const currentUserId = auth.currentUser?.uid;
     const completionLog = item.logs?.completion?.[selectedDateKey] || {};
     const quantityLog = item.logs?.quantity?.[selectedDateKey] || {};
@@ -556,9 +566,19 @@ export default function GoalsScreen({ navigation }) {
     if (isSharedMultiUserQuantity) {
       contributorQuantityCount = allContributors.filter((userId) => Number(firestoreQuantityLogs[userId]) >= quantityTargetValue).length;
     }
-    const requiredSharedContributors = (isSharedMultiUserCompletion || isSharedMultiUserQuantity)
+    const requiredSharedContributors = (isSharedMultiUserCompletion || isSharedMultiUserQuantity || isSharedMultiUserPeriodic)
       ? Math.max(2, Math.floor(Number(item.requiredContributors) || 2))
       : 1;
+
+    // --- Periodic (frequency / periodQuantity) progress ---
+    const periodTargetValue = isPeriodic ? getPeriodTarget(item) : 0;
+    const periodScopedUserId = isSharedMultiUserPeriodic ? currentUserId : null;
+    const periodUserProgress = isPeriodic ? getPeriodProgress(item, selectedDateKey, periodScopedUserId) : 0;
+    const periodGroupCount = isSharedMultiUserPeriodic ? getPeriodContributorCount(item, selectedDateKey) : 0;
+    const periodUserDone = isPeriodic ? periodUserProgress >= periodTargetValue : false;
+    const periodGroupDone = isSharedMultiUserPeriodic
+      ? periodGroupCount >= requiredSharedContributors
+      : periodUserDone;
     // Progress label for group bar
     let contributorProgressLabel = isSharedMultiUserQuantity
       ? `${Math.min(contributorQuantityCount, requiredSharedContributors)}/${requiredSharedContributors}`
@@ -577,16 +597,22 @@ export default function GoalsScreen({ navigation }) {
     const baseCurrentValue = isCompletion
       ? (isSharedMultiUserCompletion ? currentWaterUsers : (completionLog.done ? 1 : 0))
       : (item.logs?.quantity?.[selectedDateKey]?.value ?? 0);
-    const targetValue = isCompletion ? (isSharedMultiUserCompletion ? requiredSharedContributors : 1) : (item.measurable?.target ?? 0);
+    const targetValue = isPeriodic
+      ? periodTargetValue
+      : isCompletion ? (isSharedMultiUserCompletion ? requiredSharedContributors : 1) : (item.measurable?.target ?? 0);
     // For shared multi-user quantity, always use the current user's value (optimistic if available, else Firestore)
-    const currentValue = isSharedMultiUserQuantity
+    const currentValue = isPeriodic
+      ? periodUserProgress
+      : isSharedMultiUserQuantity
       ? currentUserQuantityValue
       : (!isSharedMultiUserCompletion && optimisticProgress)
         ? optimisticProgress.currentValue
         : baseCurrentValue;
 
     // --- Group-level completion: always use Firestore logs, never optimistic state ---
-    const isDone = isSharedMultiUserQuantity
+    const isDone = isPeriodic
+      ? periodGroupDone
+      : isSharedMultiUserQuantity
       ? (contributorQuantityCount >= requiredSharedContributors)
       : (!isSharedMultiUserCompletion && optimisticProgress)
         ? optimisticProgress.isDone
@@ -601,7 +627,7 @@ export default function GoalsScreen({ navigation }) {
       : (isSharedMultiUserCompletion && currentUserClicked);
 
     // --- Segment rendering ---
-    const showQuantitySegments = isQuantity && Number(targetValue) > 0;
+    const showQuantitySegments = (isQuantity || isPeriodic) && Number(targetValue) > 0;
     const quantitySegmentCount = showQuantitySegments ? Math.max(1, Math.min(Math.floor(Number(targetValue) || 1), 6)) : 0;
     const safeQuantityCurrent = showQuantitySegments
       ? Math.max(0, Math.min(Number(currentValue) || 0, Number(targetValue) || 1))
@@ -617,7 +643,7 @@ export default function GoalsScreen({ navigation }) {
     let buttonIconColor = theme.accent;
 
     // Handle shared goals (completion and quantity)
-    if (isSharedMultiUserCompletion || isSharedMultiUserQuantity) {
+    if (isSharedMultiUserCompletion || isSharedMultiUserQuantity || isSharedMultiUserPeriodic) {
       if (isDone) {
         buttonBgColor = theme.accent;
         buttonShadowColor = accentShadowColor;
@@ -630,6 +656,10 @@ export default function GoalsScreen({ navigation }) {
         buttonBgColor = getLighterAccentColor(theme.accent);
         buttonShadowColor = accentShadowColor;
         buttonIconColor = '#ffffff';
+      } else if (isSharedMultiUserPeriodic && periodUserDone) {
+        buttonBgColor = getLighterAccentColor(theme.accent);
+        buttonShadowColor = accentShadowColor;
+        buttonIconColor = '#ffffff';
       } else {
         buttonBgColor = '#f1f1f1';
         buttonShadowColor = uncheckedButtonShadowColor;
@@ -639,7 +669,7 @@ export default function GoalsScreen({ navigation }) {
       buttonBgColor = theme.accent;
       buttonShadowColor = accentShadowColor;
       buttonIconColor = '#ffffff';
-    } else if (isQuantity && Number(currentValue) >= (quantityTargetValue || 1)) {
+    } else if ((isQuantity || (isPeriodic && !isSharedMultiUserPeriodic)) && Number(currentValue) >= (targetValue || 1)) {
       buttonBgColor = getLighterAccentColor(theme.accent);
       buttonShadowColor = accentShadowColor;
       buttonIconColor = '#ffffff';
@@ -648,9 +678,9 @@ export default function GoalsScreen({ navigation }) {
     // Determine if this goal is scheduled for the selected day
     const isForSelectedDay = isGoalScheduledOnDate(item, fromKey(selectedDateKey));
     const previewBackdropColor = getGoalPreviewBackdropColor(item);
-    const actionButtonSize = (isSharedMultiUserCompletion || isSharedMultiUserQuantity) ? 58 : 55;
-    const actionButtonRadius = (isSharedMultiUserCompletion || isSharedMultiUserQuantity) ? 22 : 22;
-    const actionIconSize = (isSharedMultiUserCompletion || isSharedMultiUserQuantity) ? 30 : 28;
+    const actionButtonSize = (isSharedMultiUserCompletion || isSharedMultiUserQuantity || isSharedMultiUserPeriodic) ? 58 : 55;
+    const actionButtonRadius = 22;
+    const actionIconSize = (isSharedMultiUserCompletion || isSharedMultiUserQuantity || isSharedMultiUserPeriodic) ? 30 : 28;
 
     // --- UI: Match GoalScreen shared quantity multi-user goal button/segments exactly ---
     return (
@@ -742,7 +772,31 @@ export default function GoalsScreen({ navigation }) {
                   })}
                 </View>
               </View>
-            ) : isQuantity ? (
+            ) : isSharedMultiUserPeriodic ? (
+              <View style={styles.quantityButtonContent}>
+                <Text
+                  style={[
+                    styles.sharedQuantityProgressLabel,
+                    { color: (isDone || periodUserDone) ? '#fff' : theme.accent, fontWeight: 'bold', fontSize: 14 },
+                  ]}
+                >
+                  {`${Math.min(periodGroupCount, requiredSharedContributors)}/${requiredSharedContributors}`}
+                </Text>
+                <View style={styles.quantitySegmentRow}>
+                  {Array.from({ length: quantitySegmentCount }).map((_, index) => (
+                    <View
+                      key={`${item._flatListKey}-quantity-segment-${index}`}
+                      style={[
+                        styles.quantitySegment,
+                        index < filledQuantitySegments
+                          ? (periodUserDone ? styles.quantitySegmentDone : quantitySegmentFilledStyle)
+                          : styles.quantitySegmentEmpty,
+                      ]}
+                    />
+                  ))}
+                </View>
+              </View>
+            ) : (isQuantity || isPeriodic) ? (
               <View style={styles.quantityButtonContent}>
                 <View style={styles.quantitySegmentRow}>
                   {Array.from({ length: quantitySegmentCount }).map((_, index) => (
