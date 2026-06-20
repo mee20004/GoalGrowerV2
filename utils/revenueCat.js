@@ -4,6 +4,7 @@ import RevenueCatUI, { PAYWALL_RESULT } from "react-native-purchases-ui";
 import {
   PRO_ENTITLEMENT_ID,
   OFFERING_IDS,
+  PRODUCT_IDS,
   getRevenueCatApiKey,
 } from "../constants/revenueCat";
 import { logAnalyticsEvent } from "./analytics";
@@ -90,6 +91,27 @@ export function resolveOffering(offerings, offeringId = OFFERING_IDS.DEFAULT) {
   }
 
   return offerings.all?.[offeringId] ?? null;
+}
+
+function getPackageProductIdentifier(pkg) {
+  return pkg?.product?.identifier || pkg?.storeProduct?.identifier || null;
+}
+
+export function resolveCoinPackage(
+  offerings,
+  offeringId = OFFERING_IDS.COINS,
+  productId = PRODUCT_IDS.COINS
+) {
+  const offering = resolveOffering(offerings, offeringId);
+  if (!offering?.availablePackages?.length) {
+    return null;
+  }
+
+  const matching = offering.availablePackages.find(
+    (pkg) => getPackageProductIdentifier(pkg) === productId
+  );
+
+  return matching || offering.availablePackages[0];
 }
 
 export { OFFERING_IDS };
@@ -185,12 +207,16 @@ export async function fetchCustomerInfo() {
   });
 }
 
+async function loadOfferingsDirect() {
+  return withRetry(() => Purchases.getOfferings());
+}
+
 export async function fetchOfferings() {
   if (!configured) return null;
 
   return enqueueRevenueCatOperation(async () => {
     try {
-      return await withRetry(() => Purchases.getOfferings());
+      return await loadOfferingsDirect();
     } catch (error) {
       console.error("RevenueCat getOfferings failed:", error);
       throw error;
@@ -225,6 +251,57 @@ async function logPaywallResult(result, offeringId) {
   });
 }
 
+function describeCoinPaywallSetupIssue(offering) {
+  const packages = offering?.availablePackages ?? [];
+  const packageSummary = packages
+    .map((pkg) => `${pkg.identifier} → ${getPackageProductIdentifier(pkg) || "missing store product"}`)
+    .join("\n");
+
+  return [
+    "Your RevenueCat coin paywall is not linked to a package yet.",
+    "",
+    "In RevenueCat:",
+    "1. Open Paywalls → the paywall on CoinOfferings",
+    "2. Select the purchase button",
+    "3. Set Package to your custom coins package (not $rc_monthly or $rc_annual)",
+    "4. Use a one-time / single-product template for consumables",
+    "5. Publish the paywall",
+    "",
+    packages.length
+      ? `Packages on CoinOfferings:\n${packageSummary}`
+      : "CoinOfferings has no packages — add a custom package linked to product \"coins\".",
+  ].join("\n");
+}
+
+function validateCoinOfferingForPaywall(offering) {
+  const coinPackage = resolveCoinPackage({ all: { [OFFERING_IDS.COINS]: offering } });
+  if (!coinPackage) {
+    Alert.alert("Coin Paywall Setup", describeCoinPaywallSetupIssue(offering));
+    return false;
+  }
+
+  const product = coinPackage.product || coinPackage.storeProduct;
+  if (!product) {
+    Alert.alert(
+      "Coins Unavailable",
+      "The coins product could not be loaded from the App Store. Confirm the coins IAP is Ready to Submit and test with a Sandbox Apple ID."
+    );
+    return false;
+  }
+
+  if (__DEV__) {
+    console.log(
+      "[RevenueCat] Coin paywall packages:",
+      offering.availablePackages?.map((pkg) => ({
+        identifier: pkg.identifier,
+        productId: getPackageProductIdentifier(pkg),
+      }))
+    );
+  }
+
+  return true;
+}
+
 export async function presentPaywall(offeringId = OFFERING_IDS.DEFAULT) {
   if (!configured) {
     alertRevenueCatUnavailable();
@@ -240,9 +317,11 @@ export async function presentPaywall(offeringId = OFFERING_IDS.DEFAULT) {
     return result;
   }
 
+  let offering = null;
+
   try {
     const offerings = await fetchOfferings();
-    const offering = resolveOffering(offerings, offeringId);
+    offering = resolveOffering(offerings, offeringId);
 
     if (!offering) {
       Alert.alert(
@@ -254,12 +333,31 @@ export async function presentPaywall(offeringId = OFFERING_IDS.DEFAULT) {
       return result;
     }
 
+    if (offeringId === OFFERING_IDS.COINS && !validateCoinOfferingForPaywall(offering)) {
+      const result = PAYWALL_RESULT.ERROR;
+      await logPaywallResult(result, offeringId);
+      return result;
+    }
+
     const result = await RevenueCatUI.presentPaywall({ offering });
     await logPaywallResult(result, offeringId);
     return result;
   } catch (error) {
     console.error("RevenueCat presentPaywall failed:", error);
-    Alert.alert("Paywall Error", getReadablePurchaseError(error));
+    const message = getReadablePurchaseError(error);
+    if (
+      offeringId === OFFERING_IDS.COINS
+      && message.toLowerCase().includes("selected package")
+    ) {
+      Alert.alert(
+        "Coin Paywall Setup",
+        describeCoinPaywallSetupIssue(
+          offering || { availablePackages: [] }
+        )
+      );
+    } else {
+      Alert.alert("Paywall Error", message);
+    }
     const result = PAYWALL_RESULT.ERROR;
     await logPaywallResult(result, offeringId);
     return result;
@@ -380,4 +478,27 @@ export function describePaywallResult(result) {
     default:
       return null;
   }
+}
+
+export function findLatestCoinTransaction(
+  customerInfo,
+  productId = PRODUCT_IDS.COINS
+) {
+  const transactions = customerInfo?.nonSubscriptionTransactions;
+  if (!Array.isArray(transactions) || transactions.length === 0) {
+    return null;
+  }
+
+  const coinTransactions = transactions.filter(
+    (transaction) => transaction?.productIdentifier === productId
+  );
+  if (coinTransactions.length === 0) {
+    return null;
+  }
+
+  return [...coinTransactions].sort((left, right) => {
+    const leftTime = left?.purchaseDate ? new Date(left.purchaseDate).getTime() : 0;
+    const rightTime = right?.purchaseDate ? new Date(right.purchaseDate).getTime() : 0;
+    return rightTime - leftTime;
+  })[0];
 }

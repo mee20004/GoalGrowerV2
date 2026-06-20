@@ -149,21 +149,31 @@ export default function CustomizationScreen({
     isShelfColorOwned,
   } = useShopInventory();
 
-  const ownedFarBgOptions = useMemo(
-    () => FAR_BG_ASSETS.map((asset, index) => ({ asset, index })).filter(({ index }) => isFarBgOwned(index)),
-    [isFarBgOwned]
+  const showAllShopOptions = !enforceOwnedSelection;
+
+  const farBgOptions = useMemo(
+    () => FAR_BG_ASSETS.map((asset, index) => ({ asset, index })).filter(
+      ({ index }) => showAllShopOptions || isFarBgOwned(index)
+    ),
+    [showAllShopOptions, isFarBgOwned]
   );
-  const ownedWindowOptions = useMemo(
-    () => FRAME_ASSETS.map((asset, index) => ({ asset, index })).filter(({ index }) => isWindowFrameOwned(index)),
-    [isWindowFrameOwned]
+  const windowOptions = useMemo(
+    () => FRAME_ASSETS.map((asset, index) => ({ asset, index })).filter(
+      ({ index }) => showAllShopOptions || isWindowFrameOwned(index)
+    ),
+    [showAllShopOptions, isWindowFrameOwned]
   );
-  const ownedWallOptions = useMemo(
-    () => WALLPAPER_ASSETS.map((asset, index) => ({ asset, index })).filter(({ index }) => isWallBgOwned(index)),
-    [isWallBgOwned]
+  const wallOptions = useMemo(
+    () => WALLPAPER_ASSETS.map((asset, index) => ({ asset, index })).filter(
+      ({ index }) => showAllShopOptions || isWallBgOwned(index)
+    ),
+    [showAllShopOptions, isWallBgOwned]
   );
-  const ownedShelfOptions = useMemo(
-    () => SHELF_COLOR_SCHEMES.map((scheme, index) => ({ scheme, index })).filter(({ index }) => isShelfColorOwned(index)),
-    [isShelfColorOwned]
+  const shelfOptions = useMemo(
+    () => SHELF_COLOR_SCHEMES.map((scheme, index) => ({ scheme, index })).filter(
+      ({ index }) => showAllShopOptions || isShelfColorOwned(index)
+    ),
+    [showAllShopOptions, isShelfColorOwned]
   );
 
   const [farBg, setFarBg] = useState(customizations?.[selectedPageId]?.farBg || 0);
@@ -172,19 +182,44 @@ export default function CustomizationScreen({
   const [shelfColor, setShelfColor] = useState(customizations?.[selectedPageId]?.shelfColor || 0);
 
   const activeSection = customizerType || "wall";
-  const isInitialSaveSkipped = useRef(true);
+  const userEditedRef = useRef(false);
   const isClosingRef = useRef(false);
   const sheetTranslate = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
+  const applyCustomizationValues = useCallback((saved = {}) => {
+    setFarBg(saved.farBg ?? 0);
+    setWindowFrame(saved.windowFrame ?? 0);
+    setWallBg(saved.wallBg ?? 0);
+    setShelfColor(saved.shelfColor ?? 0);
+  }, []);
+
   useEffect(() => {
-    setFarBg(customizations?.[selectedPageId]?.farBg || 0);
-    setWindowFrame(customizations?.[selectedPageId]?.windowFrame || 0);
-    setWallBg(customizations?.[selectedPageId]?.wallBg || 0);
-    setShelfColor(customizations?.[selectedPageId]?.shelfColor || 0);
-    isInitialSaveSkipped.current = true;
-  }, [selectedPageId, customizations]);
+    if (!visible) {
+      userEditedRef.current = false;
+      return;
+    }
+    if (userEditedRef.current) return;
+    applyCustomizationValues(customizations?.[selectedPageId] || {});
+  }, [visible, selectedPageId, customizations, applyCustomizationValues]);
+
+  const setFarBgFromUser = useCallback((value) => {
+    userEditedRef.current = true;
+    setFarBg(value);
+  }, []);
+  const setWindowFrameFromUser = useCallback((value) => {
+    userEditedRef.current = true;
+    setWindowFrame(value);
+  }, []);
+  const setWallBgFromUser = useCallback((value) => {
+    userEditedRef.current = true;
+    setWallBg(value);
+  }, []);
+  const setShelfColorFromUser = useCallback((value) => {
+    userEditedRef.current = true;
+    setShelfColor(value);
+  }, []);
 
   useEffect(() => {
     if (!enforceOwnedSelection) return;
@@ -213,7 +248,7 @@ export default function CustomizationScreen({
   ]);
 
   useEffect(() => {
-    if (!visible || !canSave) return undefined;
+    if (!visible || !canSave || !userEditedRef.current) return undefined;
 
     const saved = customizations?.[selectedPageId] || {};
     const values = { farBg, windowFrame, wallBg, shelfColor };
@@ -223,10 +258,7 @@ export default function CustomizationScreen({
       wallBg !== (saved.wallBg ?? 0) ||
       shelfColor !== (saved.shelfColor ?? 0);
 
-    if (isInitialSaveSkipped.current) {
-      isInitialSaveSkipped.current = false;
-      if (!hasChange) return undefined;
-    }
+    if (!hasChange) return undefined;
 
     const timer = setTimeout(() => {
       onSave(selectedPageId, values);
@@ -325,7 +357,7 @@ export default function CustomizationScreen({
       case "farbg":
         return (
           <FlatList
-            data={ownedFarBgOptions}
+            data={farBgOptions}
             horizontal
             showsHorizontalScrollIndicator={false}
             extraData={farBg}
@@ -335,7 +367,7 @@ export default function CustomizationScreen({
               <SwatchCard
                 selected={farBg === index}
                 accent={accent}
-                onPress={() => setFarBg(index)}
+                onPress={() => setFarBgFromUser(index)}
                 imagePreview
               >
                 <Image source={asset} style={styles.squarePreviewImage} resizeMode="cover" />
@@ -346,7 +378,7 @@ export default function CustomizationScreen({
       case "window":
         return (
           <FlatList
-            data={ownedWindowOptions}
+            data={windowOptions}
             horizontal
             showsHorizontalScrollIndicator={false}
             extraData={windowFrame}
@@ -356,7 +388,7 @@ export default function CustomizationScreen({
               <SwatchCard
                 selected={windowFrame === index}
                 accent={accent}
-                onPress={() => setWindowFrame(index)}
+                onPress={() => setWindowFrameFromUser(index)}
                 imagePreview
               >
                 <Image source={asset} style={styles.windowSquareImage} resizeMode="contain" />
@@ -367,7 +399,7 @@ export default function CustomizationScreen({
       case "wall":
         return (
           <FlatList
-            data={ownedWallOptions}
+            data={wallOptions}
             horizontal
             showsHorizontalScrollIndicator={false}
             extraData={wallBg}
@@ -377,7 +409,7 @@ export default function CustomizationScreen({
               <SwatchCard
                 selected={wallBg === index}
                 accent={accent}
-                onPress={() => setWallBg(index)}
+                onPress={() => setWallBgFromUser(index)}
                 imagePreview
               >
                 <Image source={asset} style={styles.wallSquareImage} resizeMode="cover" />
@@ -388,14 +420,14 @@ export default function CustomizationScreen({
       case "shelf":
         return (
           <FlatList
-            data={ownedShelfOptions}
+            data={shelfOptions}
             horizontal
             showsHorizontalScrollIndicator={false}
             extraData={shelfColor}
             keyExtractor={({ index }) => `shelf-${index}`}
             contentContainerStyle={styles.carouselContent}
             renderItem={({ item: { scheme, index } }) => (
-              <SwatchCard selected={shelfColor === index} accent={accent} onPress={() => setShelfColor(index)}>
+              <SwatchCard selected={shelfColor === index} accent={accent} onPress={() => setShelfColorFromUser(index)}>
                 <View style={[styles.swatchFill, { backgroundColor: scheme.ledgeBg }]} />
               </SwatchCard>
             )}

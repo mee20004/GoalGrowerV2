@@ -27,12 +27,12 @@ import ShopItemCard from "../components/ShopItemCard";
 import {
   SHOP_CATEGORIES,
   DECOR_TYPES,
-  IAP_COIN_GRANTS,
   getShopItemsByCategory,
 } from "../constants/ShopCatalog";
 import { SHOP_CATALOG_TABS, SHOP_TAB_ICONS } from "../constants/ShopTabIcons";
 import { PRO_BENEFITS_SUMMARY } from "../constants/subscriptionLimits";
-import { creditCoins } from "../utils/shopInventory";
+import { verifyAndCreditCoinPurchase } from "../utils/shopInventory";
+import { fetchCustomerInfo, findLatestCoinTransaction } from "../utils/revenueCat";
 
 const BANNER_IMAGE = require("../assets/FarBG/beach_b.png");
 const COINS_BUTTON_HEIGHT = 58;
@@ -131,15 +131,38 @@ export default function ShopScreen() {
 
   const handleGetCoins = useCallback(async () => {
     const result = await openCoinPaywall();
-    if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
-      const grantAmount = IAP_COIN_GRANTS.coins || 500;
-      try {
-        await creditCoins(grantAmount, "iap_coins");
-        Alert.alert("Coins added", `+${grantAmount.toLocaleString()} coins are in your balance.`);
-      } catch (error) {
-        Alert.alert("Coins pending", "Purchase succeeded, but coin credit failed. Try again shortly.");
-        console.error("IAP coin credit failed:", error);
+    if (result !== PAYWALL_RESULT.PURCHASED) return;
+
+    try {
+      const customerInfo = await fetchCustomerInfo();
+      const latestCoinTx = findLatestCoinTransaction(customerInfo);
+      const creditResult = await verifyAndCreditCoinPurchase(
+        latestCoinTx?.transactionIdentifier
+      );
+
+      if (creditResult?.credited) {
+        Alert.alert(
+          "Coins added",
+          `+${creditResult.amount.toLocaleString()} coins are in your balance.`
+        );
+        return;
       }
+
+      if (creditResult?.reason === "already_credited") {
+        Alert.alert("Coins added", "Your coin pack is already on your balance.");
+        return;
+      }
+
+      Alert.alert(
+        "Coins pending",
+        "Purchase succeeded, but coin credit is still syncing. Reopen Shop or try Buy Coins again shortly."
+      );
+    } catch (error) {
+      Alert.alert(
+        "Coins pending",
+        "Purchase succeeded, but coin credit failed. Reopen Shop or try Buy Coins again shortly."
+      );
+      console.error("IAP coin credit failed:", error);
     }
   }, [openCoinPaywall]);
 

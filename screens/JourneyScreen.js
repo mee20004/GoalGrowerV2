@@ -168,10 +168,12 @@ export default function JourneyScreen({ route, navigation }) {
         countUpAnim.setValue(viewedBalance);
       }
 
-      // Fetch all goals (personal + shared)
-      const allGoals = await getScoredGoalsForUser(uid);
+      // Viewing another user: personal goals only; use stored score (no shared-garden reads).
+      const allGoals = await getScoredGoalsForUser(uid, { includeSharedGardens: !isReadOnly });
 
-      const overallScore = await updateOverallScoreForUser(uid);
+      const overallScore = isReadOnly
+        ? safeNumber(userData?.overallScore)
+        : await updateOverallScoreForUser(uid);
       const completionByGoal = allGoals.map((goal) => ({
         goal,
         completedDays: countGoalCompletionDays(goal),

@@ -2,12 +2,10 @@ import {
   doc,
   getDoc,
   onSnapshot,
-  runTransaction,
-  serverTimestamp,
-  setDoc,
 } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { onFirestoreListenerError } from "./firestoreListener";
+import { callCloudFunction } from "./cloudFunctions";
 import {
   COIN_REWARDS,
   DECOR_TYPES,
@@ -50,41 +48,19 @@ export function buildInventoryState(userData) {
   };
 }
 
-function getDefaultShopPayload(existingData = {}) {
-  return {
-    coinBalance:
-      typeof existingData.coinBalance === "number" ? existingData.coinBalance : COIN_REWARDS.STARTING_BALANCE,
-    ownedPlants: normalizeOwnedMap(existingData.ownedPlants, DEFAULT_OWNED_PLANTS),
-    ownedPots: normalizeOwnedMap(existingData.ownedPots, DEFAULT_OWNED_POTS),
-    ownedFarBg: normalizeOwnedMap(existingData.ownedFarBg, DEFAULT_OWNED_FARBG),
-    ownedWindowFrames: normalizeOwnedMap(existingData.ownedWindowFrames, DEFAULT_OWNED_WINDOW_FRAMES),
-    ownedWallBg: normalizeOwnedMap(existingData.ownedWallBg, DEFAULT_OWNED_WALL_BG),
-    ownedShelfColors: normalizeOwnedMap(existingData.ownedShelfColors, DEFAULT_OWNED_SHELF_COLORS),
-    shopInitialized: true,
-    shopInitializedAt: serverTimestamp(),
-  };
-}
-
 export async function ensureShopInventoryInitialized(uid) {
   if (!uid) return null;
 
   const userRef = getUserShopRef(uid);
   const snap = await getDoc(userRef);
 
-  if (!snap.exists()) {
-    const payload = getDefaultShopPayload();
-    await setDoc(userRef, payload, { merge: true });
-    return buildInventoryState(payload);
+  if (snap.exists() && snap.data().shopInitialized) {
+    return buildInventoryState(snap.data());
   }
 
-  const data = snap.data();
-  if (data.shopInitialized) {
-    return buildInventoryState(data);
-  }
-
-  const payload = getDefaultShopPayload(data);
-  await setDoc(userRef, payload, { merge: true });
-  return buildInventoryState(payload);
+  await callCloudFunction("initializeShop");
+  const nextSnap = await getDoc(userRef);
+  return nextSnap.exists() ? buildInventoryState(nextSnap.data()) : null;
 }
 
 export function subscribeShopInventory(uid, onChange, onError) {
@@ -163,49 +139,15 @@ export async function purchaseShopItem(itemId) {
   const item = getShopItemById(itemId);
   if (!item) throw new Error("This shop item does not exist.");
 
-  const ownedField =
-    item.type === "plant"
-      ? "ownedPlants"
-      : item.type === "pot"
-        ? "ownedPots"
-        : getOwnedDecorField(item.type);
-
-  if (!ownedField) {
-    throw new Error("This item cannot be purchased.");
+  try {
+    await callCloudFunction("purchaseShopItem", { itemId });
+  } catch (error) {
+    const message =
+      error?.message?.replace(/^Firebase:\s*/i, "") ||
+      error?.details ||
+      "Purchase failed.";
+    throw new Error(message);
   }
-
-  const userRef = getUserShopRef(uid);
-
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(userRef);
-    const data = snap.exists() ? snap.data() : {};
-    const inventory = buildInventoryState(data);
-
-    if (isShopItemOwned(inventory, item)) {
-      throw new Error("You already own this item.");
-    }
-
-    if (inventory.coinBalance < item.price) {
-      throw new Error("Not enough coins.");
-    }
-
-    const ownedMap = inventory[ownedField];
-
-    tx.set(
-      userRef,
-      {
-        coinBalance: inventory.coinBalance - item.price,
-        [ownedField]: {
-          ...ownedMap,
-          [String(item.assetIndex ?? item.assetKey)]: true,
-        },
-        shopInitialized: true,
-        lastShopPurchaseAt: serverTimestamp(),
-        lastShopPurchaseId: item.id,
-      },
-      { merge: true }
-    );
-  });
 
   logAnalyticsEvent("shop_purchase", {
     item_id: item.id,
@@ -218,29 +160,46 @@ export async function creditCoins(amount, source = "manual") {
   const uid = auth.currentUser?.uid;
   if (!uid || amount <= 0) return null;
 
-  const userRef = getUserShopRef(uid);
+  const allowedSources = ["goal_completion"];
+  if (!allowedSources.includes(source)) {
+    throw new Error("Invalid coin credit source.");
+  }
 
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(userRef);
-    const data = snap.exists() ? snap.data() : {};
-    const balance = typeof data.coinBalance === "number" ? data.coinBalance : 0;
+  const result = await callCloudFunction("creditCoins", { source });
+  const creditedAmount = result?.amount ?? amount;
 
-    tx.set(
-      userRef,
-      {
-        coinBalance: balance + amount,
-        shopInitialized: true,
-        lastCoinCreditAt: serverTimestamp(),
-        lastCoinCreditSource: source,
-      },
-      { merge: true }
-    );
-  });
+  logAnalyticsEvent("coin_credit", { amount: creditedAmount, source });
 
-  logAnalyticsEvent("coin_credit", { amount, source });
-
-  const nextSnap = await getDoc(userRef);
+  const nextSnap = await getDoc(getUserShopRef(uid));
   return nextSnap.exists() ? buildInventoryState(nextSnap.data()) : null;
+}
+
+export async function verifyAndCreditCoinPurchase(transactionId) {
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error("You must be signed in to verify purchases.");
+
+  try {
+    const payload =
+      typeof transactionId === "string" && transactionId.trim()
+        ? { transactionId: transactionId.trim() }
+        : {};
+    const result = await callCloudFunction("verifyAndCreditCoinPurchase", payload);
+
+    if (result?.credited) {
+      logAnalyticsEvent("coin_credit", {
+        amount: result.amount,
+        source: "iap_coins",
+      });
+    }
+
+    return result;
+  } catch (error) {
+    const message =
+      error?.message?.replace(/^Firebase:\s*/i, "") ||
+      error?.details ||
+      "Coin verification failed.";
+    throw new Error(message);
+  }
 }
 
 export async function awardGoalCompletionCoins() {
@@ -251,32 +210,14 @@ export async function claimJourneyReward(claimKey, amount, source = "journey") {
   const uid = auth.currentUser?.uid;
   if (!uid || amount <= 0) return { claimed: false, reason: "invalid" };
 
-  const userRef = getUserShopRef(uid);
-  let alreadyClaimed = false;
-
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(userRef);
-    const data = snap.exists() ? snap.data() : {};
-    const claims = data.journeyRewardClaims || {};
-    if (claims[claimKey]) {
-      alreadyClaimed = true;
-      return;
+  try {
+    const result = await callCloudFunction("claimEconomyReward", { claimKey, source });
+    if (result?.claimed) {
+      return { claimed: true, amount: result.amount ?? amount };
     }
-
-    const balance = typeof data.coinBalance === "number" ? data.coinBalance : COIN_REWARDS.STARTING_BALANCE;
-    tx.set(
-      userRef,
-      {
-        coinBalance: balance + amount,
-        journeyRewardClaims: { ...claims, [claimKey]: true },
-        shopInitialized: true,
-        lastCoinCreditAt: serverTimestamp(),
-        lastCoinCreditSource: source,
-      },
-      { merge: true }
-    );
-  });
-
-  if (alreadyClaimed) return { claimed: false, reason: "already_claimed" };
-  return { claimed: true, amount };
+    return { claimed: false, reason: result?.reason || "already_claimed" };
+  } catch (error) {
+    console.error("claimJourneyReward failed", error);
+    return { claimed: false, reason: "error" };
+  }
 }

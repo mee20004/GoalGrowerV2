@@ -1408,6 +1408,16 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     const [showCustomization, setShowCustomization] = useState(false);
     // { [pageId]: { farBg, windowFrame, wallBg, shelfColor } }
     const [customizations, setCustomizations] = useState({});
+    const pendingCustomizationSaveRef = useRef(null);
+
+    const applyCustomizationsFromServer = useCallback((serverData) => {
+      const pending = pendingCustomizationSaveRef.current;
+      if (pending?.pageId && pending?.values) {
+        setCustomizations({ ...serverData, [pending.pageId]: pending.values });
+        return;
+      }
+      setCustomizations(serverData);
+    }, []);
 
     // Exit edit mode when customization modal is opened
     useEffect(() => {
@@ -1420,12 +1430,12 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   useEffect(() => {
     let unsub;
     if (isSharedGarden && sharedGardenId) {
-      unsub = subscribeSharedCustomizations(sharedGardenId, setCustomizations);
+      unsub = subscribeSharedCustomizations(sharedGardenId, applyCustomizationsFromServer);
     } else if (!isSharedGarden && auth.currentUser?.uid) {
-      unsub = subscribePersonalCustomizations(auth.currentUser.uid, setCustomizations);
+      unsub = subscribePersonalCustomizations(auth.currentUser.uid, applyCustomizationsFromServer);
     }
     return () => unsub && unsub();
-  }, [isSharedGarden, sharedGardenId]);
+  }, [isSharedGarden, sharedGardenId, applyCustomizationsFromServer]);
   const insets = useSafeAreaInsets();
   const { isPro, openDefaultPaywall } = useSubscription();
   const { goals } = useGoals();
@@ -1452,6 +1462,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     ownerId: null,
     editModeLock: null,
   });
+  const [sharedGardenSettingsLoaded, setSharedGardenSettingsLoaded] = useState(false);
   const isOwner = isSharedGarden && sharedGardenSettings.ownerId && auth.currentUser && sharedGardenSettings.ownerId === auth.currentUser.uid;
   const isReadOnly = isSharedGarden
     ? Boolean(route?.params?.readOnly)
@@ -1460,7 +1471,10 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   const viewedUsername = isSharedGarden ? (route?.params?.gardenName || "Shared Garden") : (route?.params?.username || "User");
   // Fetch shared garden settings (permissions)
   useEffect(() => {
-    if (!isSharedGarden || !sharedGardenId) return;
+    if (!isSharedGarden || !sharedGardenId) {
+      setSharedGardenSettingsLoaded(true);
+      return;
+    }
     const unsub = onSnapshot(
       doc(db, "sharedGardens", sharedGardenId),
       (snap) => {
@@ -1473,6 +1487,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
           ownerId: data.ownerId || null,
           editModeLock: data.editModeLock || null,
         });
+        setSharedGardenSettingsLoaded(true);
       },
       (error) => {
         if (error?.code !== 'permission-denied' || auth.currentUser?.uid) {
@@ -4086,11 +4101,25 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         onClose={() => setShowCustomization(false)}
         onSave={async (pageId, values) => {
           if (isSharedGarden && !canCustomize) return;
-          setCustomizations(prev => ({ ...prev, [pageId]: values }));
-          if (isSharedGarden && sharedGardenId) {
-            await saveSharedCustomizations(sharedGardenId, pageId, values);
-          } else if (!isSharedGarden && auth.currentUser?.uid) {
-            await savePersonalCustomizations(auth.currentUser.uid, pageId, values);
+          pendingCustomizationSaveRef.current = { pageId, values };
+          setCustomizations((prev) => ({ ...prev, [pageId]: values }));
+          try {
+            if (isSharedGarden && sharedGardenId) {
+              await saveSharedCustomizations(sharedGardenId, pageId, values);
+            } else if (!isSharedGarden && auth.currentUser?.uid) {
+              await savePersonalCustomizations(auth.currentUser.uid, pageId, values);
+            }
+          } catch (error) {
+            console.error("Failed to save garden customization", error);
+            Alert.alert(
+              "Could not save",
+              error?.code === "permission-denied"
+                ? "You do not have permission to customize this shared garden."
+                : "Your customization could not be saved. Try again."
+            );
+            throw error;
+          } finally {
+            pendingCustomizationSaveRef.current = null;
           }
         }}
         selectedPageId={currentPageId}
@@ -4098,7 +4127,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         customizerType={customizerType}
         customizerTypeSetter={setCustomizerType}
         enforceOwnedSelection={!isSharedGarden}
-        canSave={canCustomize}
+        canSave={canCustomize && sharedGardenSettingsLoaded}
       />
     )}
     {!isReadOnly && isEditing && !canCustomize && (

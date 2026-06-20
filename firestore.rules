@@ -1,0 +1,248 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function protectedUserFields() {
+      return [
+        'coinBalance',
+        'ownedPlants', 'ownedPots', 'ownedFarBg', 'ownedWindowFrames',
+        'ownedWallBg', 'ownedShelfColors',
+        'shopInitialized', 'shopInitializedAt',
+        'lastShopPurchaseAt', 'lastShopPurchaseId',
+        'journeyRewardClaims',
+        'lastProCoinGrantMonth', 'lastCoinCreditAt', 'lastCoinCreditSource',
+        'overallScore',
+      ];
+    }
+
+    function protectedUserFieldsUnchanged() {
+      return resource == null
+        || !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedUserFields());
+    }
+
+    function noProtectedFieldsOnCreate() {
+      return !request.resource.data.keys().hasAny(protectedUserFields());
+    }
+
+    function sharedGardenData(gardenId) {
+      return get(/databases/$(database)/documents/sharedGardens/$(gardenId)).data;
+    }
+
+    function isSharedMember(gardenId) {
+      return isMemberOfGardenId(gardenId);
+    }
+
+    // List queries must use resource.data (not get()) so Firestore can match
+    // where('memberIds', 'array-contains', uid) to the read rule.
+    function isSharedMemberFromResource() {
+      return isSignedIn()
+        && ('memberIds' in resource.data)
+        && request.auth.uid in resource.data.memberIds;
+    }
+
+    function isMemberOfGardenId(gardenId) {
+      let garden = sharedGardenData(gardenId);
+      return isSignedIn()
+        && garden != null
+        && ('memberIds' in garden)
+        && request.auth.uid in garden.memberIds;
+    }
+
+    function isSharedOwner(gardenId) {
+      return isSignedIn()
+        && sharedGardenData(gardenId).ownerId == request.auth.uid;
+    }
+
+    function canCustomizeGarden(gardenId) {
+      let g = sharedGardenData(gardenId);
+      return isSharedOwner(gardenId) || g.restrictCustomize != true;
+    }
+
+    function canEditPlantsInGarden(gardenId) {
+      let g = sharedGardenData(gardenId);
+      return isSharedOwner(gardenId) || g.restrictEditPlants != true;
+    }
+
+    function canAddPeopleToGarden(gardenId) {
+      let g = sharedGardenData(gardenId);
+      return isSharedOwner(gardenId) || g.restrictAddPeople != true;
+    }
+
+    function isOnlyAddingSelfToMembers() {
+      return !(request.auth.uid in resource.data.memberIds)
+        && request.auth.uid in request.resource.data.memberIds
+        && request.resource.data.memberIds.hasAll(resource.data.memberIds);
+    }
+
+    function isOnlyRemovingSelfFromMembers() {
+      return request.auth.uid in resource.data.memberIds
+        && !(request.auth.uid in request.resource.data.memberIds)
+        && resource.data.memberIds.hasAll(request.resource.data.memberIds);
+    }
+
+    function sharedMemberGoalSyncAllowed(ownerId) {
+      return request.auth.uid != ownerId
+        && resource != null
+        && resource.data.sharedGardenId is string
+        && isSharedMember(resource.data.sharedGardenId)
+        && isSharedGoalProgressFieldUpdate();
+    }
+
+    function isSharedGoalProgressFieldUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'logs', 'currentStreak', 'longestStreak', 'healthLevel',
+        'totalCompletions', 'lastUpdated',
+      ]);
+    }
+
+    function isProfileFieldUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'username', 'searchKey', 'email', 'privateAccount', 'accentColor',
+      ]);
+    }
+
+    function isStreakFieldUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'streakCount', 'lastStreakDate', 'lastActiveDate',
+      ]);
+    }
+
+    function isQuestActivityUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'questActivity',
+      ]);
+    }
+
+    function isQuestStateUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'dailyQuests', 'weeklyQuests', 'questStats', 'questHistory',
+      ]);
+    }
+
+    function isQuestStateAndActivityUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'dailyQuests', 'weeklyQuests', 'questStats', 'questHistory', 'questActivity',
+      ]);
+    }
+
+    match /users/{uid} {
+      allow read: if isSignedIn();
+
+      allow create: if isSelf(uid) && noProtectedFieldsOnCreate();
+
+      allow update: if isSelf(uid)
+        && protectedUserFieldsUnchanged()
+        && (
+          isProfileFieldUpdate()
+          || isStreakFieldUpdate()
+          || isQuestActivityUpdate()
+          || isQuestStateUpdate()
+          || isQuestStateAndActivityUpdate()
+        );
+
+      allow delete: if false;
+
+      match /goals/{goalId} {
+        allow read: if isSignedIn();
+        allow create, delete: if isSelf(uid);
+        allow update: if isSelf(uid) || sharedMemberGoalSyncAllowed(uid);
+      }
+
+      match /gardenLayout/{layoutId} {
+        allow read: if isSignedIn();
+        allow write: if isSelf(uid);
+      }
+
+      match /gardenPages/{pageId} {
+        allow read: if isSignedIn();
+        allow write: if isSelf(uid);
+      }
+
+      match /meta/customizations {
+        allow read: if isSignedIn();
+        allow write: if isSelf(uid);
+      }
+
+      match /settings/{settingId} {
+        allow read, write: if isSelf(uid);
+      }
+
+      match /following/{targetId} {
+        allow read: if isSignedIn();
+        allow create, update, delete: if isSelf(uid) && targetId != uid;
+      }
+
+      match /followers/{followerId} {
+        allow read: if isSignedIn();
+        allow create, update, delete: if isSignedIn() && request.auth.uid == followerId;
+      }
+
+      match /sharedGardenInvites/{inviteId} {
+        allow read, delete: if isSelf(uid);
+
+        allow create, update: if isSignedIn()
+          && request.auth.uid != uid
+          && request.resource.data.invitedByUid == request.auth.uid
+          && request.resource.data.gardenId is string
+          && isSharedMember(request.resource.data.gardenId)
+          && canAddPeopleToGarden(request.resource.data.gardenId)
+          && request.resource.data.keys().hasOnly([
+            'gardenId', 'gardenName', 'invitedByUid', 'invitedByUsername', 'createdAt',
+          ]);
+      }
+    }
+
+    match /sharedGardens/{gardenId} {
+      allow read: if isSharedMemberFromResource();
+
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.auth.uid in request.resource.data.memberIds
+        && request.resource.data.keys().hasAll(['name', 'ownerId', 'memberIds', 'createdAt']);
+
+      allow update: if isSignedIn() && (
+        (isSharedOwner(gardenId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['ownerId']))
+        || isOnlyAddingSelfToMembers()
+        || isOnlyRemovingSelfFromMembers()
+        || (
+          isSharedMember(gardenId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['editModeLock'])
+        )
+      );
+
+      allow delete: if isSharedOwner(gardenId);
+
+      match /layout/{goalId} {
+        allow read: if isMemberOfGardenId(gardenId);
+        allow create, delete: if isMemberOfGardenId(gardenId) && canEditPlantsInGarden(gardenId);
+        // Members can always log completions; restrictEditPlants blocks add/move/edit only.
+        allow update: if isMemberOfGardenId(gardenId) && (
+          canEditPlantsInGarden(gardenId) || isSharedGoalProgressFieldUpdate()
+        );
+      }
+
+      match /pages/{pageId} {
+        allow read: if isMemberOfGardenId(gardenId);
+        allow create, update, delete: if isMemberOfGardenId(gardenId) && canCustomizeGarden(gardenId);
+      }
+
+      match /meta/customizations {
+        allow read: if isMemberOfGardenId(gardenId);
+        allow create, update: if isMemberOfGardenId(gardenId) && canCustomizeGarden(gardenId);
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

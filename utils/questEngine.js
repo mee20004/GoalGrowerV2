@@ -437,7 +437,6 @@ export async function claimQuestReward({
       weeklyQuests,
       questStats,
       questHistory,
-      journeyRewardClaims: { ...(data.journeyRewardClaims || {}), [claimKey]: true },
     },
     { merge: true }
   );

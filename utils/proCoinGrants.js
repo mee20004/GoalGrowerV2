@@ -1,8 +1,7 @@
-import { doc, getDoc, runTransaction, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
-import { PRO_MONTHLY_COIN_GRANT } from "../constants/subscriptionLimits";
-import { COIN_REWARDS } from "../constants/ShopCatalog";
 import { hasProEntitlement } from "./revenueCat";
+import { callCloudFunction } from "./cloudFunctions";
 
 /** Local calendar month key (device timezone). */
 export function getCurrentProCoinGrantMonth(date = new Date()) {
@@ -22,41 +21,10 @@ export async function processMonthlyProCoinGrant(customerInfo) {
   }
 
   const currentMonth = getCurrentProCoinGrantMonth();
-  const userRef = doc(db, "users", uid);
 
   try {
-    const result = await runTransaction(db, async (tx) => {
-      const snap = await tx.get(userRef);
-      const data = snap.exists() ? snap.data() : {};
-
-      if (data.lastProCoinGrantMonth === currentMonth) {
-        return { granted: false, reason: "already_granted" };
-      }
-
-      const balance = typeof data.coinBalance === "number"
-        ? data.coinBalance
-        : COIN_REWARDS.STARTING_BALANCE;
-
-      tx.set(
-        userRef,
-        {
-          coinBalance: balance + PRO_MONTHLY_COIN_GRANT,
-          shopInitialized: true,
-          lastProCoinGrantMonth: currentMonth,
-          lastCoinCreditAt: serverTimestamp(),
-          lastCoinCreditSource: "pro_monthly",
-        },
-        { merge: true }
-      );
-
-      return {
-        granted: true,
-        amount: PRO_MONTHLY_COIN_GRANT,
-        month: currentMonth,
-      };
-    });
-
-    return result;
+    const result = await callCloudFunction("processMonthlyProCoinGrant", { month: currentMonth });
+    return result || { granted: false, reason: "error" };
   } catch (error) {
     console.error("Failed to process monthly Pro coin grant", error);
     return { granted: false, reason: "error" };

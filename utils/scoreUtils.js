@@ -1,5 +1,6 @@
-import { collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../firebaseConfig";
+import { callCloudFunction } from "./cloudFunctions";
 
 const TROPHY_SCORE_BONUS = {
   bronze: 20,
@@ -26,11 +27,15 @@ export function calculateGoalScore(goal) {
   return (currentStreak * 8) + (longestStreak * 4) + trophyBonus;
 }
 
-export async function getScoredGoalsForUser(uid) {
+export async function getScoredGoalsForUser(uid, { includeSharedGardens = true } = {}) {
   const personalGoalsSnap = await getDocs(collection(db, "users", uid, "goals"));
   const personalGoals = personalGoalsSnap.docs
     .map((goalDoc) => ({ id: goalDoc.id, ...goalDoc.data() }))
     .filter((goal) => !(goal?.gardenType === "shared" || !!goal?.sharedGardenId));
+
+  if (!includeSharedGardens) {
+    return personalGoals;
+  }
 
   const sharedGardensSnap = await getDocs(
     query(collection(db, "sharedGardens"), where("memberIds", "array-contains", uid))
@@ -60,25 +65,30 @@ export async function calculateOverallScoreForUser(uid) {
 export async function updateOverallScoreForUser(uid) {
   if (!uid) return 0;
 
-  const userRef = doc(db, "users", uid);
-  const userSnap = await getDoc(userRef);
-  if (!userSnap.exists()) return 0;
-
-  const calculatedScore = await calculateOverallScoreForUser(uid);
-  const currentData = userSnap.data() || {};
-  if (currentData.overallScore !== calculatedScore) {
-    await updateDoc(userRef, { overallScore: calculatedScore });
+  try {
+    const result = await callCloudFunction("recalculateOverallScore", { targetUid: uid });
+    return typeof result?.score === "number" ? result.score : 0;
+  } catch (error) {
+    console.error("Failed to recalculate overall score", error);
+    try {
+      return await calculateOverallScoreForUser(uid);
+    } catch {
+      return 0;
+    }
   }
-
-  return calculatedScore;
 }
 
 export async function updateOverallScoresForSharedGardenMembers(gardenId) {
   if (!gardenId) return [];
 
-  const gardenSnap = await getDoc(doc(db, "sharedGardens", gardenId));
-  if (!gardenSnap.exists()) return [];
-
-  const memberIds = Array.isArray(gardenSnap.data()?.memberIds) ? gardenSnap.data().memberIds : [];
-  return Promise.all(memberIds.map((memberId) => updateOverallScoreForUser(memberId)));
+  try {
+    const result = await callCloudFunction("recalculateSharedGardenScores", { gardenId });
+    if (Array.isArray(result?.scores)) {
+      return result.scores.map((entry) => entry.score);
+    }
+    return typeof result?.score === "number" ? [result.score] : [];
+  } catch (error) {
+    console.error("Failed to recalculate shared garden scores", error);
+    return [];
+  }
 }
