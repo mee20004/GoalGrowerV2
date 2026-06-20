@@ -38,13 +38,6 @@ const SECTION_SHOP_CATEGORY = Object.fromEntries(
   CUSTOMIZER_SECTIONS.map((section) => [section.key, section.shopCategory])
 );
 
-function firstOwnedIndex(length, isOwned) {
-  for (let index = 0; index < length; index += 1) {
-    if (isOwned(index)) return index;
-  }
-  return 0;
-}
-
 const FIXED_HOTSPOTS = [
   { key: "farbg", left: 0.18, top: 0.50, label: "Background" },
   { key: "window", left: 0.50, top: 0.56, label: "Window" },
@@ -220,32 +213,6 @@ export default function CustomizationScreen({
     userEditedRef.current = true;
     setShelfColor(value);
   }, []);
-
-  useEffect(() => {
-    if (!enforceOwnedSelection) return;
-    if (!isFarBgOwned(farBg)) {
-      setFarBg(firstOwnedIndex(FAR_BG_ASSETS.length, isFarBgOwned));
-    }
-    if (!isWindowFrameOwned(windowFrame)) {
-      setWindowFrame(firstOwnedIndex(FRAME_ASSETS.length, isWindowFrameOwned));
-    }
-    if (!isWallBgOwned(wallBg)) {
-      setWallBg(firstOwnedIndex(WALLPAPER_ASSETS.length, isWallBgOwned));
-    }
-    if (!isShelfColorOwned(shelfColor)) {
-      setShelfColor(firstOwnedIndex(SHELF_COLOR_SCHEMES.length, isShelfColorOwned));
-    }
-  }, [
-    enforceOwnedSelection,
-    farBg,
-    windowFrame,
-    wallBg,
-    shelfColor,
-    isFarBgOwned,
-    isWindowFrameOwned,
-    isWallBgOwned,
-    isShelfColorOwned,
-  ]);
 
   useEffect(() => {
     if (!visible || !canSave || !userEditedRef.current) return undefined;

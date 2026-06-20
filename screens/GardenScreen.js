@@ -4126,7 +4126,6 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         customizations={customizations}
         customizerType={customizerType}
         customizerTypeSetter={setCustomizerType}
-        enforceOwnedSelection={!isSharedGarden}
         canSave={canCustomize && sharedGardenSettingsLoaded}
       />
     )}
