@@ -38,6 +38,7 @@ import {
   logScreenView,
   setAnalyticsUserId,
 } from "./utils/analytics";
+import { prefetchDefaultGardenAssets } from "./utils/prefetchGardenAssets";
 
 // Screens
 import GoalsScreen from "./screens/GoalsScreen";
@@ -917,6 +918,7 @@ export default function App() {
 
       if (firebaseUser) {
         setAnalyticsUserId(firebaseUser.uid);
+        void prefetchDefaultGardenAssets();
 
         if (firebaseUser.isAnonymous) {
           setHasUsername(true);
@@ -978,6 +980,11 @@ export default function App() {
             if (relogin.signedIn) {
               return;
             }
+          }
+
+          // Firebase may restore a persisted session while async relogin work runs.
+          if (auth.currentUser) {
+            return;
           }
 
           setHasUsername(false);
@@ -1086,14 +1093,10 @@ export default function App() {
   }, [onboardingLoaded, hasUsername, onboardingStep, updateOnboardingStep, user?.uid]);
 
   const activeAuthUser = auth.currentUser ?? user;
-  const sessionPendingProfile =
-    activeAuthUser &&
-    !activeAuthUser.isAnonymous &&
-    (initializing ||
-      !user ||
-      (hasUsername && !onboardingLoaded));
 
-  if (sessionPendingProfile || restoringOnboardingSession) return null;
+  // Stay blank until auth bootstrap finishes. Previously only logged-in users
+  // were held here, so a brief null auth callback showed Welcome before restore.
+  if (initializing || restoringOnboardingSession) return null;
   if (activeAuthUser && hasUsername && !onboardingLoaded) return null;
   void authUserVersion;
   const userNeedsEmailVerification =

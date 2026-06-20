@@ -35,6 +35,11 @@ import {
 } from "../utils/subscriptionLimits";
 
 import {
+  collectGardenAssetSources,
+  prefetchDefaultGardenAssets,
+  prefetchImageSources,
+} from "../utils/prefetchGardenAssets";
+import {
   subscribeSharedCustomizations,
   saveSharedCustomizations,
   subscribePersonalCustomizations,
@@ -128,6 +133,8 @@ async function findFirstOpenSharedStorageSlot(gardenId, goalId) {
   return null;
 }
 
+const STORAGE_PAGE_ID = 'storage';
+
 // Persist some state across mounts (helps keep drawer position & current page stable)
 const persistedGardenState = {
   allPlants: null,
@@ -135,13 +142,35 @@ const persistedGardenState = {
   isEditing: false,
   drawerScrollOffset: 0,
 };
+const sharedPlantsCache = {};
+const DEFAULT_GARDEN_PAGES = [
+  { id: STORAGE_PAGE_ID, title: "Storage" },
+  { id: "default", title: "Page 1" },
+];
+const prefetchedGardenAssetKeys = new Set();
+
+function getCachedGardenPlants(isSharedGarden, sharedGardenId) {
+  if (isSharedGarden && sharedGardenId) {
+    return sharedPlantsCache[sharedGardenId] || [];
+  }
+  return persistedGardenState.allPlants || [];
+}
+
+function writeGardenPlantsCache(isSharedGarden, sharedGardenId, plants, shouldPersistState) {
+  if (isSharedGarden && sharedGardenId) {
+    sharedPlantsCache[sharedGardenId] = plants;
+    return;
+  }
+  if (shouldPersistState) {
+    persistedGardenState.allPlants = plants;
+  }
+}
 // Ref to prevent multiple restriction alerts
 let editRestrictionAlertShown = { current: false };
 
 const FAR_BG = require('../assets/far_background.png');
 const GARDEN_MASCOT = require('../assets/mascot/mascot.png');
 // Asset arrays are now imported from constants
-const STORAGE_PAGE_ID = 'storage';
 const STORAGE_SHELF_COUNT = 10;
 const PLANT_GHOST_SIZE = 110;
 const SHARED_GARDEN_DEFAULT_PAGE_ID = 'default';
@@ -1534,6 +1563,8 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     : Boolean(route?.params?.readOnly && viewedUserId && viewedUserId !== auth.currentUser?.uid);
   const shouldPersistState = !isReadOnly && !isSharedGarden;
   const viewedUsername = isSharedGarden ? (route?.params?.gardenName || "Shared Garden") : (route?.params?.username || "User");
+  const initialCachedPlants = getCachedGardenPlants(isSharedGarden, sharedGardenId);
+  const hasCachedGardenPlants = initialCachedPlants.length > 0;
   // Fetch shared garden settings (permissions)
   useEffect(() => {
     if (!screenActive) return undefined;
@@ -1565,11 +1596,12 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
     return () => unsub();
   }, [isSharedGarden, sharedGardenId, screenActive]);
 
-  const [allPlants, setAllPlants] = useState(shouldPersistState ? (persistedGardenState.allPlants || []) : []);
-  const [pages, setPages] = useState([]);
+  const [allPlants, setAllPlants] = useState(hasCachedGardenPlants ? initialCachedPlants : []);
+  const [pages, setPages] = useState(DEFAULT_GARDEN_PAGES);
   const [currentPageId, setCurrentPageId] = useState(shouldPersistState ? (persistedGardenState.currentPageId || "default") : "default");
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!hasCachedGardenPlants);
+  const [gardenAssetsReady, setGardenAssetsReady] = useState(hasCachedGardenPlants);
   const [isEditing, setIsEditing] = useState(shouldPersistState ? (persistedGardenState.isEditing || false) : false);
   const [globalDragging, setGlobalDragging] = useState(false);
   const [drawerScrollOffset, setDrawerScrollOffset] = useState(shouldPersistState ? (persistedGardenState.drawerScrollOffset || 0) : 0);
@@ -2336,7 +2368,14 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
   useEffect(() => {
     if (!screenActive) return undefined;
 
-    setLoading(true);
+    const cached = getCachedGardenPlants(isSharedGarden, sharedGardenId);
+    if (cached.length > 0) {
+      setAllPlants(cached);
+      setGardenAssetsReady(true);
+    } else {
+      setLoading(true);
+      setGardenAssetsReady(false);
+    }
 
     if (isSharedGarden) {
       const unsubSharedLayout = onSnapshot(
@@ -2370,6 +2409,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
             };
           });
           setAllPlants(merged);
+          writeGardenPlantsCache(isSharedGarden, sharedGardenId, merged, shouldPersistState);
           setLoading(false);
         },
         (error) => {
@@ -2416,7 +2456,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
                 shelfPosition: layoutMap[goalData.id] || null,
               }));
             setAllPlants(merged);
-            if (shouldPersistState) persistedGardenState.allPlants = merged;
+            writeGardenPlantsCache(isSharedGarden, sharedGardenId, merged, shouldPersistState);
             setLoading(false);
           },
           (error) => {
@@ -2512,6 +2552,65 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
 
     return () => unsubPages();
   }, [isReadOnly, isSharedGarden, sharedGardenId, shouldPersistState, viewedUserId, screenActive]);
+
+  useEffect(() => {
+    prefetchDefaultGardenAssets();
+  }, []);
+
+  useEffect(() => {
+    if (!screenActive || loading) return undefined;
+
+    const placedPlants = allPlants.filter((plant) => plant.shelfPosition);
+    const pageIdx = pages.findIndex((page) => page.id === currentPageId);
+    const visiblePageIds = [currentPageId];
+    if (pageIdx > 0) visiblePageIds.push(pages[pageIdx - 1].id);
+    if (pageIdx >= 0 && pageIdx < pages.length - 1) visiblePageIds.push(pages[pageIdx + 1].id);
+
+    const customizationSlice = visiblePageIds.reduce((acc, pageId) => {
+      acc[pageId] = customizations?.[pageId] || {};
+      return acc;
+    }, {});
+    const cacheKey = `${isSharedGarden ? sharedGardenId : "personal"}:${visiblePageIds.join(",")}:${placedPlants.map((p) => p.id).join(",")}:${JSON.stringify(customizationSlice)}`;
+
+    if (prefetchedGardenAssetKeys.has(cacheKey)) {
+      setGardenAssetsReady(true);
+      return undefined;
+    }
+
+    if (placedPlants.length === 0) {
+      prefetchedGardenAssetKeys.add(cacheKey);
+      setGardenAssetsReady(true);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      await prefetchDefaultGardenAssets();
+      const sources = collectGardenAssetSources({
+        plants: placedPlants,
+        customizations,
+        pageIds: visiblePageIds,
+      });
+      await prefetchImageSources(sources);
+      if (cancelled) return;
+      prefetchedGardenAssetKeys.add(cacheKey);
+      setGardenAssetsReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    allPlants,
+    customizations,
+    currentPageId,
+    pages,
+    screenActive,
+    loading,
+    isSharedGarden,
+    sharedGardenId,
+  ]);
 
   useEffect(() => {
     if (!pages.length) return;
@@ -3704,7 +3803,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       >
         <View style={{ width, height, overflow: 'hidden' }}>
           <ImageBackground
-            source={FAR_BG_ASSETS[farBgIdx]}
+            source={FAR_BG_ASSETS[farBgIdx] || FAR_BG_ASSETS[0]}
             style={[styles.farBackground, { width, height }]}
             imageStyle={styles.farImageStyle}
             resizeMode="contain"
@@ -3754,7 +3853,9 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
     );
   };
 
-  if (loading) return <View style={styles.loader}><ActivityIndicator size="large" color="#2D5A27" /></View>;
+  if (loading && allPlants.length === 0) {
+    return <View style={styles.loader}><ActivityIndicator size="large" color="#2D5A27" /></View>;
+  }
 
   const dots = (
     <View style={styles.pageDots}>
@@ -4281,6 +4382,13 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
       </HapticTouchableOpacity>
     )}
 
+    <View style={styles.gardenViewport}>
+      {!gardenAssetsReady && (
+        <View style={styles.gardenAssetLoader}>
+          <ActivityIndicator size="large" color="#2D5A27" />
+        </View>
+      )}
+      <View style={[styles.gardenViewportContent, !gardenAssetsReady && styles.gardenViewportHidden]}>
     <Animated.FlatList
       ref={flatListRef}
       data={pages}
@@ -4331,6 +4439,8 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         <GardenAmbientParticles active={screenActive} />
       </View>
     )}
+      </View>
+    </View>
 
       <View
         ref={drawerRef}
@@ -4729,6 +4839,16 @@ const styles = StyleSheet.create({
     zIndex: 40,
   },
   loader: { flex: 1, justifyContent: "center", alignItems: "center" },
+  gardenViewport: { flex: 1 },
+  gardenViewportContent: { flex: 1 },
+  gardenViewportHidden: { opacity: 0 },
+  gardenAssetLoader: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#1a1a1a",
+    zIndex: 2,
+  },
   pageNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   pageNavBtn: { padding: 4 },
   customizeFab: { 
@@ -5646,9 +5766,7 @@ const styles = StyleSheet.create({
     zIndex: 7,
   },
 
-  gardenBackground: { flex: 1, width: '100%', height: '100%', bottom: 0 },
-  backgroundImageTexture: { top: -80 },
-  
+
   draggingShadow: { opacity: 1, transform: [{ scale: 1.1 }] },
   deleteBadge: { position: 'absolute', top: -10, left: -10, backgroundColor: '#E74C3C', width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center', zIndex: 10, borderWidth: 2, borderColor: '#fff' },
   ghost: { position: 'absolute', pointerEvents: 'none', zIndex: 9999 },
@@ -5711,6 +5829,8 @@ const styles = StyleSheet.create({
   gardenBackground: {
     flex: 1,
     width: '100%',
+    height: '100%',
+    backgroundColor: 'transparent',
   },
 
   // MANUALLY ADJUST THE GARDEN/FLOOR IMAGE HERE
