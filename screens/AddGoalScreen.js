@@ -55,6 +55,14 @@ import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { setAddGoalDirty } from '../utils/addGoalGuard';
 import SwipeCalendar from '../components/SwipeCalendar';
 import { formatISOToDisplay, parseDisplayToISO, getDateFormatSync, formatPartialDisplay, formatPartialFromDigits, getWeekStartSync } from '../utils/dateFormat';
+import {
+  clampFrequencyDays,
+  getMaxFrequencyDays,
+  normalizeFrequencyDaysInput,
+} from '../utils/periodUtils';
+import TimePickerSheet from '../components/settings/TimePickerSheet';
+import { formatTime12 } from '../utils/timeFormat';
+import { configureGoalReminderOnCreate } from '../utils/notifications';
 
 // FIREBASE IMPORTS
 import { collection, addDoc, serverTimestamp, onSnapshot, query, where, doc, setDoc, getDoc } from "firebase/firestore";
@@ -130,9 +138,9 @@ function Chip({ label, active, onPress, variant = "default", accent }) {
   );
 }
 
-function Segmented({ left, right, value, onChange, accent }) {
+function Segmented({ left, right, value, onChange, accent, wrapStyle }) {
   return (
-    <View style={styles.segmentWrap}>
+    <View style={[styles.segmentWrap, wrapStyle]}>
       <HapticPressable
         onPress={() => onChange(left.value)}
         style={[styles.segment, value === left.value && [styles.segmentActive, { backgroundColor: accent, borderColor: accent }]]}
@@ -144,6 +152,38 @@ function Segmented({ left, right, value, onChange, accent }) {
         style={[styles.segment, value === right.value && [styles.segmentActive, { backgroundColor: accent, borderColor: accent }]]}
       >
         <Text style={[styles.segmentText, value === right.value && styles.segmentTextActive]}>{right.label}</Text>
+      </HapticPressable>
+    </View>
+  );
+}
+
+function TrackingTypeTile({ label, subtitle, active, accent, onPress }) {
+  const shadowColor = active ? getDarkerAccentColor(accent) : "#c3cfdb";
+  const faceBackground = active ? accent : "#ffffff";
+  const labelColor = active ? "#ffffff" : theme.text;
+  const subtitleColor = active ? "rgba(255,255,255,0.88)" : theme.muted;
+
+  return (
+    <View style={styles.trackingTypeTileWrap}>
+      <View
+        pointerEvents="none"
+        style={[styles.trackingTypeTileShadow, { backgroundColor: shadowColor }]}
+      />
+      <HapticPressable
+        haptic={HapticType.LIGHT}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.trackingTypeTileFace,
+          { backgroundColor: faceBackground },
+          (active || pressed) && styles.actionButtonPressed,
+        ]}
+      >
+        <Text style={[styles.trackingTypeTileLabel, { color: labelColor }]}>{label}</Text>
+        {!!subtitle && (
+          <Text style={[styles.trackingTypeTileSubtitle, { color: subtitleColor }]}>
+            {subtitle}
+          </Text>
+        )}
       </HapticPressable>
     </View>
   );
@@ -650,6 +690,10 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
   const [completionMode, setCompletionMode] = useState("none");
   const [completionEndDate, setCompletionEndDate] = useState("");
   const [completionEndDisplay, setCompletionEndDisplay] = useState("");
+  const [reminderEnabled, setReminderEnabled] = useState(true);
+  const [reminderHour, setReminderHour] = useState(9);
+  const [reminderMinute, setReminderMinute] = useState(0);
+  const [showReminderTimeModal, setShowReminderTimeModal] = useState(false);
   const prevDigitsRef = useRef("");
   const lastKeyRef = useRef(null);
   const lastTextInputAtRef = useRef(0);
@@ -946,7 +990,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     return days.length ? days : [selectedDay];
   }, [mode, days, selectedDay]);
 
-  const stepLabels = ["Details", "Plant & Pot", "Icon", "Tracking", "Schedule", "Completion", "Review"];
+  const stepLabels = ["Details", "Plant & Pot", "Icon", "Tracking", "Schedule", "Completion", "Reminders", "Review"];
 
   const plantOptions = useMemo(() => {
     const validSpecies = Object.keys(PLANT_ASSETS || {}).filter((species) => {
@@ -1039,6 +1083,14 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
   };
 
   const isPeriodicType = type === "frequency" || type === "periodQuantity";
+
+  useEffect(() => {
+    if (type !== "frequency") return;
+    setPeriodTarget((prev) => {
+      const clamped = String(clampFrequencyDays(prev, period));
+      return clamped === prev ? prev : clamped;
+    });
+  }, [period, type]);
 
   const measurableForType = useMemo(() => {
     if (type === "quantity") {
@@ -1230,7 +1282,12 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
     if (!selectedIcon) return "Please select an icon.";
     if (type === "quantity" && (!(Number(target) > 0) || unit.trim().length < 1)) return "Quantity needs a number + unit.";
     if (type === "quantity" && Number(target) > MAX_QUANTITY_TARGET) return `Quantity max is ${MAX_QUANTITY_TARGET}.`;
-    if (isPeriodicType && !(Number(periodTarget) >= 1)) return "Set how many times per period (at least 1).";
+    if (isPeriodicType && !(Number(periodTarget) >= 1)) return "Enter at least 1 day or total for the period.";
+    if (type === "frequency" && Number(periodTarget) > getMaxFrequencyDays(period)) {
+      const maxDays = getMaxFrequencyDays(period);
+      const periodWord = period === "month" ? "month" : "week";
+      return `Cannot exceed ${maxDays} days per ${periodWord}.`;
+    }
     if (type === "periodQuantity" && unit.trim().length < 1) return "Add a unit (e.g. pages, minutes).";
     if (!isPeriodicType && ((mode === "days" && !days.length) || !scheduleDays.length)) return "Pick at least one day.";
     if ((completionMode === "date" || completionMode === "both") && !isValidISODate(completionEndDate.trim())) {
@@ -1271,7 +1328,7 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
   ]);
 
   const canSave = !formError;
-  const shouldEnableScroll = step !== 1 && contentHeight > scrollViewHeight + 8;
+  const shouldEnableScroll = step !== 1 && step !== 3 && contentHeight > scrollViewHeight + 8;
 
   const renderStepContent = () => {
     if (step === 0) {
@@ -1495,65 +1552,107 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
       );
     }
     if (step === 3) {
-      const trackingTypes = [
-        { value: "completion", label: "Checkmark" },
-        { value: "quantity", label: "Quantity" },
-        { value: "frequency", label: "Frequency" },
-        { value: "periodQuantity", label: "Period total" },
+      const trackingTypeOptions = [
+        { value: "completion", label: "Once per day", subtitle: "Check-in" },
+        { value: "quantity", label: "Daily amount", subtitle: "Count" },
+        { value: "frequency", label: "Days per period", subtitle: "Weekly/monthly" },
+        { value: "periodQuantity", label: "Period total", subtitle: "Running sum" },
       ];
       const trackingHint = {
-        completion: "Check it off on each scheduled day.",
-        quantity: "Reach a target amount each scheduled day.",
-        frequency: "Complete it on a number of days each week or month.",
-        periodQuantity: "Accumulate a total amount each week or month.",
+        completion: "Mark done on each scheduled day.",
+        quantity: "Track a number on each scheduled day.",
+        frequency: "Complete on a set number of days each week or month.",
+        periodQuantity: "Add up a total amount each week or month.",
       }[type];
       return (
-        <View style={styles.card}>
-          <Text style={styles.sectionLabel}>Tracking</Text>
-          <View style={styles.chipWrap}>
-            {trackingTypes.map((option) => (
-              <Chip
-                key={option.value}
-                label={option.label}
-                variant="filter"
-                active={type === option.value}
-                accent={theme.accent}
-                onPress={() => setType(option.value)}
-              />
-            ))}
-          </View>
-          {!!trackingHint && <Text style={[styles.helperText, { marginTop: 10 }]}>{trackingHint}</Text>}
-          {type === "quantity" && (
-            <View style={styles.row}>
-              <TextInput value={target} onChangeText={(value) => setTarget(normalizeQuantityTargetInput(value))} keyboardType="numeric" style={[styles.input, { flex: 1, marginRight: 10 }]} placeholder="Target (max 6)" placeholderTextColor={theme.muted2} />
-              <TextInput value={unit} onChangeText={setUnit} placeholder="minutes" style={[styles.input, { flex: 1 }]} />
-            </View>
-          )}
-          {isPeriodicType && (
-            <>
-              <Text style={[styles.sectionLabel, { marginTop: 14 }]}>Per</Text>
-              <Segmented
-                left={{ label: "Week", value: "week" }}
-                right={{ label: "Month", value: "month" }}
-                value={period}
-                onChange={setPeriod}
-                accent={theme.accent}
-              />
-              <View style={styles.row}>
-                <TextInput
-                  value={periodTarget}
-                  onChangeText={(value) => setPeriodTarget(String(value).replace(/\D/g, "").slice(0, 3))}
-                  keyboardType="number-pad"
-                  style={[styles.input, { flex: 1, marginRight: type === "periodQuantity" ? 10 : 0 }]}
-                  placeholder={type === "periodQuantity" ? "Total per " + period : "Times per " + period}
-                  placeholderTextColor={theme.muted2}
+        <View>
+          <View style={styles.trackingTypeSection}>
+            <Text style={styles.sectionLabel}>How your goal is tracked</Text>
+            <View style={styles.trackingTypeGrid}>
+              {trackingTypeOptions.map((option) => (
+                <TrackingTypeTile
+                  key={option.value}
+                  label={option.label}
+                  subtitle={option.subtitle}
+                  active={type === option.value}
+                  accent={theme.accent}
+                  onPress={() => setType(option.value)}
                 />
-                {type === "periodQuantity" && (
-                  <TextInput value={unit} onChangeText={setUnit} placeholder="pages" style={[styles.input, { flex: 1 }]} />
-                )}
+              ))}
+            </View>
+          </View>
+          <View style={styles.card}>
+            {!!trackingHint && (
+              <View style={styles.trackingHintBox}>
+                <Text style={styles.trackingHintText}>{trackingHint}</Text>
               </View>
-            </>
-          )}
+            )}
+            {type === "quantity" && (
+              <View style={styles.trackingTargetPanel}>
+                <Text style={styles.trackingTargetLabel}>Daily target</Text>
+                <View style={styles.trackingTargetValueRow}>
+                  <TextInput
+                    value={target}
+                    onChangeText={(value) => setTarget(normalizeQuantityTargetInput(value))}
+                    keyboardType="numeric"
+                    style={[styles.input, styles.trackingTargetNumberInput]}
+                    placeholder="5"
+                    placeholderTextColor={theme.muted2}
+                  />
+                  <TextInput
+                    value={unit}
+                    onChangeText={setUnit}
+                    placeholder="minutes"
+                    style={[styles.input, styles.trackingTargetUnitInput]}
+                    placeholderTextColor={theme.muted2}
+                  />
+                </View>
+              </View>
+            )}
+            {isPeriodicType && (
+              <View style={styles.trackingTargetPanel}>
+                <Text style={styles.trackingTargetLabel}>
+                  {type === "periodQuantity" ? "Period total" : "Days to complete"}
+                </Text>
+                <View style={styles.trackingTargetValueRow}>
+                  <TextInput
+                    value={periodTarget}
+                    onChangeText={(value) => {
+                      if (type === "frequency") {
+                        setPeriodTarget(normalizeFrequencyDaysInput(value, period));
+                      } else {
+                        setPeriodTarget(String(value).replace(/\D/g, "").slice(0, 3));
+                      }
+                    }}
+                    keyboardType="number-pad"
+                    style={[styles.input, styles.trackingTargetNumberInput]}
+                    placeholder={type === "periodQuantity" ? "100" : "3"}
+                    placeholderTextColor={theme.muted2}
+                  />
+                  {type === "periodQuantity" ? (
+                    <TextInput
+                      value={unit}
+                      onChangeText={setUnit}
+                      placeholder="pages"
+                      style={[styles.input, styles.trackingTargetUnitInput]}
+                      placeholderTextColor={theme.muted2}
+                    />
+                  ) : (
+                    <Text style={styles.trackingTargetUnitLabel}>days</Text>
+                  )}
+                  <Text style={styles.trackingPeriodPrefix}>per</Text>
+                  <Segmented
+                    left={{ label: "Week", value: "week" }}
+                    right={{ label: "Month", value: "month" }}
+                    value={period}
+                    onChange={setPeriod}
+                    accent={theme.accent}
+                    wrapStyle={styles.segmentWrapInline}
+                  />
+                </View>
+              </View>
+            )}
+          </View>
         </View>
       );
     }
@@ -1704,6 +1803,42 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
         </View>
       );
     }
+    if (step === 6) {
+      return (
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Daily reminder</Text>
+          <Text style={styles.helperText}>
+            Get a nudge to complete this goal. A badge dot stays on the app icon until you finish or the next day.
+          </Text>
+          <View style={styles.switchRow}>
+            <Text style={styles.switchLabel}>Remind me daily</Text>
+            <Switch
+              value={reminderEnabled}
+              onValueChange={(value) => {
+                triggerHaptic(HapticType.SELECTION);
+                setReminderEnabled(value);
+              }}
+              trackColor={{ false: theme.outline, true: theme.accent }}
+            />
+          </View>
+          {reminderEnabled && (
+            <HapticPressable
+              onPress={() => setShowReminderTimeModal(true)}
+              style={styles.reminderTimeRow}
+            >
+              <View style={styles.reminderTimeLeft}>
+                <Text style={styles.reminderTimeLabel}>Reminder time</Text>
+              </View>
+              <View style={styles.reminderTimeValueWrap}>
+                <Text style={[styles.reminderTimeValue, { color: theme.accent }]}>
+                  {formatTime12(reminderHour, reminderMinute)}
+                </Text>
+              </View>
+            </HapticPressable>
+          )}
+        </View>
+      );
+    }
     return (
       <View style={styles.card}>
         <Text style={styles.sectionLabel}>Review</Text>
@@ -1712,6 +1847,12 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
           <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Description</Text><Text style={styles.reviewValue}>{description.trim()}</Text></View>
         ) : null}
         <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Schedule</Text><Text style={styles.reviewValue}>{frequencyLabel}</Text></View>
+        <View style={styles.reviewRow}>
+          <Text style={styles.reviewLabel}>Reminder</Text>
+          <Text style={styles.reviewValue}>
+            {reminderEnabled ? formatTime12(reminderHour, reminderMinute) : "Off"}
+          </Text>
+        </View>
         <View style={styles.reviewRow}><Text style={styles.reviewLabel}>Garden</Text><Text style={styles.reviewValue}>{selectedGardenName}</Text></View>
       </View>
     );
@@ -1760,7 +1901,13 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
         measurable: measurableForType,
         schedule: isPeriodicType ? { type: "floating" } : { type: mode, days: scheduleDays },
         ...(isPeriodicType
-          ? { period: period === "month" ? "month" : "week", periodTarget: Math.max(1, Math.floor(Number(periodTarget) || 1)) }
+          ? {
+              period: period === "month" ? "month" : "week",
+              periodTarget:
+                type === "frequency"
+                  ? clampFrequencyDays(periodTarget, period)
+                  : Math.max(1, Math.floor(Number(periodTarget) || 1)),
+            }
           : {}),
         frequencyLabel,
         completionCondition,
@@ -1809,10 +1956,34 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
         goal_type: type,
       });
 
+      if (reminderEnabled) {
+        try {
+          await configureGoalReminderOnCreate(
+            docRef.id,
+            name.trim(),
+            reminderHour,
+            reminderMinute
+          );
+        } catch (reminderError) {
+          console.warn('[AddGoalScreen] Failed to configure goal reminder:', reminderError);
+        }
+      }
+
+      isLeavingAfterSaveRef.current = true;
+      setAddGoalDirty(false);
+
       if (typeof onGoalSaved === "function") {
         onGoalSaved(docRef.id);
       } else {
-        navigation.navigate("Goals", { screen: "Goal", params: { goalId: docRef.id, source: "goals" } });
+        const goalParams = { goalId: docRef.id, source: "goals" };
+        const stackRoutes = navigation.getState()?.routes || [];
+        const openedFromGoalsHome = stackRoutes.some((route) => route.name === "GoalsHome");
+
+        if (openedFromGoalsHome) {
+          navigation.replace("Goal", goalParams);
+        } else {
+          navigation.navigate("Goals", { screen: "Goal", params: goalParams });
+        }
       }
     } catch (error) {
       Alert.alert("Error", "Could not save your goal.");
@@ -1943,6 +2114,21 @@ function StepProgressBar({ total = 1, index = 0, accent }) {
 
         {/* Help overlay */}
         <CoachMark visible={helpOpen} title={helpCopy.title} body={helpCopy.body} onClose={() => setHelpOpen(false)} />
+
+        <TimePickerSheet
+          visible={showReminderTimeModal}
+          title="Reminder time"
+          subtitle="When should we nudge you to complete this goal?"
+          hour24={reminderHour}
+          minute={reminderMinute}
+          accentColor={theme.accent}
+          onCancel={() => setShowReminderTimeModal(false)}
+          onConfirm={(hour, minute) => {
+            setReminderHour(hour);
+            setReminderMinute(minute);
+            setShowReminderTimeModal(false);
+          }}
+        />
       </View>
     </Page>
   );
@@ -2155,8 +2341,144 @@ const styles = StyleSheet.create({
   },
   switchRow: { marginTop: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   contributorRow: { marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  reminderTimeRow: {
+    marginTop: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#f6fafd",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  reminderTimeLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  reminderTimeLabel: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: theme.text,
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
+  reminderTimeValueWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  reminderTimeValue: {
+    fontSize: 14,
+    fontWeight: "900",
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
   switchLabel: { fontSize: 13, color: theme.text, fontFamily: 'CeraRoundProDEMO-Black' },
   helperText: { fontSize: 12, color: theme.muted, marginBottom: 8, fontFamily: 'CeraRoundProDEMO-Black' },
+  trackingTypeSection: {
+    paddingTop: 4,
+    paddingBottom: 12,
+  },
+  trackingTypeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  trackingTypeTileWrap: {
+    flexGrow: 1,
+    flexBasis: '47%',
+    minHeight: 76,
+    position: 'relative',
+  },
+  trackingTypeTileShadow: {
+    position: 'absolute',
+    top: 4,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 16,
+  },
+  trackingTypeTileFace: {
+    minHeight: 72,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'center',
+  },
+  trackingTypeTileLabel: {
+    fontSize: 13,
+    fontWeight: '900',
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.1,
+  },
+  trackingTypeTileSubtitle: {
+    marginTop: 3,
+    fontSize: 11,
+    fontWeight: '800',
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
+  trackingHintBox: {
+    marginTop: 0,
+    backgroundColor: '#eef3f8',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  trackingHintText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#5a6b7d',
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
+  trackingTargetPanel: {
+    marginTop: 14,
+    backgroundColor: '#f3f6f9',
+    borderRadius: 18,
+    padding: 12,
+    gap: 10,
+  },
+  trackingTargetLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: theme.muted,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  },
+  trackingTargetValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  trackingTargetNumberInput: {
+    flex: 0,
+    width: 52,
+    marginBottom: 0,
+    textAlign: 'center',
+    backgroundColor: '#ffffff',
+  },
+  trackingTargetUnitInput: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 72,
+    maxWidth: 110,
+    marginBottom: 0,
+    backgroundColor: '#ffffff',
+  },
+  trackingTargetUnitLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: theme.text,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    paddingHorizontal: 2,
+  },
+  trackingPeriodPrefix: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: theme.muted,
+    fontFamily: 'CeraRoundProDEMO-Black',
+    marginLeft: 2,
+  },
   completionModeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4, marginBottom: 10 },
   calendarCard: {
     backgroundColor: "#ffffff",
@@ -2251,6 +2573,10 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 10,
     flexWrap: 'wrap',
+  },
+  segmentWrapInline: {
+    marginTop: 0,
+    flexShrink: 0,
   },
   segment: {
     minHeight: 36,

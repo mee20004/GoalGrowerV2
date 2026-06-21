@@ -21,7 +21,9 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import Svg, { Path } from "react-native-svg";
 import HapticPressable from "../components/HapticPressable";
+import GoalProgressButtonContent from "../components/GoalProgressButtonContent";
 import { HapticType, triggerSelectionHaptic } from "../utils/haptics";
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import * as solidIcons from '@fortawesome/free-solid-svg-icons';
@@ -59,9 +61,21 @@ import {
   updateTrophyFreezeState,
   dateFromFirestoreValue,
 } from "../utils/goalState";
-import { getPeriodLabel } from "../utils/periodUtils";
+import {
+  clampFrequencyDays,
+  getMaxFrequencyDays,
+  getPeriodLabel,
+  normalizeFrequencyDaysInput,
+} from "../utils/periodUtils";
 import { getBadgeImageForTrophyKey } from "./badgeImages";
 import { formatISOToDisplay, parseDisplayToISO, getWeekStartSync, getShowLast6DaysSync, getDateFormatSync, formatPartialFromDigits } from '../utils/dateFormat';
+import TimePickerSheet from "../components/settings/TimePickerSheet";
+import { formatTime12 } from "../utils/timeFormat";
+import {
+  configureGoalReminderOnCreate,
+  getGoalNotificationSettings,
+  removeGoalNotificationSetting,
+} from "../utils/notifications";
 
 // Consistent frozen day blue color for streak and health bar
 const FROZEN_DAY_BLUE = '#a6e6ff';
@@ -83,6 +97,21 @@ const FEATURED_ICONS = pickerIconNames.slice(0, 10);
 function GoalIcon({ name, size, color }) {
   const iconDef = FONT_AWESOME_ICONS[name] || FONT_AWESOME_ICONS['star'];
   return <FontAwesomeIcon icon={iconDef} size={size} color={color} />;
+}
+
+function RoundedChevron({ direction = "left", size = 18, color = theme.text }) {
+  const path = direction === "left" ? "M15 5L7 12L15 19" : "M9 5L17 12L9 19";
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d={path}
+        stroke={color}
+        strokeWidth={4.25}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
 }
 
 const FIRE_STREAK_ICON = require("../assets/Icons/icons8-fire-64.png");
@@ -705,6 +734,10 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   const [multiUserWateringEnabled, setMultiUserWateringEnabled] = useState(false);
   const [requiredContributors, setRequiredContributors] = useState("2");
   const [editCalendarMonth, setEditCalendarMonth] = useState(toStartOfDay(new Date()));
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderHour, setReminderHour] = useState(9);
+  const [reminderMinute, setReminderMinute] = useState(0);
+  const [showReminderTimeModal, setShowReminderTimeModal] = useState(false);
   const uid = auth.currentUser?.uid;
 
   const setLocalOptimisticProgress = (nextStateOrUpdater) => {
@@ -934,8 +967,17 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     setType(goalData.type || "completion");
     setTarget(String(clampNum(goalData?.measurable?.target ?? 1, 1, MAX_QUANTITY_TARGET)));
     setUnit(goalData?.measurable?.unit || "times");
-    setPeriod(goalData?.period === "month" ? "month" : "week");
-    setPeriodTarget(String(Math.max(1, Math.floor(Number(goalData?.periodTarget) || 3))));
+    const loadedPeriod = goalData?.period === "month" ? "month" : "week";
+    const loadedType = goalData?.type || "completion";
+    setPeriod(loadedPeriod);
+    const loadedPeriodTarget = Math.max(1, Math.floor(Number(goalData?.periodTarget) || 3));
+    setPeriodTarget(
+      String(
+        loadedType === "frequency"
+          ? clampFrequencyDays(loadedPeriodTarget, loadedPeriod)
+          : loadedPeriodTarget
+      )
+    );
     setMode(goalData?.schedule?.type || "days");
     setDays(goalData?.schedule?.days?.length ? goalData.schedule.days : []);
     setWhenStr(goalData?.plan?.when || "");
@@ -952,6 +994,27 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     setMultiUserWateringEnabled(!!goalData?.multiUserWateringEnabled);
     setRequiredContributors(String(Math.max(2, Math.floor(Number(goalData?.requiredContributors) || 2))));
     setEditCalendarMonth(monthFromISOOrToday(endDate));
+  };
+
+  const loadReminderSettingsForGoal = async (goalId) => {
+    if (!goalId) {
+      setReminderEnabled(false);
+      setReminderHour(9);
+      setReminderMinute(0);
+      return;
+    }
+
+    try {
+      const settings = await getGoalNotificationSettings(goalId);
+      setReminderEnabled(!!settings?.enabled);
+      setReminderHour(settings?.time ?? 9);
+      setReminderMinute(settings?.timeMinute ?? 0);
+    } catch (error) {
+      console.warn("[GoalScreen] Failed to load reminder settings:", error);
+      setReminderEnabled(false);
+      setReminderHour(9);
+      setReminderMinute(0);
+    }
   };
 
   useEffect(() => {
@@ -972,6 +1035,12 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     }
 
     if (navigation.canGoBack()) {
+      const state = navigation.getState();
+      const previousRoute = state?.routes?.[(state?.index ?? 0) - 1];
+      if (previousRoute?.name === "AddGoal") {
+        navigation.navigate("GoalsHome");
+        return;
+      }
       navigation.goBack();
       return;
     }
@@ -1159,6 +1228,11 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     if (type === "quantity" && (!(Number(target) > 0) || unit.trim().length < 1)) return "Quantity needs a number and unit.";
     if (type === "quantity" && Number(target) > MAX_QUANTITY_TARGET) return `Quantity max is ${MAX_QUANTITY_TARGET}.`;
     if ((type === "frequency" || type === "periodQuantity") && !(Number(periodTarget) >= 1)) return "Set how many times per period (at least 1).";
+    if (type === "frequency" && Number(periodTarget) > getMaxFrequencyDays(period)) {
+      const maxDays = getMaxFrequencyDays(period);
+      const periodWord = period === "month" ? "month" : "week";
+      return `Cannot exceed ${maxDays} days per ${periodWord}.`;
+    }
     if (type === "periodQuantity" && unit.trim().length < 1) return "Add a unit (e.g. pages, minutes).";
     if (type !== "frequency" && type !== "periodQuantity" && ((mode === "days" && !days.length) || !scheduleDays.length)) return "Pick at least one day.";
     if (completionMode === "date" && !isValidISODate(completionEndDate.trim())) return "Enter a valid end date.";
@@ -1167,6 +1241,14 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     if (selectedGardenId !== "personal" && multiUserWateringEnabled && !(Number(requiredContributors) >= 2)) return "Required contributors must be at least 2.";
     return "";
   }, [completionDateMeta, completionEndAmount, completionEndDate, completionMode, days.length, mode, multiUserWateringEnabled, name, requiredContributors, scheduleDays.length, selectedGardenId, selectedIcon, target, type, unit, period, periodTarget]);
+
+  useEffect(() => {
+    if (type !== "frequency") return;
+    setPeriodTarget((prev) => {
+      const clamped = String(clampFrequencyDays(prev, period));
+      return clamped === prev ? prev : clamped;
+    });
+  }, [period, type]);
 
   useEffect(() => {
     return () => {
@@ -1195,6 +1277,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     setEditView("form");
     setIconSearch("");
     if (goal) applyGoalToEditForm(goal);
+    void loadReminderSettingsForGoal(goal?.id);
     setShowEditModal(true);
   };
 
@@ -1205,7 +1288,10 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
   };
 
   const handleCancelEdit = () => {
-    if (goal) applyGoalToEditForm(goal);
+    if (goal) {
+      applyGoalToEditForm(goal);
+      void loadReminderSettingsForGoal(goal.id);
+    }
     setShowIconModal(false);
     setShowEditModal(false);
     setEditView("form");
@@ -1253,7 +1339,11 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
         measurable: measurableForType,
         schedule: isPeriodicEdit ? { type: "floating" } : { type: mode, days: scheduleDays },
         period: isPeriodicEdit ? (period === "month" ? "month" : "week") : deleteField(),
-        periodTarget: isPeriodicEdit ? Math.max(1, Math.floor(Number(periodTarget) || 1)) : deleteField(),
+        periodTarget: isPeriodicEdit
+          ? (type === "frequency"
+              ? clampFrequencyDays(periodTarget, period)
+              : Math.max(1, Math.floor(Number(periodTarget) || 1)))
+          : deleteField(),
         frequencyLabel,
         completionCondition,
         plan: { when: whenStr.trim(), where: whereStr.trim() },
@@ -1332,7 +1422,10 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
         // to concrete values (or drop them) instead of leaking sentinels through.
         if (isPeriodicEdit) {
           sharedPayload.period = period === "month" ? "month" : "week";
-          sharedPayload.periodTarget = Math.max(1, Math.floor(Number(periodTarget) || 1));
+          sharedPayload.periodTarget =
+            type === "frequency"
+              ? clampFrequencyDays(periodTarget, period)
+              : Math.max(1, Math.floor(Number(periodTarget) || 1));
         } else {
           delete sharedPayload.period;
           delete sharedPayload.periodTarget;
@@ -1372,6 +1465,27 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
 
       if (wasSharedGardenId && wasSharedGardenId !== nextSharedGardenId) {
         await deleteDoc(doc(db, "sharedGardens", wasSharedGardenId, "layout", goal.id));
+      }
+
+      try {
+        if (reminderEnabled) {
+          const configured = await configureGoalReminderOnCreate(
+            goal.id,
+            name.trim() || goal.name,
+            reminderHour,
+            reminderMinute
+          );
+          if (!configured) {
+            Alert.alert(
+              "Notifications disabled",
+              "Goal saved, but reminders need notification permission in your device settings."
+            );
+          }
+        } else {
+          await removeGoalNotificationSetting(goal.id);
+        }
+      } catch (reminderError) {
+        console.warn("[GoalScreen] Failed to save reminder settings:", reminderError);
       }
 
       setShowEditModal(false);
@@ -2052,14 +2166,8 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
     : isSharedMultiUserPeriodic
       ? `${Math.min(periodGroupCount, requiredSharedContributors)}/${requiredSharedContributors} contributors`
       : (isTrophy ? "Stored in trophy collection" : null);
-  const showQuantitySegments = (isQuantity || isPeriodic) && Number(targetValue) > 0;
-  const quantitySegmentCount = showQuantitySegments ? Math.max(1, Math.min(Math.floor(Number(targetValue) || 1), 6)) : 0;
-  const safeQuantityCurrent = showQuantitySegments
-    ? Math.max(0, Math.min(Number(currentValue) || 0, Number(targetValue) || 1))
-    : 0;
-  const filledQuantitySegments = showQuantitySegments
-    ? Math.min(quantitySegmentCount, Math.ceil((safeQuantityCurrent / (Number(targetValue) || 1)) * quantitySegmentCount))
-    : 0;
+  const showQuantitySegments = isQuantity && Number(targetValue) > 0;
+  const showPeriodicProgress = isPeriodic && Number(targetValue) > 0;
   // Use frozen streaks for trophy/frozen
   const rewardStreakState = (isTrophy || isFrozenTrophy)
     ? { currentStreak: goal?.frozenCurrentStreak ?? goal.currentStreak ?? 0, longestStreak: goal?.frozenLongestStreak ?? goal.longestStreak ?? 0 }
@@ -2301,75 +2409,40 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                 ]}
               >
                 {isSharedMultiUserQuantity ? (
-                  <View style={styles.quantityButtonContent}>
-                    <Text
-                      style={[
-                        styles.sharedQuantityProgressLabel,
-                        { color: (isDone || Number(currentValue) >= quantityTargetValue) ? '#fff' : theme.accent },
-                      ]}
-                    >
-                      {`${Math.min(Object.values(quantityLogs).filter(v => Number(v) >= quantityTargetValue).length, requiredSharedContributors)}/${requiredSharedContributors}`}
-                    </Text>
-                    <View style={styles.quantitySegmentRow}>
-                      {Array.from({ length: quantitySegmentCount }).map((_, index) => {
-                        const userValue = Math.max(0, Math.min(Number(currentValue) || 0, quantityTargetValue));
-                        const filled = Math.min(quantitySegmentCount, Math.ceil((userValue / (Number(quantityTargetValue) || 1)) * quantitySegmentCount));
-                        // For shared multi-user quantity: segments are white if user has completed their part
-                        const userDone = userValue >= quantityTargetValue;
-                        return (
-                          <View
-                            key={`goal-quantity-segment-${index}`}
-                            style={[
-                              styles.quantitySegment,
-                              index < filled
-                                ? (userDone ? styles.quantitySegmentDone : styles.quantitySegmentFilled)
-                                : styles.quantitySegmentEmpty,
-                            ]}
-                          />
-                        );
-                      })}
-                    </View>
-                  </View>
+                  <GoalProgressButtonContent
+                    mode="shared-quantity"
+                    currentValue={currentValue}
+                    targetValue={quantityTargetValue}
+                    isDone={isDone}
+                    userDone={Number(currentValue) >= quantityTargetValue}
+                    accentColor={theme.accent}
+                    contributorLabel={`${Math.min(Object.values(quantityLogs).filter((v) => Number(v) >= quantityTargetValue).length, requiredSharedContributors)}/${requiredSharedContributors}`}
+                  />
                 ) : isSharedMultiUserPeriodic ? (
-                  <View style={styles.quantityButtonContent}>
-                    <Text
-                      style={[
-                        styles.sharedQuantityProgressLabel,
-                        { color: (isDone || periodUserDone) ? '#fff' : theme.accent },
-                      ]}
-                    >
-                      {`${Math.min(periodGroupCount, requiredSharedContributors)}/${requiredSharedContributors}`}
-                    </Text>
-                    <View style={styles.quantitySegmentRow}>
-                      {Array.from({ length: quantitySegmentCount }).map((_, index) => (
-                        <View
-                          key={`goal-quantity-segment-${index}`}
-                          style={[
-                            styles.quantitySegment,
-                            index < filledQuantitySegments
-                              ? (periodUserDone ? styles.quantitySegmentDone : styles.quantitySegmentFilled)
-                              : styles.quantitySegmentEmpty,
-                          ]}
-                        />
-                      ))}
-                    </View>
-                  </View>
-                ) : (isQuantity || isPeriodic) ? (
-                  <View style={styles.quantityButtonContent}>
-                    <View style={styles.quantitySegmentRow}>
-                      {Array.from({ length: quantitySegmentCount }).map((_, index) => (
-                        <View
-                          key={`goal-quantity-segment-${index}`}
-                          style={[
-                            styles.quantitySegment,
-                            index < filledQuantitySegments
-                              ? (isDone ? styles.quantitySegmentDone : styles.quantitySegmentFilled)
-                              : styles.quantitySegmentEmpty,
-                          ]}
-                        />
-                      ))}
-                    </View>
-                  </View>
+                  <GoalProgressButtonContent
+                    mode="shared-periodic"
+                    currentValue={periodUserProgress}
+                    targetValue={periodTargetValue}
+                    isDone={isDone}
+                    userDone={periodUserDone}
+                    accentColor={theme.accent}
+                    contributorLabel={`${Math.min(periodGroupCount, requiredSharedContributors)}/${requiredSharedContributors}`}
+                  />
+                ) : showQuantitySegments ? (
+                  <GoalProgressButtonContent
+                    mode="quantity"
+                    currentValue={currentValue}
+                    targetValue={targetValue}
+                    isDone={isDone}
+                  />
+                ) : showPeriodicProgress ? (
+                  <GoalProgressButtonContent
+                    mode="periodic"
+                    currentValue={currentValue}
+                    targetValue={targetValue}
+                    isDone={isDone}
+                    accentColor={theme.accent}
+                  />
                 ) : isSharedMultiUserCompletion ? (
                   <Text
                     style={[
@@ -2429,18 +2502,16 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                   onPress={() => setHistoryWeekOffset((offset) => offset + 1)}
                   disabled={!canGoToOlderWeek}
                   haptic={canGoToOlderWeek ? HapticType.LIGHT : false}
-                  hitSlop={6}
+                  hitSlop={10}
                   style={({ pressed }) => [
-                    styles.historyWeekNavBtn,
-                    canGoToOlderWeek && styles.historyWeekNavBtnActive,
-                    !canGoToOlderWeek && styles.historyWeekNavBtnDisabled,
-                    pressed && canGoToOlderWeek && styles.historyWeekNavBtnPressed,
+                    styles.historyWeekNavHit,
+                    pressed && canGoToOlderWeek && styles.historyWeekNavHitPressed,
                   ]}
                 >
-                  <Ionicons
-                    name="chevron-back"
-                    size={20}
-                    color={canGoToOlderWeek ? theme.accent : '#b8c2cc'}
+                  <RoundedChevron
+                    direction="left"
+                    size={18}
+                    color={canGoToOlderWeek ? theme.text : '#d0d7df'}
                   />
                 </HapticPressable>
                 <View style={styles.historyWeekLabels}>
@@ -2451,18 +2522,16 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                   onPress={() => setHistoryWeekOffset((offset) => Math.max(0, offset - 1))}
                   disabled={!canGoToNewerWeek}
                   haptic={canGoToNewerWeek ? HapticType.LIGHT : false}
-                  hitSlop={6}
+                  hitSlop={10}
                   style={({ pressed }) => [
-                    styles.historyWeekNavBtn,
-                    canGoToNewerWeek && styles.historyWeekNavBtnActive,
-                    !canGoToNewerWeek && styles.historyWeekNavBtnDisabled,
-                    pressed && canGoToNewerWeek && styles.historyWeekNavBtnPressed,
+                    styles.historyWeekNavHit,
+                    pressed && canGoToNewerWeek && styles.historyWeekNavHitPressed,
                   ]}
                 >
-                  <Ionicons
-                    name="chevron-forward"
-                    size={20}
-                    color={canGoToNewerWeek ? theme.accent : '#b8c2cc'}
+                  <RoundedChevron
+                    direction="right"
+                    size={18}
+                    color={canGoToNewerWeek ? theme.text : '#d0d7df'}
                   />
                 </HapticPressable>
               </View>
@@ -2499,7 +2568,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                       styles.duolingoBubble,
                       styles.duolingoBubbleDone,
                       entry.isToday && styles.duolingoBubbleToday,
-                      isSelectedDay && styles.duolingoBubbleSelected,
+                      isSelectedDay && !entry.isToday && styles.duolingoBubbleSelected,
                     ]}
                   >
                     <FontAwesomeIcon icon={FONT_AWESOME_ICONS["check"]} size={20} color="#ffffff" />
@@ -2512,7 +2581,7 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                         ? styles.duolingoBubbleMissed
                         : styles.duolingoBubbleIdle,
                       entry.isToday && styles.duolingoBubbleToday,
-                      isSelectedDay && styles.duolingoBubbleSelected,
+                      isSelectedDay && !entry.isToday && styles.duolingoBubbleSelected,
                     ]}
                   />
                 );
@@ -2837,10 +2906,16 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                       <View style={styles.row}>
                         <TextInput
                           value={periodTarget}
-                          onChangeText={(value) => setPeriodTarget(String(value).replace(/\D/g, "").slice(0, 3))}
+                          onChangeText={(value) => {
+                            if (type === "frequency") {
+                              setPeriodTarget(normalizeFrequencyDaysInput(value, period));
+                            } else {
+                              setPeriodTarget(String(value).replace(/\D/g, "").slice(0, 3));
+                            }
+                          }}
                           keyboardType="number-pad"
                           style={[styles.input, styles.rowInput]}
-                          placeholder={type === "periodQuantity" ? "Total per " + period : "Times per " + period}
+                          placeholder={type === "periodQuantity" ? "Total per " + period : "Days per " + period}
                           placeholderTextColor={theme.muted2}
                         />
                         {type === "periodQuantity" && (
@@ -2930,8 +3005,55 @@ export default function GoalScreen({ route, navigation, tutorialLocked = false, 
                   )}
                 </View>
 
+                <View style={styles.editCard}>
+                  <Text style={styles.editLabel}>Daily reminder</Text>
+                  <Text style={styles.helperText}>
+                    Get a nudge to complete this goal. A badge dot stays on the app icon until you finish or the next day.
+                  </Text>
+                  <View style={styles.switchRow}>
+                    <Text style={styles.switchLabel}>Remind me daily</Text>
+                    <Switch
+                      value={reminderEnabled}
+                      onValueChange={(value) => {
+                        triggerSelectionHaptic();
+                        setReminderEnabled(value);
+                      }}
+                      trackColor={{ false: theme.outline, true: theme.accent }}
+                    />
+                  </View>
+                  {reminderEnabled && (
+                    <HapticPressable
+                      haptic={HapticType.LIGHT}
+                      onPress={() => setShowReminderTimeModal(true)}
+                      style={styles.editReminderTimeRow}
+                    >
+                      <View style={styles.editReminderTimeLeft}>
+                        <Text style={styles.timePickerLabel}>Reminder time</Text>
+                      </View>
+                      <View style={styles.editReminderTimeValueWrap}>
+                        <Text style={styles.timeText}>{formatTime12(reminderHour, reminderMinute)}</Text>
+                      </View>
+                    </HapticPressable>
+                  )}
+                </View>
+
                 {!!formError && <View style={styles.errorInline}><Text style={styles.errorInlineText}>{formError}</Text></View>}
               </ScrollView>
+
+              <TimePickerSheet
+                visible={showReminderTimeModal}
+                title="Reminder time"
+                subtitle="When should we nudge you to complete this goal?"
+                hour24={reminderHour}
+                minute={reminderMinute}
+                accentColor={theme.accent}
+                onCancel={() => setShowReminderTimeModal(false)}
+                onConfirm={(hour, minute) => {
+                  setReminderHour(hour);
+                  setReminderMinute(minute);
+                  setShowReminderTimeModal(false);
+                }}
+              />
             </View>
           </View>
           )}
@@ -3434,22 +3556,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
     alignItems: 'center',
   },
-  historyWeekNavBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+  historyWeekNavHit: {
+    width: 26,
+    height: 26,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  historyWeekNavBtnActive: {
-    backgroundColor: '#ffffff',
-    ...cpShadow({ color: '#cdd7e3', offset: { width: 0, height: 3 }, opacity: 1, radius: 0, elevation: 2 }),
-  },
-  historyWeekNavBtnDisabled: {
-    backgroundColor: '#f3f6f9',
-  },
-  historyWeekNavBtnPressed: {
-    transform: [{ translateY: 2 }],
+  historyWeekNavHitPressed: {
+    opacity: 0.45,
   },
   historyTodayBtn: {
     alignSelf: 'flex-start',
@@ -3902,6 +4016,24 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
     paddingTop: 14,
+  },
+  editReminderTimeRow: {
+    marginTop: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#f6fafd",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  editReminderTimeLeft: {
+    flex: 1,
+  },
+  editReminderTimeValueWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   timePickerLabel: {
     fontSize: 13,

@@ -7,6 +7,11 @@ import { auth, db } from "../firebaseConfig";
 import { onFirestoreListenerError } from "./firestoreListener";
 import { callCloudFunction } from "./cloudFunctions";
 import {
+  fetchCustomerInfo,
+  findLatestCoinTransaction,
+  getCoinTransactionCandidateIds,
+} from "./revenueCat";
+import {
   COIN_REWARDS,
   DECOR_TYPES,
   DEFAULT_OWNED_FARBG,
@@ -200,6 +205,70 @@ export async function verifyAndCreditCoinPurchase(transactionId) {
       "Coin verification failed.";
     throw new Error(message);
   }
+}
+
+const COIN_CREDIT_RETRYABLE_REASONS = new Set([
+  "no_subscriber",
+  "no_purchases",
+  "transaction_not_found",
+]);
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function creditCoinPurchaseWithRetry({
+  maxAttempts = 6,
+  delayMs = 1500,
+} = {}) {
+  const latestCustomerInfo = await fetchCustomerInfo();
+  const latestCoinTx = findLatestCoinTransaction(latestCustomerInfo);
+  const candidateTransactionIds = [
+    ...new Set(getCoinTransactionCandidateIds(latestCoinTx)),
+  ];
+  const verificationAttempts = candidateTransactionIds.length
+    ? [...candidateTransactionIds, null]
+    : [null];
+
+  let lastResult = null;
+  let lastError = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (attempt > 0) {
+      await sleep(delayMs);
+    }
+
+    for (const transactionId of verificationAttempts) {
+      try {
+        const result = await verifyAndCreditCoinPurchase(transactionId);
+        lastResult = result;
+        lastError = null;
+
+        if (result?.credited || result?.reason === "already_credited") {
+          return result;
+        }
+
+        if (!COIN_CREDIT_RETRYABLE_REASONS.has(result?.reason)) {
+          return result;
+        }
+      } catch (error) {
+        lastError = error;
+        lastResult = null;
+      }
+    }
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+
+  return (
+    lastResult || {
+      credited: false,
+      reason: "sync_timeout",
+      amount: 0,
+    }
+  );
 }
 
 export async function awardGoalCompletionCoins() {

@@ -118,7 +118,7 @@ service cloud.firestore {
 
     function isProfileFieldUpdate() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        'username', 'searchKey', 'email', 'privateAccount', 'accentColor',
+        'username', 'searchKey', 'email', 'privateAccount', 'accentColor', 'isPro',
       ]);
     }
 

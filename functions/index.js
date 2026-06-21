@@ -131,12 +131,21 @@ async function fetchVerifiedSubscriber(uid) {
 }
 
 function matchesTransactionId(entry, transactionId) {
-  const processedId = getProcessedPurchaseId(entry);
-  return (
-    processedId === transactionId
-    || entry.id === transactionId
-    || entry.storeTransactionId === transactionId
-  );
+  if (!transactionId) return false;
+
+  const normalizedTarget = String(transactionId).trim();
+  const candidates = [
+    getProcessedPurchaseId(entry),
+    entry.id,
+    entry.storeTransactionId,
+    entry.store_transaction_id,
+    entry.transactionIdentifier,
+    entry.transaction_id,
+  ]
+    .filter(Boolean)
+    .map((value) => String(value).trim());
+
+  return candidates.includes(normalizedTarget);
 }
 
 async function creditVerifiedCoinPurchases(uid, purchases) {
@@ -200,10 +209,7 @@ exports.verifyAndCreditCoinPurchase = onCall(revenueCatCallableOptions, async (r
 
   const subscriber = await fetchVerifiedSubscriber(uid);
   if (!subscriber) {
-    throw new HttpsError(
-      "failed-precondition",
-      "No purchase record found yet. Try again in a moment."
-    );
+    return { credited: false, reason: "no_subscriber", amount: 0 };
   }
 
   const coinPurchases = getCoinPurchaseTransactions(subscriber);
@@ -216,7 +222,12 @@ exports.verifyAndCreditCoinPurchase = onCall(revenueCatCallableOptions, async (r
     : coinPurchases;
 
   if (transactionId && purchasesToCredit.length === 0) {
-    throw new HttpsError("failed-precondition", "Purchase could not be verified.");
+    return {
+      credited: false,
+      reason: "transaction_not_found",
+      amount: 0,
+      transactionId,
+    };
   }
 
   const { totalCredited, creditedTransactionIds } = await creditVerifiedCoinPurchases(

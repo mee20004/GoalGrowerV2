@@ -11,7 +11,8 @@ import { Alert } from "react-native";
 import Purchases from "react-native-purchases";
 import { PAYWALL_RESULT } from "react-native-purchases-ui";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "../firebaseConfig";
+import { doc, setDoc } from "firebase/firestore";
+import { auth, db } from "../firebaseConfig";
 import { PRO_ENTITLEMENT_DISPLAY_NAME, OFFERING_IDS } from "../constants/revenueCat";
 import {
   configureRevenueCat,
@@ -52,6 +53,12 @@ export function SubscriptionProvider({ children }) {
       await processMonthlyProCoinGrant(info);
     } catch (error) {
       console.error("Monthly Pro coin grant failed:", error);
+    }
+
+    try {
+      await setDoc(doc(db, "users", uid), { isPro: hasProEntitlement(info) }, { merge: true });
+    } catch (error) {
+      console.error("Failed to sync Pro status to profile:", error);
     }
   }, []);
 
@@ -162,8 +169,8 @@ export function SubscriptionProvider({ children }) {
     };
   }, [syncRevenueCatIdentity, handleCustomerInfoUpdate]);
 
-  const showPaywallResultMessage = useCallback((result) => {
-    const message = describePaywallResult(result);
+  const showPaywallResultMessage = useCallback((result, offeringId = OFFERING_IDS.DEFAULT) => {
+    const message = describePaywallResult(result, offeringId);
     if (message) {
       Alert.alert(PRO_ENTITLEMENT_DISPLAY_NAME, message);
     }
@@ -179,7 +186,7 @@ export function SubscriptionProvider({ children }) {
     try {
       const result = await presentPaywall(offeringId);
       await refreshCustomerInfo();
-      showPaywallResultMessage(result);
+      showPaywallResultMessage(result, offeringId);
       return result;
     } finally {
       setActionLoading(false);
@@ -203,7 +210,7 @@ export function SubscriptionProvider({ children }) {
     try {
       const result = await presentPaywallIfNeeded(offeringId);
       await refreshCustomerInfo();
-      showPaywallResultMessage(result);
+      showPaywallResultMessage(result, offeringId);
       return result;
     } finally {
       setActionLoading(false);

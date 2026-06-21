@@ -131,6 +131,7 @@ export default function JourneyScreen({ route, navigation }) {
   const claimOriginRefs = useRef({});
   const balancePulse = useRef(new Animated.Value(1)).current;
   const countUpAnim = useRef(new Animated.Value(0)).current;
+  const pendingCoinBalanceRef = useRef(null);
   const [displayCoinBalance, setDisplayCoinBalance] = useState(0);
   const [loading, setLoading] = useState(true);
   const [questStats, setQuestStats] = useState({ totalCompleted: 0 });
@@ -249,6 +250,15 @@ export default function JourneyScreen({ route, navigation }) {
 
   useEffect(() => {
     if (isReadOnly || flyReward) return;
+
+    const pending = pendingCoinBalanceRef.current;
+    if (pending != null && coinBalance < pending) {
+      return;
+    }
+    if (pending != null && coinBalance >= pending) {
+      pendingCoinBalanceRef.current = null;
+    }
+
     setDisplayCoinBalance(coinBalance);
     countUpAnim.setValue(coinBalance);
   }, [coinBalance, flyReward, countUpAnim, isReadOnly]);
@@ -349,6 +359,7 @@ export default function JourneyScreen({ route, navigation }) {
 
   const cancelFlyReward = useCallback((balanceBefore) => {
     clearClaimHaptics();
+    pendingCoinBalanceRef.current = null;
     setFlyReward(null);
     setDisplayCoinBalance(balanceBefore);
     countUpAnim.setValue(balanceBefore);
@@ -357,9 +368,11 @@ export default function JourneyScreen({ route, navigation }) {
   const triggerFlyReward = useCallback(async (amount, origin, balanceBefore) => {
     const endWindow = await measureBalanceTarget();
     const startBalance = typeof balanceBefore === "number" ? balanceBefore : coinBalance;
+    const nextBalance = startBalance + amount;
 
     if (!origin || !endWindow) {
-      setDisplayCoinBalance(startBalance + amount);
+      pendingCoinBalanceRef.current = nextBalance;
+      setDisplayCoinBalance(nextBalance);
       playBalancePulse();
       return;
     }
@@ -370,15 +383,17 @@ export default function JourneyScreen({ route, navigation }) {
     ]);
 
     if (start && end) {
+      pendingCoinBalanceRef.current = nextBalance;
       setFlyReward({
         amount,
         start,
         end,
         fromBalance: startBalance,
-        toBalance: startBalance + amount,
+        toBalance: nextBalance,
       });
     } else {
-      setDisplayCoinBalance(startBalance + amount);
+      pendingCoinBalanceRef.current = nextBalance;
+      setDisplayCoinBalance(nextBalance);
       playBalancePulse();
     }
   }, [coinBalance, measureBalanceTarget, playBalancePulse, toContainerCoords]);

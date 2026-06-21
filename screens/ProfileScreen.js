@@ -1,57 +1,82 @@
 // ProfileScreen.js
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TextInput, Alert } from "react-native";
+import * as WebBrowser from "expo-web-browser";
 import HapticTouchableOpacity from "../components/HapticTouchableOpacity";
+import HapticPressable from "../components/HapticPressable";
+import { HapticType } from "../utils/haptics";
 import { useFocusEffect } from "@react-navigation/native";
-import { doc, getDoc, collection, getDocs, updateDoc, query, where, writeBatch, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs, query, where, writeBatch, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import theme, { useTheme } from "../theme";
 import { cpShadow } from "../utils/shadows";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { updateOverallScoreForUser } from "../utils/scoreUtils";
+import { useSubscription } from "../components/SubscriptionProvider";
+import ProBadge from "../components/ProBadge";
+
+const FEEDBACK_URL = "https://goalgrower.userjot.com/?cursor=1&order=top&limit=10";
+const FEEDBACK_FACE = "#FB923C";
+const FEEDBACK_SHADOW = "#F97316";
+const FEEDBACK_BUTTON_DEPTH = 4;
 
 export default function ProfileScreen({ navigation }) {
   const { theme } = useTheme();
+  const { isPro } = useSubscription();
   const [profileData, setProfileData] = useState(null);
   const [followers, setFollowers] = useState([]);
   const [following, setFollowing] = useState([]);
   const [loading, setLoading] = useState(true);
   const [friendUsername, setFriendUsername] = useState("");
   const [addingFriend, setAddingFriend] = useState(false);
+  const focusActiveRef = useRef(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (auth.currentUser) {
-        fetchSocialData(auth.currentUser.uid);
-      }
-    }, [])
-  );
-
-  const fetchSocialData = async (uid) => {
+  const fetchSocialData = useCallback(async (uid, { refreshScore = true } = {}) => {
     try {
       const userRef = doc(db, "users", uid);
-      const userSnap = await getDoc(userRef);
-      let userData = userSnap.exists() ? userSnap.data() : {};
-
-      const calculatedScore = await updateOverallScoreForUser(uid);
-      userData.overallScore = calculatedScore;
-      
-      setProfileData(userData);
-
       const followersRef = collection(db, "users", uid, "followers");
-      const followersSnap = await getDocs(followersRef);
-      setFollowers(followersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
       const followingRef = collection(db, "users", uid, "following");
-      const followingSnap = await getDocs(followingRef);
-      setFollowing(followingSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
+      const [userSnap, followersSnap, followingSnap] = await Promise.all([
+        getDoc(userRef),
+        getDocs(followersRef),
+        getDocs(followingRef),
+      ]);
+
+      const userData = userSnap.exists() ? userSnap.data() : {};
+      setProfileData(userData);
+      setFollowers(followersSnap.docs.map((followerDoc) => ({ id: followerDoc.id, ...followerDoc.data() })));
+      setFollowing(followingSnap.docs.map((followingDoc) => ({ id: followingDoc.id, ...followingDoc.data() })));
+
+      if (refreshScore) {
+        void updateOverallScoreForUser(uid)
+          .then((score) => {
+            if (!focusActiveRef.current) return;
+            setProfileData((prev) => (prev ? { ...prev, overallScore: score } : prev));
+          })
+          .catch((error) => {
+            console.error("Error refreshing overall score:", error);
+          });
+      }
     } catch (error) {
       console.error("Error fetching social data:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      focusActiveRef.current = true;
+      const uid = auth.currentUser?.uid;
+      if (uid) {
+        fetchSocialData(uid);
+      }
+      return () => {
+        focusActiveRef.current = false;
+      };
+    }, [fetchSocialData])
+  );
 
   const handleAddFriendByUsername = async () => {
     const enteredUsername = friendUsername.trim();
@@ -111,13 +136,22 @@ export default function ProfileScreen({ navigation }) {
       await batch.commit();
 
       setFriendUsername("");
-      await fetchSocialData(myUid);
+      await fetchSocialData(myUid, { refreshScore: false });
       Alert.alert("Success", `You are now following ${targetUser.username}.`);
     } catch (error) {
       console.error("Error adding friend by username:", error);
       Alert.alert("Error", "Could not add friend right now.");
     } finally {
       setAddingFriend(false);
+    }
+  };
+
+  const handleOpenFeedback = async () => {
+    try {
+      await WebBrowser.openBrowserAsync(FEEDBACK_URL);
+    } catch (error) {
+      console.error("Error opening feedback board:", error);
+      Alert.alert("Unable to open", "Could not open the feedback board right now.");
     }
   };
 
@@ -144,7 +178,10 @@ export default function ProfileScreen({ navigation }) {
       <View style={styles.userSection}>
         <View style={styles.profileCard}>
             {/* Avatar removed */}
-          <Text style={styles.userName}>{profileData?.username || "User"}</Text>
+          <View style={styles.userNameRow}>
+            <Text style={styles.userName}>{profileData?.username || "User"}</Text>
+            {isPro && <ProBadge height={26} />}
+          </View>
 
           <View style={styles.statsCard}>
             <HapticTouchableOpacity style={styles.statItem} onPress={() => navigation.navigate("FollowersListScreen")}> 
@@ -197,6 +234,33 @@ export default function ProfileScreen({ navigation }) {
             <Text style={styles.infoLabel}>Overall App Streak</Text>
             <Text style={styles.infoValue}>{profileData?.streakCount || 0} Days</Text>
           </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Feedback</Text>
+        <View style={styles.feedbackButtonWrap}>
+          <View
+            pointerEvents="none"
+            style={[styles.feedbackButtonShadow, { backgroundColor: FEEDBACK_SHADOW }]}
+          />
+          <HapticPressable
+            haptic={HapticType.LIGHT}
+            onPress={handleOpenFeedback}
+            style={({ pressed }) => [
+              styles.feedbackButtonFace,
+              { backgroundColor: FEEDBACK_FACE },
+              pressed && styles.feedbackButtonPressed,
+            ]}
+          >
+            <View style={styles.feedbackButtonContent}>
+              <View style={styles.feedbackButtonTextCol}>
+                <Text style={styles.feedbackButtonTitle}>Give feedback</Text>
+                <Text style={styles.feedbackButtonHint}>Share ideas, report bugs, or vote on features</Text>
+              </View>
+              <Ionicons name="open-outline" size={26} color="#ffffff" />
+            </View>
+          </HapticPressable>
         </View>
       </View>
     </ScrollView>
@@ -267,11 +331,17 @@ const styles = StyleSheet.create({
   avatar: {
   },
     // avatar removed
+  userNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    margin: 10,
+  },
   userName: {
     fontSize: 24,
     fontWeight: "900",
     color: theme.text,
-    margin: 10,
     fontFamily: 'CeraRoundProDEMO-Black',
   },
   profileSub: {
@@ -391,5 +461,48 @@ const styles = StyleSheet.create({
   },
   scoreValue: {
     color: "#000000",
+  },
+  feedbackButtonWrap: {
+    position: "relative",
+    paddingBottom: FEEDBACK_BUTTON_DEPTH,
+  },
+  feedbackButtonShadow: {
+    position: "absolute",
+    top: FEEDBACK_BUTTON_DEPTH,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 20,
+  },
+  feedbackButtonFace: {
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+  },
+  feedbackButtonPressed: {
+    transform: [{ translateY: FEEDBACK_BUTTON_DEPTH }],
+  },
+  feedbackButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  feedbackButtonTextCol: {
+    flex: 1,
+  },
+  feedbackButtonTitle: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#ffffff",
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
+  feedbackButtonHint: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.88)",
+    textAlign: "left",
+    fontFamily: 'CeraRoundProDEMO-Black',
   },
 });

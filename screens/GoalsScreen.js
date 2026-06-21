@@ -11,6 +11,7 @@ import { toggleGoalTransaction } from "../utils/goalToggleTransaction";
 // import { getAuth } from "firebase/auth";
 import { Ionicons } from "@expo/vector-icons";
 import HapticPressable from "../components/HapticPressable";
+import GoalProgressButtonContent from "../components/GoalProgressButtonContent";
 import Page from "../components/Page";
 import { HapticType } from "../utils/haptics";
 import theme, { getDarkerAccentColor, getLighterAccentColor, useTheme } from "../theme";
@@ -627,14 +628,8 @@ export default function GoalsScreen({ navigation }) {
       : (isSharedMultiUserCompletion && currentUserClicked);
 
     // --- Segment rendering ---
-    const showQuantitySegments = (isQuantity || isPeriodic) && Number(targetValue) > 0;
-    const quantitySegmentCount = showQuantitySegments ? Math.max(1, Math.min(Math.floor(Number(targetValue) || 1), 6)) : 0;
-    const safeQuantityCurrent = showQuantitySegments
-      ? Math.max(0, Math.min(Number(currentValue) || 0, Number(targetValue) || 1))
-      : 0;
-    const filledQuantitySegments = showQuantitySegments
-      ? Math.min(quantitySegmentCount, Math.ceil((safeQuantityCurrent / (Number(targetValue) || 1)) * quantitySegmentCount))
-      : 0;
+    const showQuantitySegments = isQuantity && Number(targetValue) > 0;
+    const showPeriodicProgress = isPeriodic && Number(targetValue) > 0;
 
     // --- Button coloring (match GoalScreen) ---
     const uncheckedButtonShadowColor = '#cdcdcd';
@@ -743,75 +738,42 @@ export default function GoalsScreen({ navigation }) {
           >
 
             {isSharedMultiUserQuantity ? (
-              <View style={styles.quantityButtonContent}>
-                <Text
-                  style={[
-                    styles.sharedQuantityProgressLabel,
-                    { color: (isDone || Number(currentValue) >= quantityTargetValue) ? '#fff' : theme.accent, fontWeight: 'bold', fontSize: 14 },
-                  ]}
-                >
-                  {`${Math.min(Object.values(quantityLogs).filter(v => Number(v) >= quantityTargetValue).length, requiredSharedContributors)}/${requiredSharedContributors}`}
-                </Text>
-                <View style={styles.quantitySegmentRow}>
-                  {Array.from({ length: quantitySegmentCount }).map((_, index) => {
-                    const userValue = Math.max(0, Math.min(Number(currentValue) || 0, quantityTargetValue));
-                    const filled = Math.min(quantitySegmentCount, Math.ceil((userValue / (Number(quantityTargetValue) || 1)) * quantitySegmentCount));
-                    // For shared multi-user quantity: segments are white if user has completed their part
-                    const userDone = userValue >= quantityTargetValue;
-                    return (
-                      <View
-                        key={`${item._flatListKey}-quantity-segment-${index}`}
-                        style={[
-                          styles.quantitySegment,
-                          index < filled
-                            ? (userDone ? styles.quantitySegmentDone : quantitySegmentFilledStyle)
-                            : styles.quantitySegmentEmpty,
-                        ]}
-                      />
-                    );
-                  })}
-                </View>
-              </View>
+              <GoalProgressButtonContent
+                mode="shared-quantity"
+                currentValue={currentValue}
+                targetValue={quantityTargetValue}
+                isDone={isDone}
+                userDone={Number(currentValue) >= quantityTargetValue}
+                accentColor={theme.accent}
+                contributorLabel={`${Math.min(Object.values(quantityLogs).filter((v) => Number(v) >= quantityTargetValue).length, requiredSharedContributors)}/${requiredSharedContributors}`}
+                filledSegmentStyle={quantitySegmentFilledStyle}
+              />
             ) : isSharedMultiUserPeriodic ? (
-              <View style={styles.quantityButtonContent}>
-                <Text
-                  style={[
-                    styles.sharedQuantityProgressLabel,
-                    { color: (isDone || periodUserDone) ? '#fff' : theme.accent, fontWeight: 'bold', fontSize: 14 },
-                  ]}
-                >
-                  {`${Math.min(periodGroupCount, requiredSharedContributors)}/${requiredSharedContributors}`}
-                </Text>
-                <View style={styles.quantitySegmentRow}>
-                  {Array.from({ length: quantitySegmentCount }).map((_, index) => (
-                    <View
-                      key={`${item._flatListKey}-quantity-segment-${index}`}
-                      style={[
-                        styles.quantitySegment,
-                        index < filledQuantitySegments
-                          ? (periodUserDone ? styles.quantitySegmentDone : quantitySegmentFilledStyle)
-                          : styles.quantitySegmentEmpty,
-                      ]}
-                    />
-                  ))}
-                </View>
-              </View>
-            ) : (isQuantity || isPeriodic) ? (
-              <View style={styles.quantityButtonContent}>
-                <View style={styles.quantitySegmentRow}>
-                  {Array.from({ length: quantitySegmentCount }).map((_, index) => (
-                    <View
-                      key={`${item._flatListKey}-quantity-segment-${index}`}
-                      style={[
-                        styles.quantitySegment,
-                        index < filledQuantitySegments
-                          ? (isDone ? styles.quantitySegmentDone : quantitySegmentFilledStyle)
-                          : styles.quantitySegmentEmpty,
-                      ]}
-                    />
-                  ))}
-                </View>
-              </View>
+              <GoalProgressButtonContent
+                mode="shared-periodic"
+                currentValue={periodUserProgress}
+                targetValue={periodTargetValue}
+                isDone={isDone}
+                userDone={periodUserDone}
+                accentColor={theme.accent}
+                contributorLabel={`${Math.min(periodGroupCount, requiredSharedContributors)}/${requiredSharedContributors}`}
+              />
+            ) : showQuantitySegments ? (
+              <GoalProgressButtonContent
+                mode="quantity"
+                currentValue={currentValue}
+                targetValue={targetValue}
+                isDone={isDone}
+                filledSegmentStyle={quantitySegmentFilledStyle}
+              />
+            ) : showPeriodicProgress ? (
+              <GoalProgressButtonContent
+                mode="periodic"
+                currentValue={currentValue}
+                targetValue={targetValue}
+                isDone={isDone}
+                accentColor={theme.accent}
+              />
             ) : isSharedMultiUserCompletion ? (
               <Text
                 style={[

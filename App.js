@@ -30,7 +30,7 @@ import { cardShadow, subtleBorderShadow, cpShadow } from "./utils/shadows";
 
 import { FRAME_ASSETS } from "./constants/FrameAssets";
 import { WALLPAPER_ASSETS } from "./constants/WallpaperAssets";
-import { initializeNotifications, teardownNotificationListeners } from "./utils/notifications";
+import { initializeNotifications, teardownNotificationListeners, syncGoalReminderBadge } from "./utils/notifications";
 import {
   getActiveRouteName,
   initializeAnalytics,
@@ -999,8 +999,11 @@ export default function App() {
     });
 
     appStateListenerRef.current = AppState.addEventListener('change', (state) => {
-      if (state === 'active' && userRef.current) {
-        checkEnterScreen(userRef.current.uid, "AppState.active");
+      if (state === 'active') {
+        void syncGoalReminderBadge();
+        if (userRef.current) {
+          checkEnterScreen(userRef.current.uid, "AppState.active");
+        }
       }
     });
 

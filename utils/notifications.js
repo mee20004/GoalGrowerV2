@@ -3,6 +3,8 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import { registerGoalReminderBadge, syncGoalReminderBadge } from './goalReminderBadge';
+import { toKey } from '../components/GoalsStore';
 
 const ANDROID_CHANNEL_ID = 'goal-grower-reminders';
 let listenerCleanup = null;
@@ -85,6 +87,22 @@ function navigateToGoals(navigationRef) {
       nav.navigate('Goals');
     } catch (error) {
       console.warn('Could not navigate from notification tap:', error);
+    }
+  }
+}
+
+export async function clearNotificationBadge() {
+  try {
+    await Notifications.setBadgeCountAsync(0);
+  } catch (error) {
+    console.warn('Could not clear notification badge:', error);
+  }
+
+  if (Platform.OS === 'android') {
+    try {
+      await Notifications.dismissAllNotificationsAsync();
+    } catch (error) {
+      console.warn('Could not dismiss Android notifications:', error);
     }
   }
 }
@@ -285,6 +303,7 @@ export async function scheduleGoalNotification(
           timestamp: new Date().toISOString(),
         },
         sound: true,
+        badge: 1,
       },
       trigger: dailyTrigger(hour, minute),
     });
@@ -437,11 +456,22 @@ export async function sendGoalReminderNotification(goalName) {
 }
 
 export function setupNotificationListeners(navigationRef) {
-  const notificationListener = Notifications.addNotificationReceivedListener(() => {});
+  const notificationListener = Notifications.addNotificationReceivedListener((notification) => {
+    const data = notification.request.content.data;
+    if (data?.type === 'goal_notification' && data?.goalId) {
+      void registerGoalReminderBadge(data.goalId, toKey(new Date()));
+    }
+  });
 
   const responseListener = Notifications.addNotificationResponseReceivedListener(
     (response) => {
-      const notificationType = response.notification.request.content.data?.type;
+      const data = response.notification.request.content.data;
+      if (data?.type === 'goal_notification' && data?.goalId) {
+        void registerGoalReminderBadge(data.goalId, toKey(new Date()));
+      }
+      void syncGoalReminderBadge();
+
+      const notificationType = data?.type;
 
       if (
         notificationType === 'daily_goal_reminder'
@@ -454,8 +484,8 @@ export function setupNotificationListeners(navigationRef) {
   );
 
   return () => {
-    Notifications.removeNotificationSubscription(notificationListener);
-    Notifications.removeNotificationSubscription(responseListener);
+    notificationListener.remove();
+    responseListener.remove();
   };
 }
 
@@ -469,6 +499,7 @@ export function teardownNotificationListeners() {
 export async function initializeNotifications(navigationRef) {
   try {
     await setupAndroidNotificationChannel();
+    await syncGoalReminderBadge();
 
     const permissionGranted = await requestNotificationPermissions();
     if (!permissionGranted) {
@@ -597,9 +628,55 @@ export async function removeGoalNotificationSetting(goalId) {
 
     await cancelGoalNotification(goalId);
     await rescheduleAllNotifications(settings);
+    await syncGoalReminderBadge();
     return true;
   } catch (error) {
     console.error('Error removing goal notification setting:', error);
     return false;
   }
 }
+
+export async function configureGoalReminderOnCreate(goalId, goalName, hour = 9, minute = 0) {
+  try {
+    if (!auth.currentUser || !goalId) return false;
+
+    const granted = await requestNotificationPermissions();
+    if (!granted) return false;
+
+    const settings = await getNotificationSettings();
+    let changed = false;
+
+    if (!settings.notificationsEnabled) {
+      settings.notificationsEnabled = true;
+      changed = true;
+    }
+
+    if (settings.notificationMode === 'global') {
+      settings.notificationMode = 'both';
+      changed = true;
+    }
+
+    if (changed) {
+      await saveNotificationSettings(settings);
+    }
+
+    settings.perGoalNotifications = settings.perGoalNotifications || {};
+    settings.perGoalNotifications[goalId] = {
+      enabled: true,
+      time: hour,
+      timeMinute: minute,
+      goalName: goalName || 'Your goal',
+      customText: '',
+      customPosition: 'prefix',
+    };
+
+    await saveNotificationSettings(settings);
+    await rescheduleAllNotifications(settings);
+    return true;
+  } catch (error) {
+    console.error('Error configuring goal reminder on create:', error);
+    return false;
+  }
+}
+
+export { syncGoalReminderBadge, registerGoalReminderBadge, clearGoalReminderBadge } from './goalReminderBadge';

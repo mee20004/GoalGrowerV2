@@ -11,6 +11,8 @@ import Page from "../components/Page";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import FireStreakIcon from "../assets/Icons/FireStreakIcon";
 import { cpShadow } from "../utils/shadows";
+import { useSubscription } from "../components/SubscriptionProvider";
+import ProBadge from "../components/ProBadge";
 
 const FILTERS = [
   { key: "global", label: "Global" },
@@ -27,6 +29,7 @@ export default function RankScreen({ navigation }) {
     'CeraRoundProDEMO-Black': require('../assets/fonts/CeraRoundProDEMOBlack.otf'),
   });
   const { theme } = useTheme();
+  const { isPro: currentUserIsPro } = useSubscription();
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("global");
@@ -138,6 +141,7 @@ export default function RankScreen({ navigation }) {
 
   const renderItem = ({ item }) => {
     const isCurrentUser = item.id === auth.currentUser?.uid;
+    const isProUser = !!item.isPro || (isCurrentUser && currentUserIsPro);
 
     return (
       <HapticTouchableOpacity
@@ -170,9 +174,17 @@ export default function RankScreen({ navigation }) {
         </View>
 
         <View style={styles.userInfo}>
-          <Text style={[styles.username, isCurrentUser && { color: theme.accent }]}> 
-            {item.username || "Unknown"} {isCurrentUser && "(You)"}
-          </Text>
+          <View style={styles.userNameRow}>
+            <Text
+              style={[
+                styles.username,
+                isCurrentUser && !isProUser && { color: theme.accent },
+              ]}
+            >
+              {item.username || "Unknown"} {isCurrentUser && "(You)"}
+            </Text>
+            {isProUser && <ProBadge height={20} />}
+          </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
             <Image source={FireStreakIcon} style={{ width: 18, height: 18, marginRight: 2 }} resizeMode="contain" />
             <Text style={styles.streakText}>{item.streakCount || 0} Day Streak</Text>
@@ -326,7 +338,14 @@ const styles = StyleSheet.create({
   // avatar removed
 
   userInfo: { flex: 1 },
-  username: { fontSize: 16, fontWeight: "900", color: theme.text, marginBottom: 4, fontFamily: 'CeraRoundProDEMO-Black' },
+  userNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 6,
+    marginBottom: 4,
+  },
+  username: { fontSize: 16, fontWeight: "900", color: theme.text, fontFamily: 'CeraRoundProDEMO-Black' },
   currentUsername: { color: theme.accent, fontFamily: 'CeraRoundProDEMO-Black' },
   streakText: { fontSize: 12, fontWeight: "800", color: "#FF9600", fontFamily: 'CeraRoundProDEMO-Black' },
 

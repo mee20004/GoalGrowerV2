@@ -478,19 +478,41 @@ export function handlePurchaseError(error, context = "purchase") {
   Alert.alert(title, getReadablePurchaseError(error));
 }
 
-export function describePaywallResult(result) {
+export function describePaywallResult(result, offeringId = OFFERING_IDS.DEFAULT) {
+  const isCoinPaywall = offeringId === OFFERING_IDS.COINS;
+
   switch (result) {
     case PAYWALL_RESULT.PURCHASED:
+      if (isCoinPaywall) {
+        return null;
+      }
       return "Thanks for subscribing to Goal Grower Pro!";
     case PAYWALL_RESULT.RESTORED:
       return "Your purchases have been restored.";
     case PAYWALL_RESULT.CANCELLED:
       return null;
     case PAYWALL_RESULT.NOT_PRESENTED:
+      if (isCoinPaywall) {
+        return null;
+      }
       return "You already have Goal Grower Pro.";
     default:
       return null;
   }
+}
+
+export function getCoinTransactionCandidateIds(transaction) {
+  if (!transaction) return [];
+
+  return [
+    transaction.transactionIdentifier,
+    transaction.storeTransactionIdentifier,
+    transaction.storeTransactionId,
+    transaction.transactionId,
+    transaction.id,
+  ]
+    .filter((value) => typeof value === "string" && value.trim())
+    .map((value) => value.trim());
 }
 
 export function findLatestCoinTransaction(

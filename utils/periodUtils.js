@@ -111,3 +111,30 @@ export function getPeriodLabel(period) {
 export function getPeriodNoun(period) {
   return normalizePeriod(period) === PERIOD_MONTH ? "month" : "week";
 }
+
+export const MAX_FREQUENCY_DAYS_PER_WEEK = 7;
+export const MAX_FREQUENCY_DAYS_PER_MONTH = 31;
+
+/** Max distinct completion days allowed for frequency goals in a period. */
+export function getMaxFrequencyDays(period) {
+  return normalizePeriod(period) === PERIOD_MONTH
+    ? MAX_FREQUENCY_DAYS_PER_MONTH
+    : MAX_FREQUENCY_DAYS_PER_WEEK;
+}
+
+export function clampFrequencyDays(value, period) {
+  const max = getMaxFrequencyDays(period);
+  const n = Math.floor(Number(value) || 0);
+  if (n < 1) return 1;
+  return Math.min(n, max);
+}
+
+export function normalizeFrequencyDaysInput(value, period) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  const max = getMaxFrequencyDays(period);
+  const n = Number(digits);
+  if (!Number.isFinite(n) || n < 1) return "";
+  if (n > max) return String(max);
+  return digits.slice(0, 2);
+}

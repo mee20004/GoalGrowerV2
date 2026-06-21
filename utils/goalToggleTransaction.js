@@ -3,6 +3,7 @@ import { doc, updateDoc, runTransaction, setDoc, increment, arrayUnion, getDoc, 
 import { getPlantHealthState, calculateGoalStreak, isGoalDoneForDate, isGoalDoneForPeriod, countActiveDays, getPeriodTarget, getPeriodProgress } from "../utils/goalState";
 import { fromKey, toKey } from "../components/GoalsStore";
 import { reconcileGoalHealthLogsFromDate } from "./backfillGoalHealthLogs";
+import { syncGoalReminderBadge } from "./goalReminderBadge";
 import { updateOverallScoresForSharedGardenMembers } from "../utils/scoreUtils";
 import { awardGoalCompletionCoins } from "../utils/shopInventory";
 import { logAnalyticsEvent } from "./analytics";
@@ -587,6 +588,8 @@ export async function toggleGoalTransaction({
         console.error("[toggleGoalTransaction] Health reconcile after backdate failed:", reconcileError);
       }
     }
+
+    void syncGoalReminderBadge();
   } catch (error) {
     if (clearLocalOptimisticProgress) clearLocalOptimisticProgress();
     console.error("Error toggling goal status (shared):", error);

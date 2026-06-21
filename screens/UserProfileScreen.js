@@ -10,12 +10,15 @@ import { auth, db } from "../firebaseConfig";
 import theme, { useTheme } from "../theme";
 import { cardShadow, subtleBorderShadow, hardDropShadow } from "../utils/shadows";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { useSubscription } from "../components/SubscriptionProvider";
+import ProBadge from "../components/ProBadge";
 
 const GARDEN_TAB_ICON = require("../assets/Icons/Taskbar/GardenIcon.png");
 const JOURNEY_TAB_ICON = require("../assets/Icons/Taskbar/Journey.png");
 
 export default function UserProfileScreen({ route, navigation }) {
   const { theme } = useTheme();
+  const { isPro: currentUserIsPro } = useSubscription();
   // We expect a userId to be passed when navigating to this screen
   const { userId } = route.params; 
   
@@ -118,6 +121,8 @@ export default function UserProfileScreen({ route, navigation }) {
   }
 
   const screenHeight = Dimensions.get('window').height;
+  const isProUser = userId === currentUserId ? currentUserIsPro : !!profileData?.isPro;
+
   return (
     <View style={styles.screenWrap}>
       <ScrollView
@@ -139,7 +144,10 @@ export default function UserProfileScreen({ route, navigation }) {
         <View style={styles.userSection}>
           <View style={styles.profileCard}>
             {/* Avatar removed */}
-            <Text style={styles.userName}>{profileData?.username || "User"}</Text>
+            <View style={styles.userNameRow}>
+              <Text style={styles.userName}>{profileData?.username || "User"}</Text>
+              {isProUser && <ProBadge height={26} />}
+            </View>
 
             <View style={styles.statsCard}>
               <View style={styles.statItem}>
@@ -288,7 +296,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   // avatar removed
-  userName: { fontSize: 24, fontWeight: "900", color: theme.text, margin: 10, fontFamily: 'CeraRoundProDEMO-Black' },
+  userNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    margin: 10,
+  },
+  userName: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: theme.text,
+    fontFamily: 'CeraRoundProDEMO-Black',
+  },
   profileSub: { marginTop: 4, fontSize: 13, fontWeight: "700", color: theme.text2, marginBottom: 14, fontFamily: 'CeraRoundProDEMO-Black' },
   statsCard: {
     flexDirection: "row",

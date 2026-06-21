@@ -22,6 +22,8 @@ import {
 const ITEM_HEIGHT = 48;
 const WHEEL_VISIBLE_COUNT = 5;
 const WHEEL_HEIGHT = ITEM_HEIGHT * WHEEL_VISIBLE_COUNT;
+const ACCENT_FILL_SOFT = '28';
+const ACCENT_FILL_STRONG = '20';
 
 function WheelColumn({ items, selectedIndex, onIndexChange, label, accentColor }) {
   const scrollRef = useRef(null);
@@ -51,7 +53,7 @@ function WheelColumn({ items, selectedIndex, onIndexChange, label, accentColor }
       <View style={[styles.wheelFrame, { height: WHEEL_HEIGHT }]}>
         <View
           pointerEvents="none"
-          style={[styles.selectionBand, { borderColor: accentColor, backgroundColor: `${accentColor}14` }]}
+          style={[styles.selectionBand, { borderColor: accentColor, backgroundColor: `${accentColor}${ACCENT_FILL_SOFT}` }]}
         />
         <ScrollView
           ref={scrollRef}
@@ -123,7 +125,13 @@ export default function TimePickerSheet({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      presentationStyle="overFullScreen"
+      onRequestClose={onCancel}
+    >
       <View style={styles.overlay}>
         <HapticPressable style={styles.backdrop} onPress={onCancel} />
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
@@ -139,8 +147,7 @@ export default function TimePickerSheet({
             </HapticPressable>
           </View>
 
-          <View style={[styles.previewPill, { backgroundColor: `${accentColor}18` }]}>
-            <Ionicons name="time-outline" size={20} color={accentColor} />
+          <View style={[styles.previewPill, { backgroundColor: `${accentColor}${ACCENT_FILL_STRONG}` }]}>
             <Text style={[styles.previewText, { color: accentColor }]}>{preview}</Text>
           </View>
 
@@ -276,7 +283,7 @@ const styles = StyleSheet.create({
     top: ITEM_HEIGHT * 2,
     height: ITEM_HEIGHT,
     borderRadius: 12,
-    borderWidth: 1.5,
+    borderWidth: 0,
     zIndex: 1,
   },
   wheelItem: {

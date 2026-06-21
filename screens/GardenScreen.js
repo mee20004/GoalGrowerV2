@@ -1593,6 +1593,16 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       setSharedGardenSettingsLoaded(true);
       return undefined;
     }
+
+    setSharedGardenSettingsLoaded(false);
+    setSharedGardenSettings({
+      restrictAddPeople: false,
+      restrictCustomize: false,
+      restrictEditPlants: false,
+      ownerId: null,
+      editModeLock: null,
+    });
+
     const unsub = onSnapshot(
       doc(db, "sharedGardens", sharedGardenId),
       (snap) => {
@@ -1611,6 +1621,7 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
         if (error?.code !== 'permission-denied' || auth.currentUser?.uid) {
           console.error('Error loading shared garden settings', error);
         }
+        setSharedGardenSettingsLoaded(true);
       }
     );
     return () => unsub();
@@ -3126,7 +3137,11 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
       Alert.alert("Can't customize trophies", "Switch to a garden page to customize its look.");
       return;
     }
-    if (isSharedGarden && sharedGardenSettingsLoaded && !canCustomize) {
+    if (isSharedGarden && !sharedGardenSettingsLoaded) {
+      Alert.alert("One moment", "Garden permissions are still loading. Try again in a second.");
+      return;
+    }
+    if (isSharedGarden && !canCustomize) {
       Alert.alert("Restricted", "Only the owner can customize this shared garden.");
       return;
     }
@@ -3244,6 +3259,9 @@ export default function GardenScreen({ route, navigation, onboardingStep, onboar
         ownerUsername: myUsername || 'User',
         memberIds: [uid],
         createdAt,
+        restrictAddPeople: false,
+        restrictCustomize: false,
+        restrictEditPlants: false,
       });
 
       await setDoc(doc(db, 'sharedGardens', gardenRef.id, 'pages', SHARED_GARDEN_DEFAULT_PAGE_ID), {
@@ -4328,7 +4346,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
     )}
 
     {/* Customization FAB only in edit mode, but modal is always rendered if showCustomization is true */}
-    {!isReadOnly && isEditing && canCustomize && (
+    {!isReadOnly && isEditing && canCustomize && (!isSharedGarden || sharedGardenSettingsLoaded) && (
       <HapticTouchableOpacity ref={customizeFabRef} style={styles.customizeFab} onPress={() => handleCustomization('wall')}>
         <Ionicons name="color-palette" size={19} color="#fff" />
       </HapticTouchableOpacity>
@@ -4338,7 +4356,7 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
         visible={showCustomization}
         onClose={() => setShowCustomization(false)}
         onSave={async (pageId, values) => {
-          if (isSharedGarden && (!canCustomize || !sharedGardenSettingsLoaded)) {
+          if (isSharedGarden && sharedGardenSettingsLoaded && !canCustomize) {
             const error = new Error("permission-denied");
             error.code = "permission-denied";
             throw error;
@@ -4355,10 +4373,13 @@ const renderShelf = (pageId, shelfName, plantsOnPage, shelfColorIdx = 0, onBotto
             console.error("Failed to save garden customization", error);
             if (!customizationAlertShownRef.current) {
               customizationAlertShownRef.current = true;
+              const isPermissionDenied = error?.code === "permission-denied";
               Alert.alert(
                 "Could not save",
-                error?.code === "permission-denied"
-                  ? "You do not have permission to customize this shared garden."
+                isPermissionDenied
+                  ? (sharedGardenSettings.restrictCustomize
+                    ? "The garden owner has restricted customization for members."
+                    : "You do not have permission to customize this shared garden. If you recently joined, try again in a moment.")
                   : "Your customization could not be saved. Try again.",
                 [{ text: "OK", onPress: () => { customizationAlertShownRef.current = false; } }]
               );
